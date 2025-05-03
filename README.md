@@ -26,6 +26,20 @@ Each payment provider implements their own unique API structure with different r
 
 GoPay is designed to be self-hosted. Simply clone the repository and deploy it within your infrastructure.
 
+## Roadmap
+
+- [ ] Create core API structure and interfaces
+- [ ] Implement logging and tracing middleware
+- [ ] Design unified payment response format
+- [ ] Design unified payment request format
+- [ ] Add Iyzico payment provider integration
+- [ ] Add Stripe payment provider integration
+- [ ] Add OzanPay payment provider integration
+- [ ] Implement webhook handling for callbacks
+- [ ] Add authentication/security layer
+- [ ] Create comprehensive documentation
+- [ ] Add example implementation
+
 ## Contributing
 
 This project is open-source, and contributions are welcome. Feel free to contribute or provide feedback of any kind.
