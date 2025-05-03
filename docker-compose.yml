@@ -1,0 +1,46 @@
+services:
+  gopay:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: ${APP_NAME}
+    restart: always
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    networks:
+      - gopay
+    depends_on:
+      - "opensearch"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: ${APP_NAME}-opensearch
+    restart: always
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - gopay
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  gopay:
+    name: gopay
+    driver: bridge
