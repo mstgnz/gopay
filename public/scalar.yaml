@@ -9,10 +9,12 @@ info:
     - 🔄 **Unified API Interface**: Standardize diverse payment gateway APIs (İyzico, OzanPay, Stripe, etc.) into a consistent format
     - 🔌 **Plug-and-Play Architecture**: Easily switch between payment providers without code changes
     - 🏢 **Provider Agnostic**: Add new payment gateways without disrupting existing implementations
+    - 🏢 **Multi-Tenant Support**: Multiple projects can use different provider configurations simultaneously
     - 🔐 **3D Secure Support**: Complete 3D Secure payment flow with callback handling
     - 💰 **Full Payment Lifecycle**: Process, track, cancel, and refund payments
     - 🎯 **Webhook Integration**: Receive real-time payment notifications
     - 🛡️ **Secure by Design**: Built-in authentication and security features
+    - 💾 **Persistent Configuration**: SQLite-based tenant configuration storage
 
     ## Supported Payment Providers
     - ✅ **İyzico** (Turkey) - Full integration with 3D Secure support
@@ -23,6 +25,19 @@ info:
     All API endpoints require a Bearer token for authentication. Include the token in the Authorization header:
     ```
     Authorization: Bearer <your_api_key>
+    ```
+
+    ## Multi-Tenant Configuration
+    GoPay supports multi-tenant architecture where different projects can use different payment provider configurations.
+
+    ### Setup Flow
+    1. `POST /v1/set-env` with `X-Tenant-ID` header - Configure payment provider for a tenant
+    2. Use payment endpoints with same `X-Tenant-ID` header - Automatically uses tenant-specific configuration
+
+    ### Tenant Header
+    For tenant-specific operations, include the tenant identifier in the header:
+    ```
+    X-Tenant-ID: your_project_name
     ```
 
     ## Payment Flow
@@ -430,10 +445,339 @@ components:
           example: "Customer request"
           description: Cancellation reason
 
+    # Configuration Schemas
+    SetEnvRequest:
+      type: object
+      description: |
+        Configuration request for setting up payment provider credentials for a tenant.
+        At least one provider configuration must be provided.
+      properties:
+        # İyzico Configuration
+        IYZICO_API_KEY:
+          type: string
+          example: "sandbox-api-key"
+          description: İyzico API key
+        IYZICO_SECRET_KEY:
+          type: string
+          example: "sandbox-secret-key"
+          description: İyzico secret key
+        IYZICO_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: İyzico environment
+
+        # OzanPay Configuration
+        OZANPAY_API_KEY:
+          type: string
+          example: "ozanpay-api-key"
+          description: OzanPay API key
+        OZANPAY_SECRET_KEY:
+          type: string
+          example: "ozanpay-secret-key"
+          description: OzanPay secret key
+        OZANPAY_MERCHANT_ID:
+          type: string
+          example: "merchant123"
+          description: OzanPay merchant ID
+        OZANPAY_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: OzanPay environment
+
+        # Paycell Configuration
+        PAYCELL_USERNAME:
+          type: string
+          example: "paycell-user"
+          description: Paycell username
+        PAYCELL_PASSWORD:
+          type: string
+          example: "paycell-pass"
+          description: Paycell password
+        PAYCELL_MERCHANT_ID:
+          type: string
+          example: "merchant456"
+          description: Paycell merchant ID
+        PAYCELL_TERMINAL_ID:
+          type: string
+          example: "terminal789"
+          description: Paycell terminal ID
+        PAYCELL_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: Paycell environment
+
+    SetEnvResponse:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          example: "abc_project"
+          description: Tenant identifier
+        configuredProviders:
+          type: array
+          items:
+            type: string
+          example: ["iyzico", "ozanpay"]
+          description: List of successfully configured providers
+        message:
+          type: string
+          example: "Provider configurations set successfully"
+          description: Success message
+
+    TenantConfigResponse:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          example: "abc_project"
+          description: Tenant identifier
+        provider:
+          type: string
+          example: "iyzico"
+          description: Provider name
+        config:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            apiKey: "sand****key"
+            secretKey: "sand****ret"
+            environment: "sandbox"
+          description: Masked configuration values
+
+    StatsResponse:
+      type: object
+      properties:
+        memory_configs:
+          type: integer
+          example: 15
+          description: Number of configurations in memory
+        base_url:
+          type: string
+          example: "http://localhost:9999"
+          description: Base URL for callbacks
+        sqlite:
+          type: object
+          properties:
+            total_configs:
+              type: integer
+              example: 15
+              description: Total configurations in database
+            unique_tenants:
+              type: integer
+              example: 5
+              description: Number of unique tenants
+            unique_providers:
+              type: integer
+              example: 3
+              description: Number of unique providers
+            db_size_bytes:
+              type: integer
+              example: 32768
+              description: Database file size in bytes
+            db_path:
+              type: string
+              example: "/app/data/gopay.db"
+              description: Database file path
+          description: SQLite database statistics
+
 security:
   - BearerAuth: []
 
 paths:
+  # Configuration Operations
+  /v1/set-env:
+    post:
+      summary: Configure payment provider for tenant
+      description: |
+        Sets up payment provider configurations for a specific tenant.
+        This allows different projects to use different payment provider credentials.
+        
+        **Multi-Tenant Flow:**
+        1. Call this endpoint with `X-Tenant-ID` header and provider credentials
+        2. Use payment endpoints with the same `X-Tenant-ID` header
+        3. GoPay automatically uses tenant-specific provider configuration
+        
+        **Supported Providers:**
+        - **İyzico**: Requires `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`
+        - **OzanPay**: Requires `OZANPAY_API_KEY`, `OZANPAY_SECRET_KEY`, `OZANPAY_MERCHANT_ID`
+        - **Paycell**: Requires `PAYCELL_USERNAME`, `PAYCELL_PASSWORD`, `PAYCELL_MERCHANT_ID`, `PAYCELL_TERMINAL_ID`
+      tags: [Configuration]
+      parameters:
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the tenant/project
+          example: abc_project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetEnvRequest'
+            examples:
+              iyzico_config:
+                summary: İyzico Configuration
+                value:
+                  IYZICO_API_KEY: "sandbox-DzgHbZnL4y7TVIYMqgKRw5lGlYDm5KCH"
+                  IYZICO_SECRET_KEY: "sandbox-aXKQk8o6f4KQhFvG0hQlRfPTL8kMJ1wC"
+                  IYZICO_ENVIRONMENT: "sandbox"
+              multi_provider_config:
+                summary: Multiple Providers
+                value:
+                  IYZICO_API_KEY: "sandbox-DzgHbZnL4y7TVIYMqgKRw5lGlYDm5KCH"
+                  IYZICO_SECRET_KEY: "sandbox-aXKQk8o6f4KQhFvG0hQlRfPTL8kMJ1wC"
+                  IYZICO_ENVIRONMENT: "sandbox"
+                  OZANPAY_API_KEY: "ozanpay-api-key"
+                  OZANPAY_SECRET_KEY: "ozanpay-secret-key"
+                  OZANPAY_MERCHANT_ID: "merchant123"
+                  OZANPAY_ENVIRONMENT: "sandbox"
+      responses:
+        '200':
+          description: Configuration saved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SetEnvResponse'
+        '400':
+          description: Invalid configuration data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+
+  /v1/config/tenant-config:
+    get:
+      summary: Get tenant configuration for provider
+      description: |
+        Retrieves the configuration for a specific tenant and provider.
+        Sensitive information (API keys, passwords) are masked in the response.
+      tags: [Configuration]
+      parameters:
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the tenant/project
+          example: abc_project
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, paycell]
+          description: Payment provider name
+          example: iyzico
+      responses:
+        '200':
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TenantConfigResponse'
+        '400':
+          description: Missing required parameters
+        '404':
+          description: Configuration not found
+        '500':
+          description: Internal server error
+    
+    delete:
+      summary: Delete tenant configuration for provider
+      description: |
+        Deletes the configuration for a specific tenant and provider.
+        This removes both the in-memory and persistent storage configuration.
+      tags: [Configuration]
+      parameters:
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the tenant/project
+          example: abc_project
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, paycell]
+          description: Payment provider name
+          example: iyzico
+      responses:
+        '200':
+          description: Configuration deleted successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenantId:
+                            type: string
+                            example: "abc_project"
+                          provider:
+                            type: string
+                            example: "iyzico"
+                          message:
+                            type: string
+                            example: "Configuration deleted successfully"
+        '400':
+          description: Missing required parameters
+        '404':
+          description: Configuration not found
+        '500':
+          description: Internal server error
+
+  /v1/stats:
+    get:
+      summary: Get system statistics
+      description: |
+        Returns system statistics including:
+        - Number of configurations in memory
+        - SQLite database statistics
+        - Storage information
+      tags: [Configuration]
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StatsResponse'
+        '500':
+          description: Internal server error
+
   # Payment Operations
   /v1/payments:
     post:
@@ -538,6 +882,10 @@ paths:
         - `iyzico` - İyzico (Turkey)
         - `ozanpay` - OzanPay (Turkey) 
         - `stripe` - Stripe (Global)
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        - If no header provided, uses default environment configuration
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -550,6 +898,13 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       requestBody:
         required: true
         content:
@@ -654,7 +1009,11 @@ paths:
   /v1/payments/{provider}/{paymentID}:
     get:
       summary: Get payment status with specific provider
-      description: Retrieves the current status of a payment using a specific provider
+      description: |
+        Retrieves the current status of a payment using a specific provider.
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -674,6 +1033,13 @@ paths:
             type: string
           description: Payment ID to check
           example: payment123
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       responses:
         '200':
           description: Payment status retrieved successfully
@@ -697,7 +1063,11 @@ paths:
     
     delete:
       summary: Cancel payment with specific provider
-      description: Cancels a payment using a specific provider
+      description: |
+        Cancels a payment using a specific provider.
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -717,6 +1087,13 @@ paths:
             type: string
           description: Payment ID to cancel
           example: payment123
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       requestBody:
         content:
           application/json:
@@ -801,7 +1178,11 @@ paths:
   /v1/payments/{provider}/refund:
     post:
       summary: Refund payment with specific provider
-      description: Processes a refund using a specific provider
+      description: |
+        Processes a refund using a specific provider.
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
       tags: [Refunds]
       security:
         - BearerAuth: []
@@ -814,6 +1195,13 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       requestBody:
         required: true
         content:
@@ -941,6 +1329,9 @@ paths:
       description: |
         Handles 3D Secure authentication callback from the bank using GET method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -951,6 +1342,13 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
         - name: paymentId
           in: query
           required: true
@@ -998,6 +1396,9 @@ paths:
       description: |
         Handles 3D Secure authentication callback from the bank using POST method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
+        
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -1008,6 +1409,13 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -1057,6 +1465,9 @@ paths:
         - Refund notifications
         - Fraud alerts
         
+        **Multi-Tenant Support:**
+        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        
         **Note:** This endpoint validates webhook signatures and processes notifications asynchronously.
       tags: [Webhooks]
       parameters:
@@ -1068,6 +1479,13 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant usage (optional)
+          example: abc_project
       requestBody:
         required: true
         content:
