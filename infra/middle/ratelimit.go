@@ -2,12 +2,12 @@ package middle
 
 import (
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
@@ -27,7 +27,7 @@ type visitor struct {
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter() *RateLimiter {
 	// Get rate limit from environment (default: 100 requests per minute)
-	rateStr := os.Getenv("RATE_LIMIT_PER_MINUTE")
+	rateStr := config.GetEnv("RATE_LIMIT_PER_MINUTE", "100")
 	rate := 100
 	if rateStr != "" {
 		if r, err := strconv.Atoi(rateStr); err == nil && r > 0 {

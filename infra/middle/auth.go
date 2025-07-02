@@ -2,9 +2,9 @@ package middle
 
 import (
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
@@ -13,7 +13,7 @@ func AuthMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get API key from environment
-			expectedAPIKey := os.Getenv("API_KEY")
+			expectedAPIKey := config.GetEnv("API_KEY", "")
 			if expectedAPIKey == "" {
 				response.Error(w, http.StatusInternalServerError, "API key not configured", nil)
 				return

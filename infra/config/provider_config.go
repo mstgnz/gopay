@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ type ProviderConfig struct {
 func NewProviderConfig() *ProviderConfig {
 	return &ProviderConfig{
 		configs: make(map[string]map[string]string),
-		baseURL: "http://localhost:9999", // Default base URL
+		baseURL: GetEnv("APP_URL", "http://localhost:9999"),
 	}
 }
 
@@ -24,9 +23,7 @@ func NewProviderConfig() *ProviderConfig {
 // using the pattern PROVIDER_NAME_KEY=value
 func (c *ProviderConfig) LoadFromEnv() {
 	// Load base URL configuration for callback URLs
-	if baseURL := os.Getenv("APP_URL"); baseURL != "" {
-		c.baseURL = baseURL
-	}
+	c.baseURL = GetEnv("APP_URL", "http://localhost:9999")
 
 	// Load Iyzico configuration
 	c.loadProviderFromEnv("iyzico", []string{
@@ -51,7 +48,7 @@ func (c *ProviderConfig) loadProviderFromEnv(providerName string, keys []string)
 
 	for _, key := range keys {
 		envKey := providerPrefix + strings.ToUpper(key)
-		value := os.Getenv(envKey)
+		value := GetEnv(envKey, "")
 		if value != "" {
 			config[key] = value
 		}

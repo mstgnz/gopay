@@ -48,20 +48,20 @@ func App() *Config {
 func GetAppConfig() *AppConfig {
 	if appConfigInstance == nil {
 		appConfigInstance = &AppConfig{
-			Port:             getEnv("APP_PORT", "9999"),
-			OpenSearchURL:    getEnv("OPENSEARCH_URL", "http://localhost:9200"),
-			OpenSearchUser:   getEnv("OPENSEARCH_USER", ""),
-			OpenSearchPass:   getEnv("OPENSEARCH_PASSWORD", ""),
-			EnableLogging:    getBoolEnv("ENABLE_OPENSEARCH_LOGGING", true),
-			LoggingLevel:     getEnv("LOGGING_LEVEL", "info"),
-			LogRetentionDays: getIntEnv("LOG_RETENTION_DAYS", 30),
+			Port:             GetEnv("APP_PORT", "9999"),
+			OpenSearchURL:    GetEnv("OPENSEARCH_URL", "http://localhost:9200"),
+			OpenSearchUser:   GetEnv("OPENSEARCH_USER", ""),
+			OpenSearchPass:   GetEnv("OPENSEARCH_PASSWORD", ""),
+			EnableLogging:    GetBoolEnv("ENABLE_OPENSEARCH_LOGGING", true),
+			LoggingLevel:     GetEnv("LOGGING_LEVEL", "info"),
+			LogRetentionDays: GetIntEnv("LOG_RETENTION_DAYS", 30),
 		}
 	}
 	return appConfigInstance
 }
 
 // getEnv returns the value of an environment variable or a default value
-func getEnv(key, defaultValue string) string {
+func GetEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
@@ -69,7 +69,7 @@ func getEnv(key, defaultValue string) string {
 }
 
 // getBoolEnv returns the boolean value of an environment variable or a default value
-func getBoolEnv(key string, defaultValue bool) bool {
+func GetBoolEnv(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		if parsed, err := strconv.ParseBool(value); err == nil {
 			return parsed
@@ -79,7 +79,7 @@ func getBoolEnv(key string, defaultValue bool) bool {
 }
 
 // getIntEnv returns the integer value of an environment variable or a default value
-func getIntEnv(key string, defaultValue int) int {
+func GetIntEnv(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if parsed, err := strconv.Atoi(value); err == nil {
 			return parsed

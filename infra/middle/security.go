@@ -2,9 +2,9 @@ package middle
 
 import (
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
@@ -30,7 +30,7 @@ func IPWhitelistMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get whitelist from environment
-			whitelist := os.Getenv("IP_WHITELIST")
+			whitelist := config.GetEnv("IP_WHITELIST", "")
 			if whitelist == "" {
 				// If no whitelist configured, allow all
 				next.ServeHTTP(w, r)
