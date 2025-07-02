@@ -115,7 +115,7 @@ func (l *Logger) LogPaymentRequest(ctx context.Context, log PaymentLog) error {
 }
 
 // SearchLogs searches for payment logs based on criteria
-func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[string]interface{}) ([]PaymentLog, error) {
+func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[string]any) ([]PaymentLog, error) {
 	if !l.client.IsEnabled() {
 		return nil, fmt.Errorf("logging is disabled")
 	}
@@ -123,9 +123,9 @@ func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[stri
 	indexName := l.client.GetLogIndexName(provider)
 
 	// Build search query
-	searchQuery := map[string]interface{}{
+	searchQuery := map[string]any{
 		"query": query,
-		"sort": []map[string]interface{}{
+		"sort": []map[string]any{
 			{"timestamp": map[string]string{"order": "desc"}},
 		},
 		"size": 100, // Limit results
@@ -176,8 +176,8 @@ func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[stri
 
 // GetPaymentLogs retrieves logs for a specific payment ID
 func (l *Logger) GetPaymentLogs(ctx context.Context, provider, paymentID string) ([]PaymentLog, error) {
-	query := map[string]interface{}{
-		"match": map[string]interface{}{
+	query := map[string]any{
+		"match": map[string]any{
 			"payment_info.payment_id": paymentID,
 		},
 	}
@@ -187,18 +187,18 @@ func (l *Logger) GetPaymentLogs(ctx context.Context, provider, paymentID string)
 
 // GetRecentErrorLogs retrieves recent error logs for a provider
 func (l *Logger) GetRecentErrorLogs(ctx context.Context, provider string, hours int) ([]PaymentLog, error) {
-	query := map[string]interface{}{
-		"bool": map[string]interface{}{
-			"must": []map[string]interface{}{
+	query := map[string]any{
+		"bool": map[string]any{
+			"must": []map[string]any{
 				{
-					"range": map[string]interface{}{
-						"timestamp": map[string]interface{}{
+					"range": map[string]any{
+						"timestamp": map[string]any{
 							"gte": fmt.Sprintf("now-%dh", hours),
 						},
 					},
 				},
 				{
-					"exists": map[string]interface{}{
+					"exists": map[string]any{
 						"field": "error.code",
 					},
 				},
@@ -210,7 +210,7 @@ func (l *Logger) GetRecentErrorLogs(ctx context.Context, provider string, hours 
 }
 
 // GetProviderStats retrieves statistics for a provider
-func (l *Logger) GetProviderStats(ctx context.Context, provider string, hours int) (map[string]interface{}, error) {
+func (l *Logger) GetProviderStats(ctx context.Context, provider string, hours int) (map[string]any, error) {
 	if !l.client.IsEnabled() {
 		return nil, fmt.Errorf("logging is disabled")
 	}
@@ -218,44 +218,44 @@ func (l *Logger) GetProviderStats(ctx context.Context, provider string, hours in
 	indexName := l.client.GetLogIndexName(provider)
 
 	// Build aggregation query
-	aggQuery := map[string]interface{}{
-		"query": map[string]interface{}{
-			"range": map[string]interface{}{
-				"timestamp": map[string]interface{}{
+	aggQuery := map[string]any{
+		"query": map[string]any{
+			"range": map[string]any{
+				"timestamp": map[string]any{
 					"gte": fmt.Sprintf("now-%dh", hours),
 				},
 			},
 		},
-		"aggs": map[string]interface{}{
-			"total_requests": map[string]interface{}{
-				"value_count": map[string]interface{}{
+		"aggs": map[string]any{
+			"total_requests": map[string]any{
+				"value_count": map[string]any{
 					"field": "request_id",
 				},
 			},
-			"success_count": map[string]interface{}{
-				"filter": map[string]interface{}{
-					"range": map[string]interface{}{
-						"response.status_code": map[string]interface{}{
+			"success_count": map[string]any{
+				"filter": map[string]any{
+					"range": map[string]any{
+						"response.status_code": map[string]any{
 							"gte": 200,
 							"lt":  300,
 						},
 					},
 				},
 			},
-			"error_count": map[string]interface{}{
-				"filter": map[string]interface{}{
-					"exists": map[string]interface{}{
+			"error_count": map[string]any{
+				"filter": map[string]any{
+					"exists": map[string]any{
 						"field": "error.code",
 					},
 				},
 			},
-			"avg_processing_time": map[string]interface{}{
-				"avg": map[string]interface{}{
+			"avg_processing_time": map[string]any{
+				"avg": map[string]any{
 					"field": "response.processing_time_ms",
 				},
 			},
-			"status_codes": map[string]interface{}{
-				"terms": map[string]interface{}{
+			"status_codes": map[string]any{
+				"terms": map[string]any{
 					"field": "response.status_code",
 					"size":  10,
 				},
@@ -286,7 +286,7 @@ func (l *Logger) GetProviderStats(ctx context.Context, provider string, hours in
 	}
 
 	// Parse aggregation results
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode aggregation results: %w", err)
 	}

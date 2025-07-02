@@ -215,7 +215,7 @@ func extractPaymentInfo(requestBody, responseBody string) *opensearch.PaymentInf
 
 	// Try to extract from request body first
 	if requestBody != "" {
-		var requestData map[string]interface{}
+		var requestData map[string]any
 		if err := json.Unmarshal([]byte(requestBody), &requestData); err == nil {
 			if amount, ok := requestData["amount"].(float64); ok {
 				paymentInfo.Amount = amount
@@ -223,7 +223,7 @@ func extractPaymentInfo(requestBody, responseBody string) *opensearch.PaymentInf
 			if currency, ok := requestData["currency"].(string); ok {
 				paymentInfo.Currency = currency
 			}
-			if customer, ok := requestData["customer"].(map[string]interface{}); ok {
+			if customer, ok := requestData["customer"].(map[string]any); ok {
 				if email, ok := customer["email"].(string); ok {
 					paymentInfo.CustomerEmail = email
 				}
@@ -236,10 +236,10 @@ func extractPaymentInfo(requestBody, responseBody string) *opensearch.PaymentInf
 
 	// Try to extract from response body
 	if responseBody != "" {
-		var responseData map[string]interface{}
+		var responseData map[string]any
 		if err := json.Unmarshal([]byte(responseBody), &responseData); err == nil {
 			// Check for nested data structure
-			if data, ok := responseData["data"].(map[string]interface{}); ok {
+			if data, ok := responseData["data"].(map[string]any); ok {
 				if paymentID, ok := data["paymentId"].(string); ok {
 					paymentInfo.PaymentID = paymentID
 				}
@@ -264,7 +264,7 @@ func extractErrorInfo(responseBody string) *opensearch.ErrorInfo {
 		return nil
 	}
 
-	var responseData map[string]interface{}
+	var responseData map[string]any
 	if err := json.Unmarshal([]byte(responseBody), &responseData); err != nil {
 		return nil
 	}
