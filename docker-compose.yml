@@ -25,6 +25,8 @@ services:
       replicas: 3
     expose:
       - "${APP_PORT}"
+    env_file:
+      - .env
     networks:
       - gopay
     depends_on:
