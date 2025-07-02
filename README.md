@@ -56,6 +56,7 @@ No code changes needed in your application - just change the provider parameter!
 | **İyzico**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [İyzico Guide](provider/iyzico/README.md)   |
 | **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](provider/ozanpay/README.md) |
 | **Paycell** | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Paycell Guide](provider/paycell/README.md) |
+| **Papara**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Papara Guide](provider/papara/README.md)   |
 | **Stripe**  | 🚧 Coming Soon      | -                                  | -                                           |
 | **PayTR**   | 📋 Planned          | -                                  | -                                           |
 
