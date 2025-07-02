@@ -64,12 +64,32 @@ func IPWhitelistMiddleware() func(http.Handler) http.Handler {
 func RequestValidationMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check Content-Type for POST/PUT requests
+			// Check Content-Type for POST/PUT/PATCH requests
 			if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
 				contentType := r.Header.Get("Content-Type")
-				if contentType != "" && !strings.Contains(contentType, "application/json") &&
-					!strings.Contains(contentType, "application/x-www-form-urlencoded") {
-					response.Error(w, http.StatusUnsupportedMediaType, "Unsupported content type", nil)
+
+				// Special case for callback endpoints (banks send form-urlencoded)
+				isCallbackEndpoint := strings.HasPrefix(r.URL.Path, "/callback") ||
+					strings.HasPrefix(r.URL.Path, "/webhooks")
+
+				if contentType != "" {
+					if isCallbackEndpoint {
+						// Callback endpoints accept both JSON and form-urlencoded
+						if !strings.Contains(contentType, "application/json") &&
+							!strings.Contains(contentType, "application/x-www-form-urlencoded") {
+							response.Error(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json or application/x-www-form-urlencoded", nil)
+							return
+						}
+					} else {
+						// All other API endpoints only accept JSON
+						if !strings.Contains(contentType, "application/json") {
+							response.Error(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json", nil)
+							return
+						}
+					}
+				} else if !isCallbackEndpoint {
+					// Require Content-Type header for API endpoints
+					response.Error(w, http.StatusBadRequest, "Content-Type header is required", nil)
 					return
 				}
 			}
