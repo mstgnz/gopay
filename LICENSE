@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) 2025 Mesut GENEZ
+Original Source: https://github.com/mstgnz/gopay
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -11,6 +12,12 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+When using this software in any form, users must:
+
+1. Include the above copyright notice in all copies or substantial portions of the Software
+2. Provide attribution to the original source: https://github.com/mstgnz/gopay
+3. Clearly indicate if changes were made to the original software
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
