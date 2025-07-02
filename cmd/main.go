@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/infra/validate"
 	"github.com/mstgnz/gopay/router"
@@ -43,12 +44,19 @@ func main() {
 	// Chi Define Routes
 	r := chi.NewRouter()
 
-	// Middleware
+	// Basic Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+
+	// Security Middleware
+	rateLimiter := middle.NewRateLimiter()
+	r.Use(middle.SecurityHeadersMiddleware())
+	r.Use(middle.IPWhitelistMiddleware())
+	r.Use(middle.RateLimitMiddleware(rateLimiter))
+	r.Use(middle.RequestValidationMiddleware())
 
 	// CORS
 	r.Use(cors.Handler(cors.Options{
@@ -61,15 +69,34 @@ func main() {
 	}))
 
 	workDir, _ := os.Getwd()
-	fileServer(r, "/asset", http.Dir(filepath.Join(workDir, "asset")))
-
-	// scalar
-	r.Get("/scalar", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "./view/scalar.html")
-	})
+	fileServer(r, "/public", http.Dir(filepath.Join(workDir, "public")))
 
 	r.Route("/v1", func(r chi.Router) {
+		// Add authentication middleware to API routes
+		r.Use(middle.AuthMiddleware())
 		router.Routes(r)
+	})
+
+	// scalar
+	r.Get("/scalar.yaml", func(w http.ResponseWriter, r *http.Request) {
+		// Read the scalar file
+		scalarContent, err := os.ReadFile(filepath.Join(workDir, "public", "scalar.yaml"))
+		if err != nil {
+			http.Error(w, "Failed to read scalar file", http.StatusInternalServerError)
+			return
+		}
+
+		// Replace environment variables
+		scalarContent = []byte(strings.ReplaceAll(string(scalarContent), "${APP_URL}", os.Getenv("APP_URL")))
+
+		// Set content type and send the modified content
+		w.Header().Set("Content-Type", "text/yaml")
+		w.Write(scalarContent)
+	})
+
+	// Index
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(workDir, "public", "scalar.html"))
 	})
 
 	// Not Found
