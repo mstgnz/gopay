@@ -10,8 +10,8 @@ import (
 
 func getStripeConfig() map[string]string {
 	return map[string]string{
-		"secretKey":    "sk_test_51N000000000000000000000",
-		"publicKey":    "pk_test_51N000000000000000000000",
+		"secretKey":    "sk_test_51N00000000000000000000",
+		"publicKey":    "pk_test_51N00000000000000000000",
 		"environment":  "sandbox",
 		"gopayBaseURL": "http://localhost:9999",
 	}
