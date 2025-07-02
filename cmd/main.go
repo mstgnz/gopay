@@ -38,7 +38,7 @@ func init() {
 	_ = config.App()
 	validate.CustomValidate()
 
-	PORT = os.Getenv("APP_PORT")
+	PORT = config.GetEnv("APP_PORT", "9999")
 
 	// Initialize OpenSearch client and logger
 	cfg := config.GetAppConfig()
@@ -103,7 +103,7 @@ func main() {
 
 	// Health check endpoint (no auth required)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		health := map[string]interface{}{
+		health := map[string]any{
 			"status":             "ok",
 			"timestamp":          time.Now().UTC(),
 			"version":            "1.0.0",
@@ -126,7 +126,7 @@ func main() {
 		}
 
 		// Replace environment variables
-		scalarContent = []byte(strings.ReplaceAll(string(scalarContent), "${APP_URL}", os.Getenv("APP_URL")))
+		scalarContent = []byte(strings.ReplaceAll(string(scalarContent), "${APP_URL}", config.GetEnv("APP_URL", "http://localhost:9999")))
 
 		// Set content type and send the modified content
 		w.Header().Set("Content-Type", "text/yaml")
