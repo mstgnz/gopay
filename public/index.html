@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoPay Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/x-icon" href="/public/favicon.ico">
+    <link rel="stylesheet" href="/public/index.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div>
+                <h1>🚀 GoPay</h1>
+                <div class="header-subtitle">Real-time Payment Analytics Dashboard</div>
+                <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 8px; color: #f1c40f;">
+                    ⚠️ Demo Mode - Displaying simulated data for demonstration purposes
+                </div>
+            </div>
+            <div class="header-buttons">
+                <a href="/docs" class="btn">
+                    📚 API Docs
+                </a>
+                <a href="/health" class="btn">
+                    ❤️ Health
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-title">Total Payments</div>
+                            <div class="stat-value" style="color: #3b82f6;" id="totalPayments">-</div>
+                        </div>
+                        <div class="stat-icon" style="background: #dbeafe;">
+                            <span>💳</span>
+                        </div>
+                    </div>
+                    <div class="stat-change positive">
+                        <span>↗</span>
+                        <span id="totalPaymentsChange">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-title">Success Rate</div>
+                            <div class="stat-value" style="color: #10b981;" id="successRate">-</div>
+                        </div>
+                        <div class="stat-icon" style="background: #d1fae5;">
+                            <span>✅</span>
+                        </div>
+                    </div>
+                    <div class="stat-change positive">
+                        <span>↗</span>
+                        <span id="successRateChange">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-title">Total Volume</div>
+                            <div class="stat-value" style="color: #8b5cf6;" id="totalVolume">-</div>
+                        </div>
+                        <div class="stat-icon" style="background: #ede9fe;">
+                            <span>💰</span>
+                        </div>
+                    </div>
+                    <div class="stat-change positive">
+                        <span>↗</span>
+                        <span id="totalVolumeChange">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div>
+                            <div class="stat-title">Avg Response Time</div>
+                            <div class="stat-value" style="color: #f59e0b;" id="avgResponseTime">-</div>
+                        </div>
+                        <div class="stat-icon" style="background: #fef3c7;">
+                            <span>⚡</span>
+                        </div>
+                    </div>
+                    <div class="stat-change negative">
+                        <span>↘</span>
+                        <span id="avgResponseTimeChange">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-grid">
+                <!-- Payment Trends Chart -->
+                <div class="chart-card">
+                    <h3 class="chart-title">📈 Payment Trends (24 Hours)</h3>
+                    <div class="chart-container">
+                        <canvas id="paymentTrendsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Provider Distribution Chart -->
+                <div class="chart-card">
+                    <h3 class="chart-title">🏪 Provider Distribution</h3>
+                    <div class="chart-container">
+                        <canvas id="providerDistributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity & Provider Status -->
+            <div class="activity-grid">
+                <!-- Recent Activity -->
+                <div class="activity-card">
+                    <h3 class="chart-title">🕒 Recent Activity</h3>
+                    <div id="recentActivity">
+                        <!-- Activity items will be loaded here -->
+                        <div class="loading"></div>
+                        <div class="loading"></div>
+                        <div class="loading"></div>
+                    </div>
+                </div>
+
+                <!-- Provider Status -->
+                <div class="activity-card">
+                    <h3 class="chart-title">🔗 Provider Status</h3>
+                    <div id="providerStatus">
+                        <!-- Provider status will be loaded here -->
+                        <div class="loading"></div>
+                        <div class="loading"></div>
+                        <div class="loading"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; 2024 GoPay - Unified Payment Integration Service</p>
+            <p class="footer-subtitle">Real-time payment analytics powered by OpenSearch</p>
+        </footer>
+    </div>
+
+    <script src="/public/index.js"></script>
+    <script>
+        // Analytics Dashboard JavaScript
+        let analytics = null;
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!analytics) {
+                analytics = new GoPayAnalytics();
+            }
+        });
+
+        // Cleanup charts when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (analytics) {
+                analytics.cleanup();
+            }
+        });
+    </script>
+</body>
+</html> 

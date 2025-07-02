@@ -159,8 +159,13 @@ func main() {
 		w.Write(scalarContent)
 	})
 
-	// Index
+	// Analytics Dashboard (Main Page)
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(workDir, "public", "index.html"))
+	})
+
+	// API Documentation (Scalar)
+	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(workDir, "public", "scalar.html"))
 	})
 
@@ -177,6 +182,17 @@ func main() {
 	r.Route("/webhooks", func(r chi.Router) {
 		// Provider-specific webhook routes
 		r.Post("/{provider}", paymentHandler.HandleWebhook)
+	})
+
+	// Public Analytics routes (no auth required for dashboard)
+	r.Route("/v1/analytics", func(r chi.Router) {
+		// Initialize analytics handler
+		analyticsHandler := handler.NewAnalyticsHandler(openSearchLogger)
+
+		r.Get("/dashboard", analyticsHandler.GetDashboardStats) // GET /v1/analytics/dashboard?hours=24
+		r.Get("/providers", analyticsHandler.GetProviderStats)  // GET /v1/analytics/providers
+		r.Get("/activity", analyticsHandler.GetRecentActivity)  // GET /v1/analytics/activity?limit=10
+		r.Get("/trends", analyticsHandler.GetPaymentTrends)     // GET /v1/analytics/trends?hours=24
 	})
 
 	// API routes with authentication
