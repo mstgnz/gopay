@@ -43,9 +43,9 @@ info:
     - **License**: MIT
 
 servers:
-  - url: http://localhost:9199
+  - url: http://localhost:9999
     description: Local development server
-  - url: https://api.yourcompany.com
+  - url: https://gopay.yourcompany.com
     description: Production server
 
 components:
