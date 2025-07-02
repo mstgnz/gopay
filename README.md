@@ -63,6 +63,7 @@ No code changes needed in your application - just change the provider parameter!
 | **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](provider/ozanpay/README.md) |
 | **Paycell** | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Paycell Guide](provider/paycell/README.md) |
 | **Papara**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Papara Guide](provider/papara/README.md)   |
+| **Stripe**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Stripe Guide](provider/stripe/README.md)   |
 | **Nkolay**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Nkolay Guide](provider/nkolay/README.md)   |
 | **Stripe**  | 🚧 Coming Soon      | -                                  | -                                           |
 | **PayTR**   | 📋 Planned          | -                                  | -                                           |
