@@ -27,6 +27,10 @@ services:
       - "${APP_PORT}"
     env_file:
       - .env
+    environment:
+      - SQLITE_DB_PATH=/app/data/gopay.db
+    volumes:
+      - ./data:/app/data
     networks:
       - gopay
     depends_on:

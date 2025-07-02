@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -48,6 +49,13 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	// Get provider name from URL path parameter (or empty for default)
 	providerName := chi.URLParam(r, "provider")
 
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
+
 	// Process the payment
 	resp, err := h.paymentService.CreatePayment(ctx, providerName, req)
 	if err != nil {
@@ -73,6 +81,13 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
+
 	// Get payment status
 	resp, err := h.paymentService.GetPaymentStatus(ctx, providerName, paymentID)
 	if err != nil {
@@ -96,6 +111,13 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 	if paymentID == "" {
 		response.Error(w, http.StatusBadRequest, "Missing payment ID", nil)
 		return
+	}
+
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
 	// Parse reason from request body
@@ -125,6 +147,13 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
+
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
 
 	// Parse refund request
 	var req provider.RefundRequest
@@ -157,6 +186,13 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
+
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
 
 	// Get conversationID and paymentID from query parameters
 	paymentID := r.URL.Query().Get("paymentId")
@@ -254,6 +290,13 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
+
+	// Get tenant ID from header and construct tenant-specific provider name if present
+	tenantID := r.Header.Get("X-Tenant-ID")
+	if tenantID != "" && providerName != "" {
+		// Use tenant-specific provider: TENANT_provider
+		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
 
 	// Parse webhook data
 	var webhookData map[string]string
