@@ -65,8 +65,7 @@ No code changes needed in your application - just change the provider parameter!
 | **Papara**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Papara Guide](provider/papara/README.md)   |
 | **Stripe**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Stripe Guide](provider/stripe/README.md)   |
 | **Nkolay**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Nkolay Guide](provider/nkolay/README.md)   |
-| **Stripe**  | 🚧 Coming Soon      | -                                  | -                                           |
-| **PayTR**   | 📋 Planned          | -                                  | -                                           |
+| **PayTR**   | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [PayTR Guide](provider/paytr/README.md)     |
 
 ## Quick Start
 
