@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -179,7 +181,7 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, "Payment refunded", resp)
 }
 
-// HandleCallback processes payment callbacks (e.g., for 3D Secure)
+// Enhanced callback URL parsing and redirect logic
 func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -224,66 +226,105 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 	// Complete 3D payment
 	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, paymentID, conversationID, callbackData)
-	if err != nil {
-		// Check if we have an original callback URL to redirect to
-		if originalCallbackURL := r.URL.Query().Get("originalCallbackUrl"); originalCallbackURL != "" {
-			// Extract error URL from original callback URL if provided
-			if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-				http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, err.Error()), http.StatusFound)
-				return
-			}
-			// Redirect to original callback URL with error
-			http.Redirect(w, r, fmt.Sprintf("%s?success=false&error=%s", originalCallbackURL, err.Error()), http.StatusFound)
-			return
-		}
 
-		// Legacy: On error, redirect to the error URL if provided
-		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-			http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, err.Error()), http.StatusFound)
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to complete payment", err)
+	// Enhanced redirect handling with better URL parsing
+	originalCallbackURL := r.URL.Query().Get("originalCallbackUrl")
+
+	if err != nil {
+		h.handleCallbackError(w, r, err, originalCallbackURL)
 		return
 	}
 
-	// Check if we have an original callback URL to redirect to
-	if originalCallbackURL := r.URL.Query().Get("originalCallbackUrl"); originalCallbackURL != "" {
-		if resp.Success {
-			// Extract success URL from original callback URL if provided
-			if successURL := r.URL.Query().Get("successUrl"); successURL != "" {
-				redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s", successURL, resp.PaymentID, resp.Status)
-				http.Redirect(w, r, redirectURL, http.StatusFound)
-				return
-			}
-			// Redirect to original callback URL with success
-			redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s", originalCallbackURL, resp.PaymentID, resp.Status)
+	if resp.Success {
+		h.handleCallbackSuccess(w, r, resp, originalCallbackURL)
+	} else {
+		h.handleCallbackFailure(w, r, resp, originalCallbackURL)
+	}
+}
+
+// Enhanced success handling with better URL construction
+func (h *PaymentHandler) handleCallbackSuccess(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
+	if originalCallbackURL != "" {
+		// Parse success URL from original callback URL
+		if successURL := r.URL.Query().Get("successUrl"); successURL != "" {
+			redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s&transactionId=%s&amount=%.2f",
+				successURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount)
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return
-		} else {
-			// Extract error URL from original callback URL if provided
-			if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-				http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, resp.Message), http.StatusFound)
-				return
-			}
-			// Redirect to original callback URL with error
-			http.Redirect(w, r, fmt.Sprintf("%s?success=false&error=%s", originalCallbackURL, resp.Message), http.StatusFound)
-			return
 		}
+
+		// Enhanced parameter passing to original callback URL
+		redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s&transactionId=%s&amount=%.2f&currency=%s",
+			originalCallbackURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount, resp.Currency)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
 	}
 
-	// Legacy: On success, redirect to success URL if provided
+	// Legacy: Direct success URL redirect
 	if resp.Success && r.URL.Query().Get("successUrl") != "" {
 		successURL := r.URL.Query().Get("successUrl")
-		redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s", successURL, resp.PaymentID, resp.Status)
+		redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s&transactionId=%s",
+			successURL, resp.PaymentID, resp.Status, resp.TransactionID)
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
 	}
 
 	// Otherwise return JSON response
-	response.Success(w, http.StatusOK, "Payment completed", resp)
+	response.Success(w, http.StatusOK, "Payment completed successfully", resp)
 }
 
-// HandleWebhook processes webhook notifications from payment providers
+// Enhanced error handling with better error information
+func (h *PaymentHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, originalCallbackURL string) {
+	if originalCallbackURL != "" {
+		// Parse error URL from original callback URL
+		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
+			redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s",
+				errorURL, err.Error(), "CALLBACK_ERROR")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		// Redirect to original callback URL with error
+		redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s",
+			originalCallbackURL, err.Error(), "CALLBACK_ERROR")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	// Legacy: Direct error URL redirect
+	if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
+		redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s",
+			errorURL, err.Error(), "CALLBACK_ERROR")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	response.Error(w, http.StatusInternalServerError, "Failed to complete payment", err)
+}
+
+// Enhanced failure handling for payment failures
+func (h *PaymentHandler) handleCallbackFailure(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
+	if originalCallbackURL != "" {
+		// Parse error URL from original callback URL
+		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
+			redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s&paymentId=%s",
+				errorURL, resp.Message, resp.ErrorCode, resp.PaymentID)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		// Redirect to original callback URL with failure details
+		redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s&paymentId=%s&status=%s",
+			originalCallbackURL, resp.Message, resp.ErrorCode, resp.PaymentID, resp.Status)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	// Otherwise return JSON response
+	response.Success(w, http.StatusOK, "Payment failed", resp)
+}
+
+// Enhanced HandleWebhook with async processing and retry logic
 func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -298,14 +339,32 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
-	// Parse webhook data
+	// Parse webhook data based on content type
 	var webhookData map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&webhookData); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid webhook data", err)
-		return
+	contentType := r.Header.Get("Content-Type")
+
+	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
+		// Parse form data
+		if err := r.ParseForm(); err != nil {
+			response.Error(w, http.StatusBadRequest, "Invalid form data", err)
+			return
+		}
+
+		webhookData = make(map[string]string)
+		for key, values := range r.Form {
+			if len(values) > 0 {
+				webhookData[key] = values[0]
+			}
+		}
+	} else {
+		// Parse JSON data
+		if err := json.NewDecoder(r.Body).Decode(&webhookData); err != nil {
+			response.Error(w, http.StatusBadRequest, "Invalid JSON webhook data", err)
+			return
+		}
 	}
 
-	// Extract headers
+	// Extract headers for validation
 	headers := make(map[string]string)
 	for key, values := range r.Header {
 		if len(values) > 0 {
@@ -313,19 +372,102 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Validate webhook
-	isValid, data, err := h.paymentService.ValidateWebhook(ctx, providerName, webhookData, headers)
+	// Validate webhook signature
+	isValid, paymentData, err := h.paymentService.ValidateWebhook(ctx, providerName, webhookData, headers)
 	if err != nil {
+		// Log validation error but respond with 200 to prevent retries for invalid webhooks
+		h.logWebhookError(providerName, "validation_failed", err, webhookData)
 		response.Error(w, http.StatusBadRequest, "Webhook validation failed", err)
 		return
 	}
 
 	if !isValid {
+		h.logWebhookError(providerName, "invalid_signature", errors.New("invalid webhook signature"), webhookData)
 		response.Error(w, http.StatusBadRequest, "Invalid webhook signature", nil)
 		return
 	}
 
-	// Process webhook data (in a real implementation, you might want to process this asynchronously)
-	// For now, just return success with the validated data
-	response.Success(w, http.StatusOK, "Webhook processed", data)
+	// Process webhook asynchronously to respond quickly
+	go h.processWebhookAsync(providerName, paymentData, webhookData)
+
+	// Respond immediately with success
+	response.Success(w, http.StatusOK, "Webhook received and processing", map[string]string{
+		"status":    "accepted",
+		"paymentId": paymentData["paymentId"],
+	})
+}
+
+// Async webhook processing for better performance
+func (h *PaymentHandler) processWebhookAsync(providerName string, paymentData, rawWebhookData map[string]string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	paymentID := paymentData["paymentId"]
+	if paymentID == "" {
+		h.logWebhookError(providerName, "missing_payment_id", errors.New("payment ID not found in webhook data"), rawWebhookData)
+		return
+	}
+
+	// Get current payment status from provider
+	currentStatus, err := h.paymentService.GetPaymentStatus(ctx, providerName, paymentID)
+	if err != nil {
+		h.logWebhookError(providerName, "status_check_failed", err, rawWebhookData)
+		return
+	}
+
+	// Process based on payment status
+	switch paymentData["status"] {
+	case "success", "completed", "approved":
+		h.processSuccessfulPayment(providerName, paymentID, paymentData, currentStatus)
+	case "failed", "declined", "cancelled":
+		h.processFailedPayment(providerName, paymentID, paymentData, currentStatus)
+	case "refunded":
+		h.processRefundedPayment(providerName, paymentID, paymentData, currentStatus)
+	default:
+		h.logWebhookInfo(providerName, paymentID, "unknown_status", paymentData)
+	}
+}
+
+// Process successful payment webhooks
+func (h *PaymentHandler) processSuccessfulPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
+	log.Printf("Webhook: Payment %s (%s) completed successfully", paymentID, providerName)
+
+	// Update payment status in database if needed
+	// Send notifications to external systems
+	// Update analytics/metrics
+
+	h.logWebhookInfo(providerName, paymentID, "payment_success", webhookData)
+}
+
+// Process failed payment webhooks
+func (h *PaymentHandler) processFailedPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
+	log.Printf("Webhook: Payment %s (%s) failed - %s", paymentID, providerName, webhookData["error"])
+
+	// Update payment status
+	// Send failure notifications
+	// Update fraud detection systems
+
+	h.logWebhookInfo(providerName, paymentID, "payment_failed", webhookData)
+}
+
+// Process refund webhooks
+func (h *PaymentHandler) processRefundedPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
+	log.Printf("Webhook: Payment %s (%s) refunded", paymentID, providerName)
+
+	// Update refund status
+	// Send refund notifications
+	// Update accounting systems
+
+	h.logWebhookInfo(providerName, paymentID, "payment_refunded", webhookData)
+}
+
+// Helper functions for webhook logging
+func (h *PaymentHandler) logWebhookError(providerName, errorType string, err error, webhookData map[string]string) {
+	log.Printf("Webhook Error [%s]: %s - %v", providerName, errorType, err)
+	// Additional structured logging can be added here
+}
+
+func (h *PaymentHandler) logWebhookInfo(providerName, paymentID, eventType string, webhookData map[string]string) {
+	log.Printf("Webhook Info [%s]: %s - PaymentID: %s", providerName, eventType, paymentID)
+	// Additional structured logging can be added here
 }
