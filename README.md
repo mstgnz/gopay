@@ -29,11 +29,17 @@ GoPay acts as a bridge between your application and payment providers, creating 
 When switching from one provider to another, your application code remains unchanged:
 
 ```bash
-# Before
+# İyzico
 POST /v1/payments/iyzico
 
-# After
+# OzanPay
 POST /v1/payments/ozanpay
+
+# Nkolay
+POST /v1/payments/nkolay
+
+# Papara
+POST /v1/payments/papara
 ```
 
 No code changes needed in your application - just change the provider parameter!
@@ -57,6 +63,7 @@ No code changes needed in your application - just change the provider parameter!
 | **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](provider/ozanpay/README.md) |
 | **Paycell** | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Paycell Guide](provider/paycell/README.md) |
 | **Papara**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Papara Guide](provider/papara/README.md)   |
+| **Nkolay**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Nkolay Guide](provider/nkolay/README.md)   |
 | **Stripe**  | 🚧 Coming Soon      | -                                  | -                                           |
 | **PayTR**   | 📋 Planned          | -                                  | -                                           |
 
@@ -160,12 +167,15 @@ curl -X POST http://localhost:9999/v1/payments/iyzico \
 import (
     "github.com/mstgnz/gopay/provider"
     _ "github.com/mstgnz/gopay/provider/iyzico"
+    _ "github.com/mstgnz/gopay/provider/nkolay"
+    _ "github.com/mstgnz/gopay/provider/ozanpay"
+    _ "github.com/mstgnz/gopay/provider/papara"
 )
 
 // Create payment service
 paymentService := provider.NewPaymentService()
 
-// Add provider
+// Add İyzico provider
 iyzicoConfig := map[string]string{
     "apiKey":      "your-api-key",
     "secretKey":   "your-secret-key",
@@ -173,8 +183,17 @@ iyzicoConfig := map[string]string{
 }
 paymentService.AddProvider("iyzico", iyzicoConfig)
 
-// Process payment
-response, err := paymentService.CreatePayment(ctx, "iyzico", paymentRequest)
+// Add Nkolay provider
+nkolayConfig := map[string]string{
+    "apiKey":      "your-nkolay-api-key",
+    "secretKey":   "your-nkolay-secret-key",
+    "merchantId":  "your-merchant-id",
+    "environment": "sandbox",
+}
+paymentService.AddProvider("nkolay", nkolayConfig)
+
+// Process payment with any provider
+response, err := paymentService.CreatePayment(ctx, "nkolay", paymentRequest)
 ```
 
 ## API Endpoints

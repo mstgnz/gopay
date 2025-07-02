@@ -9,7 +9,9 @@ import (
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 	_ "github.com/mstgnz/gopay/provider/iyzico"  // Import for side-effect registration
+	_ "github.com/mstgnz/gopay/provider/nkolay"  // Import for side-effect registration
 	_ "github.com/mstgnz/gopay/provider/ozanpay" // Import for side-effect registration
+	_ "github.com/mstgnz/gopay/provider/papara"  // Import for side-effect registration
 	_ "github.com/mstgnz/gopay/provider/paycell" // Import for side-effect registration
 )
 
