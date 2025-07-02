@@ -57,7 +57,7 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Status filter
 	if status := r.URL.Query().Get("status"); status != "" {
-		if query == nil || len(query) == 0 {
+		if len(query) == 0 {
 			query = map[string]any{
 				"match": map[string]any{
 					"payment_info.status": status,
@@ -89,7 +89,7 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 
-		if query == nil || len(query) == 0 {
+		if len(query) == 0 {
 			query = errorFilter
 		} else {
 			// Combine with existing query
@@ -122,7 +122,7 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if query == nil || len(query) == 0 {
+	if len(query) == 0 {
 		query = timeFilter
 	} else {
 		// Combine with existing query
