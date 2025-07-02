@@ -1,13 +1,30 @@
 services:
+  # Load Balancer - Routes traffic to API replicas
+  nginx:
+    image: nginx:alpine
+    container_name: gopay-nginx
+    restart: always
+    ports:
+      - "${APP_PORT}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+    networks:
+      - gopay
+
+  # API Service (will be scaled manually)
   api:
     build:
       context: .
       dockerfile: dockerfile
     image: gopay:latest
-    container_name: ${APP_NAME}-api
     restart: always
-    ports:
-      - "${APP_PORT}:${APP_PORT}"
+    deploy:
+      mode: replicated
+      replicas: 3
+    expose:
+      - "${APP_PORT}"
     networks:
       - gopay
     depends_on:
@@ -17,6 +34,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Search Engine
   opensearch:
     image: opensearchproject/opensearch:2.11.0
     container_name: ${APP_NAME}-opensearch
@@ -30,10 +49,14 @@ services:
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
       - "DISABLE_INSTALL_DEMO_CONFIG=true"
       - "DISABLE_SECURITY_PLUGIN=true"
+      - "cluster.name=gopay-cluster"
+      - "node.name=gopay-node"
     ulimits:
       memlock:
         soft: -1
         hard: -1
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
     networks:
       - gopay
     logging:
@@ -41,6 +64,17 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  opensearch_data:
+    driver: local
+
 networks:
   gopay:
     name: gopay
