@@ -66,6 +66,7 @@ No code changes needed in your application - just change the provider parameter!
 | **Stripe**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Stripe Guide](provider/stripe/README.md)   |
 | **Nkolay**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Nkolay Guide](provider/nkolay/README.md)   |
 | **PayTR**   | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [PayTR Guide](provider/paytr/README.md)     |
+| **PayU**    | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [PayU Guide](provider/payu/README.md)       |
 
 ## Quick Start
 
