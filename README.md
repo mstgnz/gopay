@@ -1,137 +1,176 @@
 # GoPay
 
-## Unified Payment Integration Service
+## 🚀 Unified Payment Integration Service
 
-GoPay is a modular payment integration service developed in Go. It abstracts different payment providers behind a single, standardized API, allowing developers to switch payment systems seamlessly without changing their codebase.
+GoPay is a centralized payment gateway that abstracts multiple payment providers behind a single, standardized API. It acts as a bridge between your applications and payment providers, handling callbacks, webhooks, and logging seamlessly.
 
-## Why GoPay?
+## 🎯 Why GoPay?
 
-Each payment provider implements their own unique API structure with different request formats, response schemas, and authentication methods. GoPay abstracts these differences away by:
+**Problem:** Every payment provider has different APIs, authentication methods, callback mechanisms, and response formats.
 
-1. **Translating** your standardized requests into provider-specific formats
-2. **Converting** provider-specific responses into a consistent response format
-3. **Handling** the complexities of each provider's authentication and security requirements
-
-## How It Works
-
-GoPay acts as a bridge between your application and payment providers, creating a unified integration layer:
+**Solution:** GoPay standardizes everything into one consistent interface.
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │                 │    │                 │    │                 │
-│   Your App      │◄──►│     GoPay       │◄──►│   Payment       │
-│                 │    │   (Bridge)      │    │   Provider      │
+│   Your Apps     │◄──►│     GoPay       │◄──►│   Payment       │
+│  (APP1, APP2)   │    │   (Gateway)     │    │   Providers     │
 │                 │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-**Provider Switch Example:**
-When switching from one provider to another, your application code remains unchanged:
+## 🔄 Payment Flow & Architecture
 
-```bash
-# İyzico
-POST /v1/payments/iyzico
+```mermaid
+graph TD
+    A["App1<br/>Payment Request"] --> B["GoPay<br/>/v1/payments/{provider}"]
+    B --> C["Provider<br/>(İyzico, Stripe, etc.)"]
+    C --> D["3D Secure<br/>Authentication"]
+    D --> E["Provider Callback<br/>to GoPay"]
+    E --> F["GoPay Callback Handler<br/>/callback/{provider}"]
+    F --> G["App1 Redirect<br/>originalCallbackUrl"]
 
-# OzanPay
-POST /v1/payments/ozanpay
+    H["Provider<br/>Webhook"] --> I["GoPay Webhook Handler<br/>/webhooks/{provider}"]
+    I --> J["OpenSearch<br/>Logging"]
 
-# Nkolay
-POST /v1/payments/nkolay
-
-# Papara
-POST /v1/payments/papara
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#ffebee
+    style F fill:#e8f5e8
+    style G fill:#e1f5fe
+    style I fill:#fff9c4
 ```
 
-No code changes needed in your application - just change the provider parameter!
+### 📋 Step-by-Step Flow:
 
-## Features
+1. **App1** sends payment request to **GoPay**
+2. **GoPay** forwards request to chosen **Provider** (İyzico, Stripe, etc.)
+3. **Provider** returns 3D Secure URL for user authentication
+4. **User** completes 3D authentication on provider's page
+5. **Provider** sends callback to **GoPay** with payment result
+6. **GoPay** processes callback and redirects user back to **App1**
+7. **Provider** sends webhook to **GoPay** for final confirmation
+8. **GoPay** logs everything to **OpenSearch** for analytics
 
-- ✅ **Unified API Interface**: Standardize diverse payment gateway APIs into a consistent format
-- ✅ **Plug-and-Play Architecture**: Easily switch between payment providers without code changes
-- ✅ **Provider Agnostic**: Add new payment gateways without disrupting existing implementations
-- ✅ **3D Secure Support**: Built-in secure callback handling for 3D authentication flows
-- ✅ **Microservice Ready**: Deploy as a standalone service in any architecture
-- ✅ **Container Support**: Ready for Docker deployment with minimal configuration
-- ✅ **Security Features**: API key authentication, rate limiting, and secure headers
-- ✅ **OpenSearch Logging**: Comprehensive request/response logging with provider-specific indexing
+## 🌟 Key Features
 
-## Supported Payment Providers
+- ✅ **Single API** for multiple payment providers
+- ✅ **Seamless Callbacks** - User always returns to your app
+- ✅ **Webhook Handling** - Async payment notifications
+- ✅ **OpenSearch Logging** - Complete request/response tracking
+- ✅ **Multi-Tenant Support** - Multiple app configurations
+- ✅ **3D Secure Support** - Built-in secure authentication
+- ✅ **Provider Switching** - Change providers without code changes
 
-| Provider    | Status              | Features                           | Documentation                               |
-| ----------- | ------------------- | ---------------------------------- | ------------------------------------------- |
-| **İyzico**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [İyzico Guide](provider/iyzico/README.md)   |
-| **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](provider/ozanpay/README.md) |
-| **Paycell** | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Paycell Guide](provider/paycell/README.md) |
-| **Papara**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Papara Guide](provider/papara/README.md)   |
-| **Stripe**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Stripe Guide](provider/stripe/README.md)   |
-| **Nkolay**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Nkolay Guide](provider/nkolay/README.md)   |
-| **PayTR**   | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [PayTR Guide](provider/paytr/README.md)     |
-| **PayU**    | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [PayU Guide](provider/payu/README.md)       |
+## 🏪 Supported Providers
 
-## Quick Start
+| Provider    | Status        | Features                    |
+| ----------- | ------------- | --------------------------- |
+| **İyzico**  | ✅ Production | Payment, 3D, Refund, Cancel |
+| **Stripe**  | ✅ Production | Payment, 3D, Refund, Cancel |
+| **OzanPay** | ✅ Production | Payment, 3D, Refund         |
+| **Paycell** | ✅ Production | Payment, 3D, Refund, Cancel |
+| **Papara**  | ✅ Production | Payment, 3D, Refund, Cancel |
+| **Nkolay**  | ✅ Production | Payment, 3D, Refund, Cancel |
+| **PayTR**   | ✅ Production | Payment, 3D, Refund, Cancel |
+| **PayU**    | ✅ Production | Payment, 3D, Refund, Cancel |
 
-### 1. Installation
+## 🚦 Quick Start
+
+### 1. **Installation & Setup**
 
 ```bash
 git clone https://github.com/mstgnz/gopay.git
 cd gopay
-```
 
-### 2. Configuration
-
-```bash
+# Configure environment
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your settings
 ```
 
-**Required Configuration:**
+### 2. **Configuration**
 
 ```bash
 # Your API key for authentication
-API_KEY=your_super_secret_api_key_here
+API_KEY=your_super_secret_api_key
 
-# GoPay base URL for 3D Secure callbacks
+# GoPay base URL for callbacks
 APP_URL=https://your-gopay-domain.com
 
-# OpenSearch logging configuration
+# OpenSearch logging
 OPENSEARCH_URL=http://localhost:9200
 ENABLE_OPENSEARCH_LOGGING=true
-LOGGING_LEVEL=info
 
-# Payment provider credentials (example for İyzico)
+# Provider credentials (example)
 IYZICO_API_KEY=your_iyzico_api_key
 IYZICO_SECRET_KEY=your_iyzico_secret_key
 IYZICO_ENVIRONMENT=sandbox
 ```
 
-### 3. Run the Service
+### 3. **Run Service**
 
 ```bash
-# With Go
-go run ./cmd/main.go
-
-# With Docker
+# With Docker (Recommended)
 docker-compose up -d
 
-# With Make
-make run
+# Or with Go
+go run ./cmd/main.go
+
+# Service runs on http://localhost:9999
 ```
 
-The service will start on `http://localhost:9999`
+## 📡 API Endpoints
 
-## Usage Examples
-
-### API Service Usage
-
-**Process a Payment:**
+### Core Payment Endpoints
 
 ```bash
-curl -X POST http://localhost:9999/v1/payments/iyzico \
+# Start payment
+POST /v1/payments/{provider}
+
+# Check payment status
+GET /v1/payments/{provider}/{paymentID}
+
+# Cancel payment
+DELETE /v1/payments/{provider}/{paymentID}
+
+# Process refund
+POST /v1/payments/{provider}/refund
+```
+
+### Callback & Webhook Endpoints (No Auth Required)
+
+```bash
+# 3D Secure callbacks
+POST /callback/{provider}
+GET /callback/{provider}
+
+# Payment webhooks
+POST /webhooks/{provider}
+```
+
+### Analytics & Monitoring
+
+```bash
+# Payment logs
+GET /v1/logs/{provider}
+
+# Statistics
+GET /v1/stats?provider={provider}&hours=24
+```
+
+## 💡 Usage Examples
+
+### **Basic Payment Request**
+
+```bash
+curl -X POST https://your-gopay.domain.com/v1/payments/iyzico \
   -H "Authorization: Bearer your_api_key" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
     "currency": "TRY",
+    "callbackUrl": "https://yourapp.com/payment-callback",
     "customer": {
       "name": "John",
       "surname": "Doe",
@@ -146,214 +185,123 @@ curl -X POST http://localhost:9999/v1/payments/iyzico \
   }'
 ```
 
-**3D Secure Payment:**
+### **Enhanced Callback URL Structure**
 
-```bash
-curl -X POST http://localhost:9999/v1/payments/iyzico \
-  -H "Authorization: Bearer your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": 100.50,
-    "currency": "TRY",
-    "use3D": true,
-    "callbackUrl": "https://yourapp.com/payment-callback",
-    "customer": {...},
-    "cardInfo": {...}
-  }'
+**Your Sent URL:**
+
+```
+https://yourapp.com/payment-result?successUrl=https://yourapp.com/success&errorUrl=https://yourapp.com/error
 ```
 
-### Library Usage
+**What GoPay Sends to Provider:**
+
+```
+https://gopay.domain.com/v1/callback/iyzico?originalCallbackUrl=https://yourapp.com/payment-result%3FsuccessUrl%3D...
+```
+
+**User Redirect After Payment:**
+
+```bash
+# Success
+https://yourapp.com/success?paymentId=123&status=successful&transactionId=abc&amount=100.50
+
+# Error
+https://yourapp.com/error?error=Payment failed&errorCode=INSUFFICIENT_FUNDS
+```
+
+### **Library Usage (Go)**
 
 ```go
 import (
     "github.com/mstgnz/gopay/provider"
     _ "github.com/mstgnz/gopay/provider/iyzico"
-    _ "github.com/mstgnz/gopay/provider/nkolay"
-    _ "github.com/mstgnz/gopay/provider/ozanpay"
-    _ "github.com/mstgnz/gopay/provider/papara"
 )
 
-// Create payment service
+// Create service
 paymentService := provider.NewPaymentService()
 
-// Add İyzico provider
-iyzicoConfig := map[string]string{
-    "apiKey":      "your-api-key",
-    "secretKey":   "your-secret-key",
+// Add provider
+config := map[string]string{
+    "apiKey": "your-key",
+    "secretKey": "your-secret",
     "environment": "sandbox",
 }
-paymentService.AddProvider("iyzico", iyzicoConfig)
+paymentService.AddProvider("iyzico", config)
 
-// Add Nkolay provider
-nkolayConfig := map[string]string{
-    "apiKey":      "your-nkolay-api-key",
-    "secretKey":   "your-nkolay-secret-key",
-    "merchantId":  "your-merchant-id",
-    "environment": "sandbox",
-}
-paymentService.AddProvider("nkolay", nkolayConfig)
-
-// Process payment with any provider
-response, err := paymentService.CreatePayment(ctx, "nkolay", paymentRequest)
+// Process payment
+response, err := paymentService.CreatePayment(ctx, "iyzico", paymentRequest)
 ```
 
-## API Endpoints
+## 📊 OpenSearch Analytics
 
-| Method   | Endpoint                              | Description        |
-| -------- | ------------------------------------- | ------------------ |
-| `POST`   | `/v1/payments/{provider}`             | Process payment    |
-| `GET`    | `/v1/payments/{provider}/{paymentID}` | Get payment status |
-| `DELETE` | `/v1/payments/{provider}/{paymentID}` | Cancel payment     |
-| `POST`   | `/v1/payments/{provider}/refund`      | Process refund     |
-| `POST`   | `/v1/callback/{provider}`             | 3D Secure callback |
-| `POST`   | `/v1/webhooks/{provider}`             | Webhook endpoint   |
+GoPay automatically logs all payment transactions with structured data:
 
-**For detailed API documentation and provider-specific examples, see the individual provider documentation.**
+### **Features:**
 
-## Payment Provider Documentation
+- **Provider-specific indexing** (e.g., `gopay-iyzico-logs`)
+- **Real-time analytics** and search capabilities
+- **Sensitive data masking** (card numbers, API keys)
+- **Performance metrics** (response times, success rates)
 
-Each payment provider has its own comprehensive documentation:
-
-- **[İyzico Integration Guide](provider/iyzico/README.md)** - Complete İyzico setup, API examples, test cards, integration tests
-- **[OzanPay Integration Guide](provider/ozanpay/README.md)** - OzanPay configuration and usage examples
-- **[Paycell Integration Guide](provider/paycell/README.md)** - Paycell integration with REST API support
-
-## OpenSearch Logging
-
-GoPay includes comprehensive request/response logging with OpenSearch integration:
-
-### Features
-
-- **Provider-Specific Indexing**: Each payment provider has its own index (e.g., `gopay-iyzico-logs`)
-- **Structured Logging**: All requests/responses are logged with structured data
-- **Security**: Sensitive data (card numbers, API keys) are automatically redacted
-- **Real-time Analytics**: Query and analyze payment data in real-time
-- **Error Tracking**: Monitor and analyze payment failures
-
-### Logging Statistics API
-
-Get logging statistics for any provider:
+### **Example Analytics Query:**
 
 ```bash
-# Get last 24 hours statistics for İyzico
+# Get payment statistics
 GET /v1/stats?provider=iyzico&hours=24
 
-# Example response:
+# Response:
 {
-  "aggregations": {
-    "total_requests": { "value": 150 },
-    "success_count": { "doc_count": 142 },
-    "error_count": { "doc_count": 8 },
-    "avg_processing_time": { "value": 245.5 },
-    "status_codes": {
-      "buckets": [
-        { "key": 200, "doc_count": 142 },
-        { "key": 400, "doc_count": 5 },
-        { "key": 500, "doc_count": 3 }
-      ]
-    }
-  }
+  "total_requests": 150,
+  "success_count": 142,
+  "error_count": 8,
+  "avg_processing_time": 245.5,
+  "success_rate": 94.67
 }
 ```
 
-### OpenSearch Queries
+## 🔐 Security Features
 
-Example queries to search payment logs:
+- 🔒 **API Key Authentication** with Bearer tokens
+- 🛡️ **Rate Limiting** (configurable per endpoint)
+- 🔐 **Webhook Signature Validation**
+- 📊 **Request/Response Logging** for audit trails
+- 🚨 **IP Whitelisting** support
+- 🔍 **Content Validation** and size limits
 
-```bash
-# Search for a specific payment ID
-GET gopay-iyzico-logs/_search
-{
-  "query": {
-    "match": {
-      "payment_info.payment_id": "payment_123"
-    }
-  }
-}
+## 🚀 Deployment
 
-# Find recent errors
-GET gopay-iyzico-logs/_search
-{
-  "query": {
-    "bool": {
-      "must": [
-        { "range": { "timestamp": { "gte": "now-1h" } } },
-        { "exists": { "field": "error.code" } }
-      ]
-    }
-  }
-}
-```
-
-### Configuration
-
-Enable OpenSearch logging in your `.env` file:
+### **Docker (Recommended)**
 
 ```bash
-# Enable OpenSearch logging
-ENABLE_OPENSEARCH_LOGGING=true
-OPENSEARCH_URL=http://localhost:9200
-OPENSEARCH_USER=admin
-OPENSEARCH_PASSWORD=admin
-LOG_RETENTION_DAYS=30
+docker-compose up -d
 ```
 
-## Development
+### **Production Environment**
 
-### Available Commands
+- Compatible with **Kubernetes**
+- Supports **horizontal scaling**
+- **Health check endpoints** included
+- **Graceful shutdown** handling
 
-```bash
-# Development workflow
-make dev                 # Format, lint, and test
-make test               # Run unit tests
-make test-integration   # Run integration tests (requires credentials)
-make build             # Build application
-make run               # Run development server
-
-# Integration tests
-make integration-help   # Show integration test setup
-make test-iyzico       # Test İyzico integration
-```
-
-### Adding New Payment Providers
-
-1. Create provider directory: `gateway/newprovider/`
-2. Implement the `PaymentProvider` interface
-3. Add registration in `init()` function
-4. Create comprehensive documentation in provider's README
-5. Add integration tests
-
-## Deployment
-
-GoPay is designed to be self-hosted and can be deployed in various ways:
-
-- **Docker**: Use provided `docker-compose.yml`
-- **Kubernetes**: Ready for containerized deployment
-- **Traditional**: Build and deploy the binary
-- **Cloud**: Compatible with major cloud providers
-
-## Security
-
-- 🔒 **API Key Authentication**: Bearer token validation
-- 🛡️ **Rate Limiting**: Configurable requests per minute
-- 🔐 **Secure Headers**: HSTS, XSS protection, content validation
-- 🔍 **Request Validation**: Content type and size limits
-- 📊 **OpenSearch Integration**: Real-time request/response logging with advanced search capabilities
-
-## Contributing
-
-This project is open-source and contributions are welcome:
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/new-provider`)
 3. Add tests for your changes
-4. Ensure all tests pass
-5. Submit a pull request
+4. Submit a pull request
 
-## License
+## 📝 License
 
-This project is licensed under the MIT License with attribution requirements - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-**Need help with a specific payment provider?** Check the provider-specific documentation in the `provider/` directory for detailed implementation guides, test cards, and integration examples.
+**🔗 Provider Documentation:** For detailed integration guides, test cards, and provider-specific examples, check the documentation in the `provider/` directory:
+
+- [İyzico Integration Guide](provider/iyzico/README.md)
+- [Stripe Integration Guide](provider/stripe/README.md)
+- [OzanPay Integration Guide](provider/ozanpay/README.md)
+- [Paycell Integration Guide](provider/paycell/README.md)
+- [And more...](provider/)
+
+**Need help?** Check the [API Documentation](http://localhost:9999) or create an issue on GitHub.
