@@ -95,12 +95,6 @@ func main() {
 	workDir, _ := os.Getwd()
 	fileServer(r, "/public", http.Dir(filepath.Join(workDir, "public")))
 
-	r.Route("/v1", func(r chi.Router) {
-		// Add authentication middleware to API routes
-		r.Use(middle.AuthMiddleware())
-		router.Routes(r)
-	})
-
 	// Health check endpoint (no auth required)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		health := map[string]any{
@@ -132,6 +126,9 @@ func main() {
 		w.Header().Set("Content-Type", "text/yaml")
 		w.Write(scalarContent)
 	})
+
+	// router
+	router.Routes(r)
 
 	// Index
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
