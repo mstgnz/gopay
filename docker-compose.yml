@@ -1,9 +1,10 @@
 services:
-  gopay:
+  api:
     build:
       context: .
       dockerfile: dockerfile
-    container_name: ${APP_NAME}
+    image: gopay:latest
+    container_name: ${APP_NAME}-api
     restart: always
     ports:
       - "${APP_PORT}:${APP_PORT}"
