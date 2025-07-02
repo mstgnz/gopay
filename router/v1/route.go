@@ -10,18 +10,22 @@ import (
 	"github.com/mstgnz/gopay/provider"
 	_ "github.com/mstgnz/gopay/provider/iyzico"  // Import for side-effect registration
 	_ "github.com/mstgnz/gopay/provider/ozanpay" // Import for side-effect registration
+	_ "github.com/mstgnz/gopay/provider/paycell" // Import for side-effect registration
 )
 
-// Create a global payment service
-var paymentService *provider.PaymentService
+// Create global services
+var (
+	paymentService *provider.PaymentService
+	providerConfig *config.ProviderConfig
+)
 
 // Initialize payment service and register providers
 func init() {
-	// Create payment service
+	// Create payment service and provider config
 	paymentService = provider.NewPaymentService()
+	providerConfig = config.NewProviderConfig()
 
 	// Load provider configurations from environment variables
-	providerConfig := config.NewProviderConfig()
 	providerConfig.LoadFromEnv()
 
 	// Register all configured providers
@@ -56,10 +60,27 @@ func init() {
 	}
 }
 
+// Cleanup should be called on application shutdown to close SQLite connections
+func Cleanup() {
+	if providerConfig != nil {
+		if err := providerConfig.Close(); err != nil {
+			log.Printf("Warning: Failed to close provider config: %v", err)
+		}
+	}
+}
+
 // Routes registers all API routes
 func Routes(r chi.Router) {
-	// Initialize handler with the global payment service
-	paymentHandler := handler.NewPaymentHandler(paymentService, validator.New())
+	// Initialize handlers with the global services
+	validator := validator.New()
+	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
+	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
+
+	// Configuration routes for tenant-based provider setup
+	r.Post("/set-env", configHandler.SetEnv)                            // POST /v1/set-env
+	r.Get("/config/tenant-config", configHandler.GetTenantConfig)       // GET /v1/config/tenant-config?provider=iyzico
+	r.Delete("/config/tenant-config", configHandler.DeleteTenantConfig) // DELETE /v1/config/tenant-config?provider=iyzico
+	r.Get("/stats", configHandler.GetStats)                             // GET /v1/stats
 
 	// Payment routes
 	r.Route("/payments", func(r chi.Router) {
