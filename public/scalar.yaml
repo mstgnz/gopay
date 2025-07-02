@@ -1,0 +1,1106 @@
+openapi: 3.0.0
+info:
+  title: GoPay API Documentation
+  version: 1.0.0
+  description: |
+    **GoPay** is a unified payment integration service developed in Go. It abstracts different payment providers behind a single, standardized API, allowing developers to switch payment systems seamlessly without changing their codebase.
+
+    ## Key Features
+    - 🔄 **Unified API Interface**: Standardize diverse payment gateway APIs (İyzico, OzanPay, Stripe, etc.) into a consistent format
+    - 🔌 **Plug-and-Play Architecture**: Easily switch between payment providers without code changes
+    - 🏢 **Provider Agnostic**: Add new payment gateways without disrupting existing implementations
+    - 🔐 **3D Secure Support**: Complete 3D Secure payment flow with callback handling
+    - 💰 **Full Payment Lifecycle**: Process, track, cancel, and refund payments
+    - 🎯 **Webhook Integration**: Receive real-time payment notifications
+    - 🛡️ **Secure by Design**: Built-in authentication and security features
+
+    ## Supported Payment Providers
+    - ✅ **İyzico** (Turkey) - Full integration with 3D Secure support
+    - 🚧 **OzanPay** (Turkey) - In development
+    - 🚧 **Stripe** (Global) - Coming soon
+
+    ## Authentication
+    All API endpoints require a Bearer token for authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your_api_key>
+    ```
+
+    ## Payment Flow
+    ### Regular Payment
+    1. `POST /v1/payments/{provider}` - Process payment
+    2. `GET /v1/payments/{provider}/{paymentID}` - Check status
+    3. `POST /v1/payments/{provider}/refund` - Refund if needed
+
+    ### 3D Secure Payment
+    1. `POST /v1/payments/{provider}` with `use3D: true` - Initialize 3D payment
+    2. User completes 3D authentication on bank page
+    3. `GET|POST /v1/callback/{provider}` - Handle callback
+    4. `GET /v1/payments/{provider}/{paymentID}` - Verify final status
+
+    ## Contact
+    - **Developer**: Mesut GENEZ
+    - **GitHub**: [https://github.com/mstgnz/gopay](https://github.com/mstgnz/gopay)
+    - **License**: MIT
+
+servers:
+  - url: http://localhost:9199
+    description: Local development server
+  - url: https://api.yourcompany.com
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_KEY
+      description: API key required for payment operations
+  
+  schemas:
+    # Common Response Schemas
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Operation success status
+          example: true
+        message:
+          type: string
+          description: Operation result message
+          example: "Payment processed successfully"
+        data:
+          type: object
+          description: Response data
+          
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Always false for errors
+          example: false
+        message:
+          type: string
+          description: Error message
+          example: "Payment failed"
+        error:
+          type: string
+          description: Detailed error information
+          example: "Invalid card number"
+
+    # Payment Related Schemas
+    PaymentStatus:
+      type: string
+      enum: [pending, processing, successful, failed, cancelled, refunded]
+      description: Current payment status
+
+    Address:
+      type: object
+      properties:
+        city:
+          type: string
+          example: "Istanbul"
+        country:
+          type: string
+          example: "Turkey"
+        address:
+          type: string
+          example: "Atatürk Mahallesi 123 Sokak No:45"
+        zipCode:
+          type: string
+          example: "34000"
+        description:
+          type: string
+          example: "Home address"
+
+    Customer:
+      type: object
+      required: [name, surname, email]
+      properties:
+        id:
+          type: string
+          example: "customer123"
+          description: Unique customer identifier
+        name:
+          type: string
+          example: "John"
+          description: Customer first name
+        surname:
+          type: string
+          example: "Doe"
+          description: Customer last name
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+          description: Customer email address
+        phoneNumber:
+          type: string
+          example: "+905551234567"
+          description: Customer phone number
+        ipAddress:
+          type: string
+          format: ipv4
+          example: "192.168.1.1"
+          description: Customer IP address
+        address:
+          $ref: '#/components/schemas/Address'
+
+    CardInfo:
+      type: object
+      required: [cardHolderName, cardNumber, expireMonth, expireYear, cvv]
+      properties:
+        cardHolderName:
+          type: string
+          example: "John Doe"
+          description: Name on the card
+        cardNumber:
+          type: string
+          example: "5528790000000008"
+          description: Card number (for İyzico test use 5528790000000008)
+        expireMonth:
+          type: string
+          pattern: '^(0[1-9]|1[0-2])$'
+          example: "12"
+          description: Card expiration month (MM)
+        expireYear:
+          type: string
+          pattern: '^20[2-9][0-9]$'
+          example: "2030"
+          description: Card expiration year (YYYY)
+        cvv:
+          type: string
+          pattern: '^[0-9]{3,4}$'
+          example: "123"
+          description: Card verification value
+
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "item1"
+          description: Item identifier
+        name:
+          type: string
+          example: "Premium Product"
+          description: Item name
+        description:
+          type: string
+          example: "High quality product"
+          description: Item description
+        category:
+          type: string
+          example: "Electronics"
+          description: Item category
+        price:
+          type: number
+          format: float
+          example: 100.50
+          description: Item price
+        quantity:
+          type: integer
+          minimum: 1
+          example: 1
+          description: Item quantity
+
+    PaymentRequest:
+      type: object
+      required: [amount, currency, customer, cardInfo]
+      properties:
+        id:
+          type: string
+          example: "payment123"
+          description: Payment identifier
+        referenceId:
+          type: string
+          example: "order456"
+          description: External reference ID
+        currency:
+          type: string
+          enum: [TRY, USD, EUR]
+          example: "TRY"
+          description: Payment currency
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 100.50
+          description: Payment amount
+        customer:
+          $ref: '#/components/schemas/Customer'
+        cardInfo:
+          $ref: '#/components/schemas/CardInfo'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+          description: Payment items
+        description:
+          type: string
+          example: "Order payment"
+          description: Payment description
+        callbackUrl:
+          type: string
+          format: uri
+          example: "https://yoursite.com/payment-callback"
+          description: 3D Secure callback URL (required for 3D payments)
+        use3D:
+          type: boolean
+          default: false
+          example: true
+          description: Enable 3D Secure authentication
+        installmentCount:
+          type: integer
+          minimum: 1
+          maximum: 12
+          default: 1
+          example: 1
+          description: Number of installments
+        paymentChannel:
+          type: string
+          example: "WEB"
+          description: Payment channel
+        paymentGroup:
+          type: string
+          example: "PRODUCT"
+          description: Payment group
+        conversationId:
+          type: string
+          example: "conv123"
+          description: Conversation ID for tracking
+        locale:
+          type: string
+          enum: [tr, en]
+          default: "tr"
+          example: "tr"
+          description: Payment language
+        clientIp:
+          type: string
+          format: ipv4
+          example: "192.168.1.1"
+          description: Client IP address
+        clientUserAgent:
+          type: string
+          example: "Mozilla/5.0..."
+          description: Client user agent
+        metaData:
+          type: string
+          example: "{\"userId\":123}"
+          description: Additional metadata
+        redirectUrl:
+          type: string
+          format: uri
+          example: "https://yoursite.com/payment-result"
+          description: Redirect URL after payment
+
+    PaymentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+          description: Payment operation success
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        message:
+          type: string
+          example: "Payment successful"
+          description: Operation message
+        errorCode:
+          type: string
+          example: "5007"
+          description: Provider specific error code
+        transactionId:
+          type: string
+          example: "txn123"
+          description: Transaction identifier
+        paymentId:
+          type: string
+          example: "payment123"
+          description: Payment identifier
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Payment amount
+        currency:
+          type: string
+          example: "TRY"
+          description: Payment currency
+        redirectUrl:
+          type: string
+          format: uri
+          example: "https://3dsecure.bank.com/auth"
+          description: 3D Secure redirect URL
+        html:
+          type: string
+          example: "<form>3D Secure form</form>"
+          description: 3D Secure HTML form
+        systemTime:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+          description: System timestamp
+        fraudStatus:
+          type: integer
+          example: 1
+          description: Fraud check status
+        providerResponse:
+          type: object
+          description: Raw provider response
+
+    RefundRequest:
+      type: object
+      required: [paymentId]
+      properties:
+        paymentId:
+          type: string
+          example: "payment123"
+          description: Payment ID to refund
+        refundAmount:
+          type: number
+          format: float
+          example: 50.00
+          description: Refund amount (leave empty for full refund)
+        reason:
+          type: string
+          example: "Customer request"
+          description: Refund reason
+        description:
+          type: string
+          example: "Customer requested partial refund"
+          description: Detailed refund description
+        currency:
+          type: string
+          example: "TRY"
+          description: Refund currency
+        conversationId:
+          type: string
+          example: "conv123"
+          description: Conversation ID
+
+    RefundResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+          description: Refund operation success
+        refundId:
+          type: string
+          example: "refund123"
+          description: Refund identifier
+        paymentId:
+          type: string
+          example: "payment123"
+          description: Original payment ID
+        status:
+          type: string
+          example: "success"
+          description: Refund status
+        refundAmount:
+          type: number
+          format: float
+          example: 50.00
+          description: Refunded amount
+        message:
+          type: string
+          example: "Refund successful"
+          description: Operation message
+        errorCode:
+          type: string
+          example: ""
+          description: Error code if failed
+        systemTime:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+          description: System timestamp
+        rawResponse:
+          type: object
+          description: Raw provider response
+
+    CancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          example: "Customer request"
+          description: Cancellation reason
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Payment Operations
+  /v1/payments:
+    post:
+      summary: Process payment with default provider
+      description: |
+        Processes a payment using the default configured payment provider.
+        
+        **For 3D Secure payments:**
+        - Set `use3D: true` in the request
+        - Provide `callbackUrl` for redirect after authentication
+        - Handle the callback at your specified URL
+        
+        **İyzico Test Cards:**
+        - Successful: `5528790000000008`
+        - Insufficient funds: `5528790000000016`
+        - Invalid card: `5528790000000032`
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+            examples:
+              regular_payment:
+                summary: Regular Payment
+                value:
+                  amount: 100.50
+                  currency: "TRY"
+                  customer:
+                    name: "John"
+                    surname: "Doe"
+                    email: "john@example.com"
+                    address:
+                      city: "Istanbul"
+                      country: "Turkey"
+                      address: "Test Address 123"
+                      zipCode: "34000"
+                  cardInfo:
+                    cardHolderName: "John Doe"
+                    cardNumber: "5528790000000008"
+                    expireMonth: "12"
+                    expireYear: "2030"
+                    cvv: "123"
+                  description: "Test payment"
+                  use3D: false
+              threeds_payment:
+                summary: 3D Secure Payment
+                value:
+                  amount: 250.00
+                  currency: "TRY"
+                  customer:
+                    name: "Jane"
+                    surname: "Smith"
+                    email: "jane@example.com"
+                    address:
+                      city: "Ankara"
+                      country: "Turkey"
+                      address: "Test Address 456"
+                      zipCode: "06000"
+                  cardInfo:
+                    cardHolderName: "Jane Smith"
+                    cardNumber: "5528790000000008"
+                    expireMonth: "12"
+                    expireYear: "2030"
+                    cvv: "123"
+                  description: "3D Secure payment"
+                  use3D: true
+                  callbackUrl: "https://yoursite.com/payment-callback"
+      responses:
+        '200':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid API key
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}:
+    post:
+      summary: Process payment with specific provider
+      description: |
+        Processes a payment using a specific payment provider.
+        
+        **Available Providers:**
+        - `iyzico` - İyzico (Turkey)
+        - `ozanpay` - OzanPay (Turkey) 
+        - `stripe` - Stripe (Global)
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid request or provider not supported
+        '401':
+          description: Unauthorized - Invalid API key
+        '500':
+          description: Internal server error
+
+  /v1/payments/{paymentID}:
+    get:
+      summary: Get payment status with default provider
+      description: Retrieves the current status of a payment using the default provider
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: paymentID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Payment ID to check
+          example: payment123
+      responses:
+        '200':
+          description: Payment status retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid payment ID
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+    
+    delete:
+      summary: Cancel payment with default provider
+      description: Cancels a payment using the default provider
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: paymentID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Payment ID to cancel
+          example: payment123
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Payment cancelled successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid payment ID or payment cannot be cancelled
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/{paymentID}:
+    get:
+      summary: Get payment status with specific provider
+      description: Retrieves the current status of a payment using a specific provider
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+        - name: paymentID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Payment ID to check
+          example: payment123
+      responses:
+        '200':
+          description: Payment status retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid parameters
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+    
+    delete:
+      summary: Cancel payment with specific provider
+      description: Cancels a payment using a specific provider
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+        - name: paymentID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Payment ID to cancel
+          example: payment123
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Payment cancelled successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Invalid parameters or payment cannot be cancelled
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+
+  # Refund Operations
+  /v1/payments/refund:
+    post:
+      summary: Refund payment with default provider
+      description: |
+        Processes a refund using the default provider.
+        
+        **Refund Types:**
+        - **Full Refund**: Don't specify `refundAmount`
+        - **Partial Refund**: Specify `refundAmount` less than original amount
+      tags: [Refunds]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+            examples:
+              full_refund:
+                summary: Full Refund
+                value:
+                  paymentId: "payment123"
+                  reason: "Customer request"
+                  description: "Customer requested full refund"
+              partial_refund:
+                summary: Partial Refund
+                value:
+                  paymentId: "payment123"
+                  refundAmount: 50.00
+                  reason: "Partial refund"
+                  description: "Customer requested partial refund"
+                  currency: "TRY"
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RefundResponse'
+        '400':
+          description: Invalid refund request
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/refund:
+    post:
+      summary: Refund payment with specific provider
+      description: Processes a refund using a specific provider
+      tags: [Refunds]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RefundResponse'
+        '400':
+          description: Invalid refund request
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment not found
+        '500':
+          description: Internal server error
+
+  # 3D Secure Callbacks
+  /v1/callback:
+    get:
+      summary: Handle 3D Secure callback (GET) with default provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using GET method with default provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+      tags: [3D Secure]
+      parameters:
+        - name: paymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Payment ID from initial 3D request
+        - name: conversationId
+          in: query
+          schema:
+            type: string
+          description: Conversation ID for tracking
+        - name: successUrl
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: URL to redirect on success
+        - name: errorUrl
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: URL to redirect on error
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '302':
+          description: Redirect to success/error URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+    
+    post:
+      summary: Handle 3D Secure callback (POST) with default provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using POST method with default provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+      tags: [3D Secure]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                paymentId:
+                  type: string
+                  description: Payment ID
+                conversationId:
+                  type: string
+                  description: Conversation ID
+                status:
+                  type: string
+                  description: 3D authentication status
+                mdStatus:
+                  type: string
+                  description: 3D authentication result
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '302':
+          description: Redirect to success/error URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+
+  /v1/callback/{provider}:
+    get:
+      summary: Handle 3D Secure callback (GET) with specific provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using GET method with specific provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+      tags: [3D Secure]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+        - name: paymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Payment ID from initial 3D request
+        - name: conversationId
+          in: query
+          schema:
+            type: string
+          description: Conversation ID for tracking
+        - name: successUrl
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: URL to redirect on success
+        - name: errorUrl
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: URL to redirect on error
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '302':
+          description: Redirect to success/error URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+    
+    post:
+      summary: Handle 3D Secure callback (POST) with specific provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using POST method with specific provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+      tags: [3D Secure]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                paymentId:
+                  type: string
+                  description: Payment ID
+                conversationId:
+                  type: string
+                  description: Conversation ID
+                status:
+                  type: string
+                  description: 3D authentication status
+                mdStatus:
+                  type: string
+                  description: 3D authentication result
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '302':
+          description: Redirect to success/error URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+
+  # Webhook Operations
+  /v1/webhooks/{provider}:
+    post:
+      summary: Handle webhook notifications
+      description: |
+        Receives webhook notifications from payment providers.
+        
+        **İyzico Webhooks:**
+        - Payment status updates
+        - Refund notifications
+        - Fraud alerts
+        
+        **Note:** This endpoint validates webhook signatures and processes notifications asynchronously.
+      tags: [Webhooks]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe]
+          description: Payment provider name
+          example: iyzico
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Provider-specific webhook payload
+            examples:
+              iyzico_webhook:
+                summary: İyzico Webhook
+                value:
+                  paymentId: "payment123"
+                  status: "success"
+                  transactionId: "txn456"
+                  amount: "100.50"
+                  currency: "TRY"
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        description: Validated webhook data
+        '400':
+          description: Invalid webhook data or signature
+        '401':
+          description: Webhook authentication failed
+        '500':
+          description: Internal server error
