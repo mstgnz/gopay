@@ -21,6 +21,12 @@ echo "IYZICO_API_KEY=your-iyzico-api-key"
 echo "IYZICO_SECRET_KEY=your-iyzico-secret-key"
 echo "IYZICO_ENVIRONMENT=sandbox"
 echo ""
+echo -e "${BLUE}💡 Multi-Tenant Usage:${NC}"
+echo "For multi-tenant setup, first configure tenant credentials:"
+echo "• Run: ./multi_tenant_setup.sh"
+echo "• Then add X-Tenant-ID header to any payment request below"
+echo "• Example: -H \"X-Tenant-ID: ABC\""
+echo ""
 
 # 1. Regular Payment (Without 3D Secure)
 echo -e "${YELLOW}1. Regular Payment (Without 3D Secure)${NC}"

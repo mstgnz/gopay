@@ -2,11 +2,29 @@
 
 This directory contains comprehensive examples for testing and integrating with GoPay payment providers.
 
+## 🏢 Multi-Tenant Support
+
+GoPay supports **multi-tenant architecture** where different tenants (projects/companies) can use different payment provider configurations. Each tenant can have their own İyzico, OzanPay, or Paycell credentials.
+
+### How Multi-Tenant Works:
+
+1. **Tenant Registration**: Each tenant sets their provider credentials via API
+2. **Request Headers**: Include `X-Tenant-ID` header in payment requests
+3. **Automatic Routing**: GoPay automatically uses tenant-specific provider configuration
+4. **Persistence**: Configurations are stored in SQLite and persist across restarts
+
+### Multi-Tenant Examples:
+
+- `multi_tenant_setup.sh` - Complete multi-tenant setup examples
+- `tenant_curl_examples.sh` - Multi-tenant payment examples with different tenants
+- `multi_tenant/example.go` - Go integration example with multi-tenant support
+
 ## 📁 Available Examples
 
 ### Go Code Examples
 
 - `iyzico_example.go` - Complete Go integration example for İyzico provider
+- `multi_tenant/example.go` - Multi-tenant Go integration example with different tenants
 
 ### Curl Examples (REST API)
 
@@ -335,3 +353,78 @@ After running the examples:
 5. **Monitor payment flows** using the logging and stats features
 
 Happy coding! 🚀
+
+## 🏢 Multi-Tenant Architecture
+
+GoPay supports multi-tenant architecture where different tenants (projects/companies) can use different payment provider configurations.
+
+### Quick Multi-Tenant Setup
+
+1. **Configure Tenants**
+
+```bash
+# Setup multiple tenants with their own credentials
+./multi_tenant_setup.sh
+```
+
+2. **Use Tenant-Specific Payments**
+
+```bash
+# ABC tenant payment with their İyzico credentials
+curl -X POST "${BASE_URL}/payments/iyzico" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: ABC" \
+  -d '{ "amount": 100.00, ... }'
+
+# XYZ tenant payment with their OzanPay credentials
+curl -X POST "${BASE_URL}/payments/ozanpay" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: XYZ" \
+  -d '{ "amount": 200.00, ... }'
+```
+
+3. **Run Multi-Tenant Examples**
+
+```bash
+# Complete multi-tenant payment examples
+./tenant_curl_examples.sh
+
+# Go integration example
+go run examples/multi_tenant/example.go
+```
+
+### Multi-Tenant Management
+
+```bash
+# Check tenant configuration
+curl -X GET "${BASE_URL}/config/tenant-config?provider=iyzico" \
+  -H "X-Tenant-ID: ABC"
+
+# Get system statistics
+curl -X GET "${BASE_URL}/stats"
+
+# Update tenant configuration
+curl -X POST "${BASE_URL}/set-env" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: ABC" \
+  -d '{ "IYZICO_ENVIRONMENT": "production" }'
+
+# Delete tenant configuration
+curl -X DELETE "${BASE_URL}/config/tenant-config?provider=iyzico" \
+  -H "X-Tenant-ID: ABC"
+```
+
+### Multi-Tenant Benefits
+
+- **🔒 Isolation**: Each tenant uses their own provider credentials
+- **🔄 Flexibility**: Different tenants can use different payment providers
+- **💾 Persistence**: Configurations survive application restarts
+- **📈 Scalability**: Supports unlimited number of tenants
+- **🔐 Security**: Tenant credentials are stored securely and separately
+
+### Use Cases
+
+- **SaaS Platforms**: Different customers use their own payment gateways
+- **Marketplace Applications**: Multiple vendors with separate payment processing
+- **White-label Solutions**: Different brands with their own payment configurations
+- **Multi-region Deployments**: Different regions with localized payment providers
