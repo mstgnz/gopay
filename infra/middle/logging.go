@@ -62,6 +62,9 @@ func PaymentLoggingMiddleware(logger *opensearch.Logger) func(http.Handler) http
 				provider = "default"
 			}
 
+			// Extract tenant ID from header
+			tenantID := r.Header.Get("X-Tenant-ID")
+
 			// Capture request body
 			var requestBody []byte
 			if r.Body != nil {
@@ -78,6 +81,7 @@ func PaymentLoggingMiddleware(logger *opensearch.Logger) func(http.Handler) http
 			// Create payment log
 			paymentLog := opensearch.PaymentLog{
 				Timestamp: rw.startTime,
+				TenantID:  tenantID,
 				Provider:  provider,
 				Method:    r.Method,
 				Endpoint:  r.URL.Path,
@@ -311,6 +315,7 @@ func LoggingStatsMiddleware(logger *opensearch.Logger) func(http.Handler) http.H
 func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *opensearch.Logger) {
 	provider := r.URL.Query().Get("provider")
 	hoursStr := r.URL.Query().Get("hours")
+	tenantID := r.Header.Get("X-Tenant-ID")
 
 	hours := 24 // Default to 24 hours
 	if hoursStr != "" {
@@ -327,7 +332,7 @@ func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *opensear
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	stats, err := logger.GetProviderStats(ctx, provider, hours)
+	stats, err := logger.GetProviderStats(ctx, tenantID, provider, hours)
 	if err != nil {
 		http.Error(w, "Failed to get stats: "+err.Error(), http.StatusInternalServerError)
 		return

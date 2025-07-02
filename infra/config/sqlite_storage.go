@@ -340,11 +340,11 @@ func (s *SQLiteStorage) Close() error {
 }
 
 // GetStats returns database statistics
-func (s *SQLiteStorage) GetStats() (map[string]interface{}, error) {
+func (s *SQLiteStorage) GetStats() (map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 
 	// Count total configurations
 	var totalConfigs int

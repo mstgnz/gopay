@@ -15,6 +15,7 @@ import (
 // PaymentLog represents a structured payment log entry
 type PaymentLog struct {
 	Timestamp   time.Time   `json:"timestamp"`
+	TenantID    string      `json:"tenant_id,omitempty"`
 	Provider    string      `json:"provider"`
 	Method      string      `json:"method"`
 	Endpoint    string      `json:"endpoint"`
@@ -86,8 +87,8 @@ func (l *Logger) LogPaymentRequest(ctx context.Context, log PaymentLog) error {
 		log.RequestID = uuid.New().String()
 	}
 
-	// Determine the appropriate index based on provider
-	indexName := l.client.GetLogIndexName(log.Provider)
+	// Determine the appropriate index based on tenant and provider
+	indexName := l.client.GetLogIndexName(log.TenantID, log.Provider)
 
 	// Convert log to JSON
 	logJSON, err := json.Marshal(log)
@@ -115,12 +116,12 @@ func (l *Logger) LogPaymentRequest(ctx context.Context, log PaymentLog) error {
 }
 
 // SearchLogs searches for payment logs based on criteria
-func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[string]any) ([]PaymentLog, error) {
+func (l *Logger) SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]PaymentLog, error) {
 	if !l.client.IsEnabled() {
 		return nil, fmt.Errorf("logging is disabled")
 	}
 
-	indexName := l.client.GetLogIndexName(provider)
+	indexName := l.client.GetLogIndexName(tenantID, provider)
 
 	// Build search query
 	searchQuery := map[string]any{
@@ -175,18 +176,18 @@ func (l *Logger) SearchLogs(ctx context.Context, provider string, query map[stri
 }
 
 // GetPaymentLogs retrieves logs for a specific payment ID
-func (l *Logger) GetPaymentLogs(ctx context.Context, provider, paymentID string) ([]PaymentLog, error) {
+func (l *Logger) GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]PaymentLog, error) {
 	query := map[string]any{
 		"match": map[string]any{
 			"payment_info.payment_id": paymentID,
 		},
 	}
 
-	return l.SearchLogs(ctx, provider, query)
+	return l.SearchLogs(ctx, tenantID, provider, query)
 }
 
 // GetRecentErrorLogs retrieves recent error logs for a provider
-func (l *Logger) GetRecentErrorLogs(ctx context.Context, provider string, hours int) ([]PaymentLog, error) {
+func (l *Logger) GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]PaymentLog, error) {
 	query := map[string]any{
 		"bool": map[string]any{
 			"must": []map[string]any{
@@ -206,16 +207,16 @@ func (l *Logger) GetRecentErrorLogs(ctx context.Context, provider string, hours 
 		},
 	}
 
-	return l.SearchLogs(ctx, provider, query)
+	return l.SearchLogs(ctx, tenantID, provider, query)
 }
 
 // GetProviderStats retrieves statistics for a provider
-func (l *Logger) GetProviderStats(ctx context.Context, provider string, hours int) (map[string]any, error) {
+func (l *Logger) GetProviderStats(ctx context.Context, tenantID, provider string, hours int) (map[string]any, error) {
 	if !l.client.IsEnabled() {
 		return nil, fmt.Errorf("logging is disabled")
 	}
 
-	indexName := l.client.GetLogIndexName(provider)
+	indexName := l.client.GetLogIndexName(tenantID, provider)
 
 	// Build aggregation query
 	aggQuery := map[string]any{

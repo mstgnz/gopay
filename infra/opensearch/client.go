@@ -72,7 +72,7 @@ func (c *Client) setupIndices() error {
 	providers := []string{"iyzico", "ozanpay", "stripe", "paytr", "paycell", "papara", "nkolay", "shopier"}
 
 	for _, provider := range providers {
-		indexName := c.GetLogIndexName(provider)
+		indexName := c.GetLogIndexName("", provider)
 
 		// Check if index exists
 		exists, err := c.indexExists(indexName)
@@ -116,6 +116,9 @@ func (c *Client) createLogIndex(indexName string) error {
 				"timestamp": {
 					"type": "date",
 					"format": "strict_date_optional_time||epoch_millis"
+				},
+				"tenant_id": {
+					"type": "keyword"
 				},
 				"provider": {
 					"type": "keyword"
@@ -232,9 +235,12 @@ func (c *Client) createLogIndex(indexName string) error {
 	return nil
 }
 
-// GetLogIndexName returns the index name for a provider's logs
-func (c *Client) GetLogIndexName(provider string) string {
-	return "gopay-" + provider + "-logs"
+// GetLogIndexName returns the index name for a tenant's provider logs
+func (c *Client) GetLogIndexName(tenantID, provider string) string {
+	if tenantID == "" {
+		return "gopay-" + provider + "-logs"
+	}
+	return "gopay-" + tenantID + "-" + provider + "-logs"
 }
 
 // IsEnabled returns whether OpenSearch logging is enabled

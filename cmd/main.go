@@ -185,7 +185,7 @@ func main() {
 		r.Use(middle.AuthMiddleware())
 
 		// Import v1 routes
-		v1.Routes(r)
+		v1.Routes(r, openSearchLogger)
 	})
 
 	// Not Found

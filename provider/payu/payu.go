@@ -196,7 +196,7 @@ func (p *PayUProvider) CancelPayment(ctx context.Context, paymentID string, reas
 		return nil, errors.New("payu: paymentID is required")
 	}
 
-	payuReq := map[string]interface{}{
+	payuReq := map[string]any{
 		"paymentId": paymentID,
 		"reason":    reason,
 	}
@@ -294,7 +294,7 @@ func (p *PayUProvider) ValidateWebhook(ctx context.Context, data map[string]stri
 	}
 
 	// Parse webhook data
-	var webhookData map[string]interface{}
+	var webhookData map[string]any
 	if err := json.Unmarshal([]byte(payload), &webhookData); err != nil {
 		return false, nil, fmt.Errorf("payu: failed to parse webhook payload: %w", err)
 	}
@@ -400,8 +400,8 @@ func (p *PayUProvider) processPayment(ctx context.Context, request provider.Paym
 }
 
 // mapToPayURequest maps a generic payment request to PayU-specific format
-func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bool) map[string]interface{} {
-	payuReq := map[string]interface{}{
+func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bool) map[string]any {
+	payuReq := map[string]any{
 		"merchantId":  p.merchantID,
 		"amount":      fmt.Sprintf("%.2f", request.Amount),
 		"currency":    request.Currency,
@@ -420,7 +420,7 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 
 	// Add card details if provided
 	if request.CardInfo.CardNumber != "" {
-		payuReq["card"] = map[string]interface{}{
+		payuReq["card"] = map[string]any{
 			"number":      request.CardInfo.CardNumber,
 			"cvv":         request.CardInfo.CVV,
 			"expiryMonth": request.CardInfo.ExpireMonth,
@@ -439,7 +439,7 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 
 	// Add customer info
 	if request.Customer.Email != "" || request.Customer.PhoneNumber != "" {
-		customer := make(map[string]interface{})
+		customer := make(map[string]any)
 		if request.Customer.Email != "" {
 			customer["email"] = request.Customer.Email
 		}
@@ -451,7 +451,7 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 
 	// Add billing address if provided
 	if request.Customer.Address.Country != "" {
-		billing := map[string]interface{}{
+		billing := map[string]any{
 			"firstName": request.Customer.Name,
 			"lastName":  request.Customer.Surname,
 			"address":   request.Customer.Address.Address,
@@ -469,8 +469,8 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 }
 
 // mapTo3DCompleteRequest maps 3D completion data to PayU format
-func (p *PayUProvider) mapTo3DCompleteRequest(paymentID, conversationID string, data map[string]string) map[string]interface{} {
-	req := map[string]interface{}{
+func (p *PayUProvider) mapTo3DCompleteRequest(paymentID, conversationID string, data map[string]string) map[string]any {
+	req := map[string]any{
 		"merchantId":     p.merchantID,
 		"paymentId":      paymentID,
 		"conversationId": conversationID,
@@ -489,8 +489,8 @@ func (p *PayUProvider) mapTo3DCompleteRequest(paymentID, conversationID string, 
 }
 
 // mapToRefundRequest maps a refund request to PayU format
-func (p *PayUProvider) mapToRefundRequest(request provider.RefundRequest) map[string]interface{} {
-	payuReq := map[string]interface{}{
+func (p *PayUProvider) mapToRefundRequest(request provider.RefundRequest) map[string]any {
+	payuReq := map[string]any{
 		"merchantId":  p.merchantID,
 		"paymentId":   request.PaymentID,
 		"amount":      fmt.Sprintf("%.2f", request.RefundAmount),
@@ -593,7 +593,7 @@ func (p *PayUProvider) addAuthHeaders(req *http.Request) {
 }
 
 // generateSignature generates PayU signature for authentication
-func (p *PayUProvider) generateSignature(data map[string]interface{}) string {
+func (p *PayUProvider) generateSignature(data map[string]any) string {
 	// Create signature string from key data fields
 	signatureData := fmt.Sprintf("%s|%v|%v|%s",
 		p.merchantID,

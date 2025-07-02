@@ -349,7 +349,7 @@ func TestPayUProvider_mapToPayURequest(t *testing.T) {
 			}
 
 			// Check card details
-			if card, ok := result["card"].(map[string]interface{}); ok {
+			if card, ok := result["card"].(map[string]any); ok {
 				if card["number"] != tt.request.CardInfo.CardNumber {
 					t.Errorf("Expected card number %s, got %v", tt.request.CardInfo.CardNumber, card["number"])
 				}
@@ -361,7 +361,7 @@ func TestPayUProvider_mapToPayURequest(t *testing.T) {
 			}
 
 			// Check customer details
-			if customer, ok := result["customer"].(map[string]interface{}); ok {
+			if customer, ok := result["customer"].(map[string]any); ok {
 				if customer["email"] != tt.request.Customer.Email {
 					t.Errorf("Expected email %s, got %v", tt.request.Customer.Email, customer["email"])
 				}
@@ -513,7 +513,7 @@ func TestPayUProvider_generateSignature(t *testing.T) {
 		secretKey:  "test-secret-key",
 	}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"amount":  "100.00",
 		"orderId": "order-123",
 	}
@@ -531,7 +531,7 @@ func TestPayUProvider_generateSignature(t *testing.T) {
 	}
 
 	// Test different data produces different signature
-	data2 := map[string]interface{}{
+	data2 := map[string]any{
 		"amount":  "200.00",
 		"orderId": "order-456",
 	}

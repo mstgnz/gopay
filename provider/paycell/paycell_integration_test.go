@@ -42,11 +42,11 @@ func createMockPaycellServer() *httptest.Server {
 }
 
 func handleMockPayment(w http.ResponseWriter, r *http.Request, is3D bool) {
-	var reqData map[string]interface{}
+	var reqData map[string]any
 	json.NewDecoder(r.Body).Decode(&reqData)
 
 	// Extract card number for test scenarios
-	card, _ := reqData["card"].(map[string]interface{})
+	card, _ := reqData["card"].(map[string]any)
 	cardNumber, _ := card["cardNumber"].(string)
 	amount, _ := reqData["amount"].(float64)
 
@@ -149,7 +149,7 @@ func handleMockPaymentStatus(w http.ResponseWriter, r *http.Request, status stri
 }
 
 func handleMockRefund(w http.ResponseWriter, r *http.Request) {
-	var reqData map[string]interface{}
+	var reqData map[string]any
 	json.NewDecoder(r.Body).Decode(&reqData)
 
 	refundAmount, _ := reqData["refundAmount"].(float64)
@@ -169,7 +169,7 @@ func handleMockRefund(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleMockCancel(w http.ResponseWriter, r *http.Request) {
-	var reqData map[string]interface{}
+	var reqData map[string]any
 	json.NewDecoder(r.Body).Decode(&reqData)
 
 	response := PaycellResponse{

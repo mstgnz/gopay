@@ -287,8 +287,8 @@ func (c *ProviderConfig) Close() error {
 }
 
 // GetStats returns configuration and storage statistics
-func (c *ProviderConfig) GetStats() (map[string]interface{}, error) {
-	stats := make(map[string]interface{})
+func (c *ProviderConfig) GetStats() (map[string]any, error) {
+	stats := make(map[string]any)
 
 	c.mu.RLock()
 	memoryConfigs := len(c.configs)

@@ -587,6 +587,185 @@ components:
               description: Database file path
           description: SQLite database statistics
 
+    # Logging Schemas
+    PaymentLog:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+          description: Log timestamp
+        tenant_id:
+          type: string
+          example: "tenant123"
+          description: Tenant identifier
+        provider:
+          type: string
+          example: "iyzico"
+          description: Payment provider
+        method:
+          type: string
+          example: "POST"
+          description: HTTP method
+        endpoint:
+          type: string
+          example: "/v1/payments/iyzico"
+          description: API endpoint
+        request_id:
+          type: string
+          example: "req-123"
+          description: Request identifier
+        user_agent:
+          type: string
+          example: "GoPay-Client/1.0"
+          description: User agent
+        client_ip:
+          type: string
+          format: ipv4
+          example: "192.168.1.1"
+          description: Client IP address
+        request:
+          type: object
+          properties:
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+              example:
+                Content-Type: "application/json"
+                Authorization: "***REDACTED***"
+              description: Request headers (sensitive data redacted)
+            body:
+              type: string
+              example: '{"amount":100.50,"currency":"TRY","cardNumber":"***REDACTED***"}'
+              description: Request body (sensitive data redacted)
+            params:
+              type: object
+              additionalProperties:
+                type: string
+              description: URL parameters
+        response:
+          type: object
+          properties:
+            status_code:
+              type: integer
+              example: 200
+              description: HTTP status code
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+              description: Response headers
+            body:
+              type: string
+              example: '{"success":true,"paymentId":"pay123"}'
+              description: Response body
+            processing_time_ms:
+              type: integer
+              example: 1250
+              description: Processing time in milliseconds
+        payment_info:
+          type: object
+          properties:
+            payment_id:
+              type: string
+              example: "payment123"
+              description: Payment identifier
+            amount:
+              type: number
+              format: float
+              example: 100.50
+              description: Payment amount
+            currency:
+              type: string
+              example: "TRY"
+              description: Payment currency
+            customer_email:
+              type: string
+              format: email
+              example: "john@example.com"
+              description: Customer email
+            status:
+              type: string
+              example: "successful"
+              description: Payment status
+            use_3d:
+              type: boolean
+              example: true
+              description: 3D Secure used
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "5007"
+              description: Error code
+            message:
+              type: string
+              example: "Payment failed"
+              description: Error message
+
+    LoggingStats:
+      type: object
+      properties:
+        aggregations:
+          type: object
+          properties:
+            total_requests:
+              type: object
+              properties:
+                value:
+                  type: integer
+                  example: 150
+                  description: Total number of requests
+            success_count:
+              type: object
+              properties:
+                doc_count:
+                  type: integer
+                  example: 142
+                  description: Number of successful requests
+            error_count:
+              type: object
+              properties:
+                doc_count:
+                  type: integer
+                  example: 8
+                  description: Number of failed requests
+            avg_processing_time:
+              type: object
+              properties:
+                value:
+                  type: number
+                  format: float
+                  example: 245.5
+                  description: Average processing time in milliseconds
+            status_codes:
+              type: object
+              properties:
+                buckets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: integer
+                        example: 200
+                        description: HTTP status code
+                      doc_count:
+                        type: integer
+                        example: 142
+                        description: Number of requests with this status
+                  example:
+                    - key: 200
+                      doc_count: 142
+                    - key: 400
+                      doc_count: 5
+                    - key: 500
+                      doc_count: 3
+                  description: Distribution of HTTP status codes
+
 security:
   - BearerAuth: []
 
@@ -1520,5 +1699,346 @@ paths:
           description: Invalid webhook data or signature
         '401':
           description: Webhook authentication failed
+        '500':
+          description: Internal server error
+
+  # Logging Operations
+  /v1/logs/{provider}:
+    get:
+      summary: List payment logs with filtering
+      description: |
+        Retrieves payment logs for a specific tenant and provider with various filtering options.
+        
+        **Tenant Isolation:**
+        - Each tenant can only access their own logs
+        - X-Tenant-ID header is required for authentication
+        
+        **Available Filters:**
+        - Payment ID
+        - Payment status
+        - Errors only
+        - Time range (hours)
+        
+        **Security:**
+        - Sensitive data is automatically redacted in logs
+        - Auth protected endpoint
+      tags: [Logs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Tenant identifier (required)
+          example: tenant123
+        - name: paymentId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific payment ID
+          example: payment123
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, processing, successful, failed, cancelled, refunded]
+          description: Filter by payment status
+          example: successful
+        - name: errorsOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Show only error logs
+          example: true
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+      responses:
+        '200':
+          description: Logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenantId:
+                            type: string
+                            example: "tenant123"
+                          provider:
+                            type: string
+                            example: "iyzico"
+                          filters:
+                            type: object
+                            properties:
+                              hours:
+                                type: integer
+                                example: 24
+                              paymentId:
+                                type: string
+                                example: "payment123"
+                              status:
+                                type: string
+                                example: "successful"
+                              errorsOnly:
+                                type: boolean
+                                example: false
+                          count:
+                            type: integer
+                            example: 15
+                          logs:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/PaymentLog'
+        '400':
+          description: Invalid parameters or missing X-Tenant-ID header
+        '401':
+          description: Unauthorized - Invalid API key
+        '500':
+          description: Internal server error
+
+  /v1/logs/{provider}/payment/{paymentID}:
+    get:
+      summary: Get logs for specific payment
+      description: |
+        Retrieves all logs related to a specific payment ID.
+        
+        **Use Cases:**
+        - Debug payment issues
+        - Track payment flow
+        - Audit payment requests/responses
+      tags: [Logs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
+        - name: paymentID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Payment ID to get logs for
+          example: payment123
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Tenant identifier (required)
+          example: tenant123
+      responses:
+        '200':
+          description: Payment logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenantId:
+                            type: string
+                            example: "tenant123"
+                          provider:
+                            type: string
+                            example: "iyzico"
+                          paymentId:
+                            type: string
+                            example: "payment123"
+                          count:
+                            type: integer
+                            example: 3
+                          logs:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/PaymentLog'
+        '400':
+          description: Invalid parameters or missing X-Tenant-ID header
+        '401':
+          description: Unauthorized - Invalid API key
+        '404':
+          description: Payment logs not found
+        '500':
+          description: Internal server error
+
+  /v1/logs/{provider}/errors:
+    get:
+      summary: Get recent error logs
+      description: |
+        Retrieves recent error logs for a specific provider and tenant.
+        
+        **Error Types:**
+        - Payment failures
+        - API errors
+        - Validation errors
+        - Provider-specific errors
+      tags: [Logs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Tenant identifier (required)
+          example: tenant123
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+      responses:
+        '200':
+          description: Error logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenantId:
+                            type: string
+                            example: "tenant123"
+                          provider:
+                            type: string
+                            example: "iyzico"
+                          hours:
+                            type: integer
+                            example: 24
+                          count:
+                            type: integer
+                            example: 5
+                          logs:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/PaymentLog'
+        '400':
+          description: Invalid parameters or missing X-Tenant-ID header
+        '401':
+          description: Unauthorized - Invalid API key
+        '500':
+          description: Internal server error
+
+  /v1/logs/{provider}/stats:
+    get:
+      summary: Get logging statistics
+      description: |
+        Retrieves comprehensive logging statistics for a specific provider and tenant.
+        
+        **Statistics Include:**
+        - Total request count
+        - Success/error rates
+        - Average processing time
+        - Status code distribution
+        - Error breakdown
+      tags: [Logs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
+        - name: X-Tenant-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Tenant identifier (required)
+          example: tenant123
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tenantId:
+                            type: string
+                            example: "tenant123"
+                          provider:
+                            type: string
+                            example: "iyzico"
+                          hours:
+                            type: integer
+                            example: 24
+                          stats:
+                            $ref: '#/components/schemas/LoggingStats'
+        '400':
+          description: Invalid parameters or missing X-Tenant-ID header
+        '401':
+          description: Unauthorized - Invalid API key
         '500':
           description: Internal server error

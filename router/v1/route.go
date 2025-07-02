@@ -7,6 +7,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/handler"
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/opensearch"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -67,11 +68,12 @@ func Cleanup() {
 }
 
 // Routes registers all API routes
-func Routes(r chi.Router) {
+func Routes(r chi.Router, logger *opensearch.Logger) {
 	// Initialize handlers with the global services
 	validator := validator.New()
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
+	logsHandler := handler.NewLogsHandler(logger)
 
 	// Configuration routes for tenant-based provider setup
 	r.Post("/set-env", configHandler.SetEnv)                            // POST /v1/set-env
@@ -92,6 +94,14 @@ func Routes(r chi.Router) {
 		r.Get("/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
 		r.Delete("/{provider}/{paymentID}", paymentHandler.CancelPayment)
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)
+	})
+
+	// Logs routes (tenant and provider specific)
+	r.Route("/logs", func(r chi.Router) {
+		r.Get("/{provider}", logsHandler.ListLogs)                           // GET /v1/logs/{provider}?paymentId=123&status=success&errorsOnly=true&hours=24
+		r.Get("/{provider}/payment/{paymentID}", logsHandler.GetPaymentLogs) // GET /v1/logs/{provider}/payment/{paymentID}
+		r.Get("/{provider}/errors", logsHandler.GetErrorLogs)                // GET /v1/logs/{provider}/errors?hours=24
+		r.Get("/{provider}/stats", logsHandler.GetLogStats)                  // GET /v1/logs/{provider}/stats?hours=24
 	})
 
 	// Stats endpoint for logging statistics (handled by middleware)

@@ -172,7 +172,7 @@ func (h *ConfigHandler) SetEnv(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return success response
-	responseData := map[string]interface{}{
+	responseData := map[string]any{
 		"tenantId":            tenantID,
 		"configuredProviders": configuredProviders,
 		"message":             "Provider configurations set successfully",
@@ -237,7 +237,7 @@ func (h *ConfigHandler) GetTenantConfig(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	responseData := map[string]interface{}{
+	responseData := map[string]any{
 		"tenantId": tenantID,
 		"provider": providerName,
 		"config":   publicConfig,
@@ -269,7 +269,7 @@ func (h *ConfigHandler) DeleteTenantConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	responseData := map[string]interface{}{
+	responseData := map[string]any{
 		"tenantId": tenantID,
 		"provider": providerName,
 		"message":  "Configuration deleted successfully",
