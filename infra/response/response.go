@@ -1,43 +1,40 @@
 package response
 
-import "encoding/json"
+import (
+	"net/http"
+)
 
+// Response is a standardized API response structure
 type Response struct {
-	Code    int            `json:"code"`
-	Success bool           `json:"success"`
-	Message string         `json:"message"`
-	Data    map[string]any `json:"data"`
+	Code    int    `json:"code"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
-func (r *Response) SetCode(code int) *Response {
-	r.Code = code
-	return r
+// Success writes a successful response with data
+func Success(w http.ResponseWriter, statusCode int, message string, data any) {
+	resp := Response{
+		Code:    statusCode,
+		Success: true,
+		Message: message,
+		Data:    data,
+	}
+	WriteJSON(w, statusCode, resp)
 }
 
-func (r *Response) SetSuccess(success bool) *Response {
-	r.Success = success
-	return r
-}
-
-func (r *Response) SetMessage(message string) *Response {
-	r.Message = message
-	return r
-}
-
-func (r *Response) SetData(key string, value any) *Response {
-	r.Data[key] = value
-	return r
-}
-
-func (r *Response) SetModel(model any, key string) error {
-	data, err := json.Marshal(r.Data[key])
-	if err != nil {
-		return err
+// Error writes an error response
+func Error(w http.ResponseWriter, statusCode int, message string, err error) {
+	resp := Response{
+		Code:    statusCode,
+		Success: false,
+		Message: message,
 	}
 
-	err = json.Unmarshal(data, &model)
 	if err != nil {
-		return err
+		resp.Error = err.Error()
 	}
-	return nil
+
+	WriteJSON(w, statusCode, resp)
 }
