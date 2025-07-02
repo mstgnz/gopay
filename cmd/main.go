@@ -18,13 +18,15 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/middle"
+	"github.com/mstgnz/gopay/infra/opensearch"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/infra/validate"
 	"github.com/mstgnz/gopay/router"
 )
 
 var (
-	PORT string
+	PORT             string
+	openSearchLogger *opensearch.Logger
 )
 
 func init() {
@@ -37,6 +39,21 @@ func init() {
 	validate.CustomValidate()
 
 	PORT = os.Getenv("APP_PORT")
+
+	// Initialize OpenSearch client and logger
+	cfg := config.GetAppConfig()
+	if cfg.EnableLogging {
+		osClient, err := opensearch.NewClient(cfg)
+		if err != nil {
+			log.Printf("Failed to initialize OpenSearch client: %v", err)
+			log.Println("Continuing without OpenSearch logging...")
+		} else {
+			openSearchLogger = opensearch.NewLogger(osClient)
+			log.Println("OpenSearch logging initialized successfully")
+		}
+	} else {
+		log.Println("OpenSearch logging is disabled")
+	}
 }
 
 func main() {
@@ -58,6 +75,13 @@ func main() {
 	r.Use(middle.RateLimitMiddleware(rateLimiter))
 	r.Use(middle.RequestValidationMiddleware())
 
+	// OpenSearch Logging Middleware (add before authentication to log all requests)
+	if openSearchLogger != nil {
+		r.Use(middle.PaymentLoggingMiddleware(openSearchLogger))
+		r.Use(middle.LoggingStatsMiddleware(openSearchLogger))
+		log.Println("Payment logging middleware enabled")
+	}
+
 	// CORS
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -75,6 +99,21 @@ func main() {
 		// Add authentication middleware to API routes
 		r.Use(middle.AuthMiddleware())
 		router.Routes(r)
+	})
+
+	// Health check endpoint (no auth required)
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		health := map[string]interface{}{
+			"status":             "ok",
+			"timestamp":          time.Now().UTC(),
+			"version":            "1.0.0",
+			"opensearch_enabled": openSearchLogger != nil,
+		}
+		_ = response.WriteJSON(w, http.StatusOK, response.Response{
+			Success: true,
+			Message: "Service is healthy",
+			Data:    health,
+		})
 	})
 
 	// scalar
