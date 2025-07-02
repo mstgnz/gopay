@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 )
@@ -71,6 +72,20 @@ func (c *ProviderConfig) LoadFromEnv() {
 		"terminalId",
 		"environment",
 	})
+
+	// Load Nkolay configuration
+	c.loadProviderFromEnv("nkolay", []string{
+		"apiKey",
+		"secretKey",
+		"merchantId",
+		"environment",
+	})
+
+	// Load Papara configuration
+	c.loadProviderFromEnv("papara", []string{
+		"apiKey",
+		"environment",
+	})
 }
 
 // loadFromSQLite loads all tenant configurations from SQLite storage
@@ -88,9 +103,7 @@ func (c *ProviderConfig) loadFromSQLite() error {
 	defer c.mu.Unlock()
 
 	// Merge SQLite configs with in-memory configs
-	for key, config := range configs {
-		c.configs[key] = config
-	}
+	maps.Copy(c.configs, configs)
 
 	return nil
 }
@@ -195,6 +208,8 @@ func (c *ProviderConfig) validateProviderConfig(providerName string, config map[
 	requiredKeys["iyzico"] = []string{"apiKey", "secretKey"}
 	requiredKeys["ozanpay"] = []string{"apiKey", "secretKey", "merchantId"}
 	requiredKeys["paycell"] = []string{"username", "password", "merchantId", "terminalId"}
+	requiredKeys["nkolay"] = []string{"apiKey", "secretKey", "merchantId"}
+	requiredKeys["papara"] = []string{"apiKey"}
 
 	required, exists := requiredKeys[strings.ToLower(providerName)]
 	if !exists {
