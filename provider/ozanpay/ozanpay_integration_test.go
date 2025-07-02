@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -33,10 +32,10 @@ const (
 
 func getTestConfig() map[string]string {
 	return map[string]string{
-		"apiKey":       config.GetEnv("OZANPAY_API_KEY", "test_api_key_ozanpay"),
-		"secretKey":    config.GetEnv("OZANPAY_SECRET_KEY", "test_secret_key_ozanpay"),
-		"merchantId":   config.GetEnv("OZANPAY_MERCHANT_ID", "test_merchant_id"),
-		"environment":  config.GetEnv("OZANPAY_ENVIRONMENT", "sandbox"),
+		"apiKey":       "sandbox-ozanpay-api-key",
+		"secretKey":    "sandbox-ozanpay-secret-key",
+		"merchantId":   "sandbox-ozanpay-merchant-id",
+		"environment":  "sandbox",
 		"gopayBaseURL": "https://test.gopay.com",
 	}
 }

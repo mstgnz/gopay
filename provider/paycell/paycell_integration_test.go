@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -194,12 +193,12 @@ func generateMockID() string {
 func setupTestProvider(serverURL string) *PaycellProvider {
 	p := NewProvider().(*PaycellProvider)
 	config := map[string]string{
-		"username":     config.GetEnv("PAYCELL_USERNAME", "test_user"),
-		"password":     config.GetEnv("PAYCELL_PASSWORD", "test_password"),
-		"merchantId":   config.GetEnv("PAYCELL_MERCHANT_ID", "test_merchant"),
-		"terminalId":   config.GetEnv("PAYCELL_TERMINAL_ID", "test_terminal"),
-		"environment":  config.GetEnv("PAYCELL_ENVIRONMENT", "sandbox"),
-		"gopayBaseURL": config.GetEnv("PAYCELL_GOPAY_BASE_URL", "https://test.gopay.com"),
+		"username":     "sandbox-paycell-username",
+		"password":     "sandbox-paycell-password",
+		"merchantId":   "sandbox-paycell-merchant-id",
+		"terminalId":   "sandbox-paycell-terminal-id",
+		"environment":  "sandbox",
+		"gopayBaseURL": "https://test.gopay.com",
 	}
 	p.Initialize(config)
 	p.baseURL = serverURL

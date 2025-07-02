@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -18,12 +17,8 @@ import (
 // IYZICO_TEST_ENABLED=true
 
 func getTestProvider(t *testing.T) *IyzicoProvider {
-	if config.GetEnv("IYZICO_TEST_ENABLED", "false") != "true" {
-		t.Skip("İyzico integration tests disabled. Set IYZICO_TEST_ENABLED=true to run.")
-	}
-
-	apiKey := config.GetEnv("IYZICO_TEST_API_KEY", "")
-	secretKey := config.GetEnv("IYZICO_TEST_SECRET_KEY", "")
+	apiKey := "sandbox-iyzico-api-key"
+	secretKey := "sandbox-iyzico-secret-key"
 
 	if apiKey == "" || secretKey == "" {
 		t.Skip("İyzico test credentials not provided. Set IYZICO_TEST_API_KEY and IYZICO_TEST_SECRET_KEY")
@@ -387,10 +382,6 @@ func TestIntegration_RequestTimeout(t *testing.T) {
 
 // Benchmark tests for performance
 func BenchmarkIntegration_CreatePayment(b *testing.B) {
-	if config.GetEnv("IYZICO_TEST_ENABLED", "false") != "true" {
-		b.Skip("İyzico integration tests disabled")
-	}
-
 	iyzicoProvider := getTestProvider(&testing.T{})
 	request := getValidPaymentRequest()
 	ctx := context.Background()
