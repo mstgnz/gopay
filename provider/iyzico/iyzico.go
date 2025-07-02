@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -70,22 +71,22 @@ func NewProvider() provider.PaymentProvider {
 }
 
 // Initialize sets up the Iyzico payment provider with authentication credentials
-func (p *IyzicoProvider) Initialize(config map[string]string) error {
-	p.apiKey = config["apiKey"]
-	p.secretKey = config["secretKey"]
+func (p *IyzicoProvider) Initialize(conf map[string]string) error {
+	p.apiKey = conf["apiKey"]
+	p.secretKey = conf["secretKey"]
 
 	if p.apiKey == "" || p.secretKey == "" {
 		return errors.New("iyzico: apiKey and secretKey are required")
 	}
 
 	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := config["gopayBaseURL"]; ok && gopayBaseURL != "" {
+	if gopayBaseURL, ok := conf["gopayBaseURL"]; ok && gopayBaseURL != "" {
 		p.gopayBaseURL = gopayBaseURL
 	} else {
-		p.gopayBaseURL = "http://localhost:9999" // Default fallback
+		p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999") // Default fallback
 	}
 
-	environment := config["environment"]
+	environment := conf["environment"]
 	if environment != "production" && environment != "sandbox" {
 		environment = "sandbox" // Default to sandbox
 	}
