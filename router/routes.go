@@ -2,7 +2,6 @@ package router
 
 import (
 	"github.com/go-chi/chi/v5"
-	"github.com/mstgnz/gopay/infra/middle"
 	v1 "github.com/mstgnz/gopay/router/v1"
 
 	// Import for side-effect registration
@@ -15,10 +14,5 @@ import (
 )
 
 func Routes(r chi.Router) {
-	// Add authentication middleware to API routes
-	r.Use(middle.AuthMiddleware())
-
-	r.Route("/v1", func(r chi.Router) {
-		v1.Routes(r)
-	})
+	v1.Routes(r)
 }

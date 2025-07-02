@@ -15,18 +15,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
+	"github.com/mstgnz/gopay/handler"
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/opensearch"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/infra/validate"
-	"github.com/mstgnz/gopay/router"
+	"github.com/mstgnz/gopay/provider"
+	v1 "github.com/mstgnz/gopay/router/v1"
 )
 
 var (
 	PORT             string
 	openSearchLogger *opensearch.Logger
+	paymentHandler   *handler.PaymentHandler
 )
 
 func init() {
@@ -57,6 +61,34 @@ func init() {
 }
 
 func main() {
+	// Initialize global services for callback handlers
+	paymentService := provider.NewPaymentService()
+	providerConfig := config.NewProviderConfig()
+	providerConfig.LoadFromEnv()
+
+	// Register providers (similar to v1 init)
+	for _, providerName := range providerConfig.GetAvailableProviders() {
+		providerCfg, err := providerConfig.GetConfig(providerName)
+		if err != nil {
+			log.Printf("Failed to get configuration for provider %s: %v", providerName, err)
+			continue
+		}
+		providerCfg["gopayBaseURL"] = providerConfig.GetBaseURL()
+		if err := paymentService.AddProvider(providerName, providerCfg); err != nil {
+			log.Printf("Failed to register provider %s: %v", providerName, err)
+			continue
+		}
+	}
+
+	// Set default provider
+	availableProviders := providerConfig.GetAvailableProviders()
+	if len(availableProviders) > 0 {
+		paymentService.SetDefaultProvider(availableProviders[0])
+	}
+
+	// Initialize payment handler
+	validator := validator.New()
+	paymentHandler = handler.NewPaymentHandler(paymentService, validator)
 
 	// Chi Define Routes
 	r := chi.NewRouter()
@@ -127,12 +159,33 @@ func main() {
 		w.Write(scalarContent)
 	})
 
-	// router
-	router.Routes(r)
-
 	// Index
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(workDir, "public", "scalar.html"))
+	})
+
+	// Callback routes for payment providers (no auth required)
+	r.Route("/callback", func(r chi.Router) {
+		// General callback route (uses default provider)
+		r.HandleFunc("/", paymentHandler.HandleCallback)
+
+		// Provider-specific callback routes
+		r.HandleFunc("/{provider}", paymentHandler.HandleCallback)
+	})
+
+	// Webhook routes for payment notifications (no auth required)
+	r.Route("/webhooks", func(r chi.Router) {
+		// Provider-specific webhook routes
+		r.Post("/{provider}", paymentHandler.HandleWebhook)
+	})
+
+	// API routes with authentication
+	r.Route("/v1", func(r chi.Router) {
+		// Add authentication middleware only to API routes
+		r.Use(middle.AuthMiddleware())
+
+		// Import v1 routes
+		v1.Routes(r)
 	})
 
 	// Not Found

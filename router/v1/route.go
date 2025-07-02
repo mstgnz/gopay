@@ -94,21 +94,6 @@ func Routes(r chi.Router) {
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)
 	})
 
-	// Callback routes for 3D Secure payments
-	r.Route("/callback", func(r chi.Router) {
-		// General callback route (uses default provider)
-		r.HandleFunc("/", paymentHandler.HandleCallback)
-
-		// Provider-specific callback routes
-		r.HandleFunc("/{provider}", paymentHandler.HandleCallback)
-	})
-
-	// Webhook routes for payment notifications
-	r.Route("/webhooks", func(r chi.Router) {
-		// Provider-specific webhook routes
-		r.Post("/{provider}", paymentHandler.HandleWebhook)
-	})
-
 	// Stats endpoint for logging statistics (handled by middleware)
 	// GET /v1/stats?provider=iyzico&hours=24
 }
