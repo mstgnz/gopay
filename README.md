@@ -51,13 +51,13 @@ No code changes needed in your application - just change the provider parameter!
 
 ## Supported Payment Providers
 
-| Provider    | Status              | Features                           | Documentation                              |
-| ----------- | ------------------- | ---------------------------------- | ------------------------------------------ |
-| **İyzico**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [İyzico Guide](gateway/iyzico/README.md)   |
-| **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](gateway/ozanpay/README.md) |
-| **Stripe**  | 🚧 Coming Soon      | -                                  | -                                          |
-| **PayTR**   | 📋 Planned          | -                                  | -                                          |
-| **Paycell** | 📋 Planned          | -                                  | -                                          |
+| Provider    | Status              | Features                           | Documentation                               |
+| ----------- | ------------------- | ---------------------------------- | ------------------------------------------- |
+| **İyzico**  | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [İyzico Guide](provider/iyzico/README.md)   |
+| **OzanPay** | ✅ Production Ready | Payment, 3D Secure, Refund         | [OzanPay Guide](provider/ozanpay/README.md) |
+| **Paycell** | ✅ Production Ready | Payment, 3D Secure, Refund, Cancel | [Paycell Guide](provider/paycell/README.md) |
+| **Stripe**  | 🚧 Coming Soon      | -                                  | -                                           |
+| **PayTR**   | 📋 Planned          | -                                  | -                                           |
 
 ## Quick Start
 
@@ -193,8 +193,9 @@ response, err := paymentService.CreatePayment(ctx, "iyzico", paymentRequest)
 
 Each payment provider has its own comprehensive documentation:
 
-- **[İyzico Integration Guide](gateway/iyzico/README.md)** - Complete İyzico setup, API examples, test cards, integration tests
-- **[OzanPay Integration Guide](gateway/ozanpay/README.md)** - OzanPay configuration and usage examples
+- **[İyzico Integration Guide](provider/iyzico/README.md)** - Complete İyzico setup, API examples, test cards, integration tests
+- **[OzanPay Integration Guide](provider/ozanpay/README.md)** - OzanPay configuration and usage examples
+- **[Paycell Integration Guide](provider/paycell/README.md)** - Paycell integration with REST API support
 
 ## OpenSearch Logging
 
