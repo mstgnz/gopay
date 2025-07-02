@@ -9,18 +9,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/mstgnz/gopay/gateway"
 	"github.com/mstgnz/gopay/infra/response"
+	"github.com/mstgnz/gopay/provider"
 )
 
 // PaymentHandler handles payment related HTTP requests
 type PaymentHandler struct {
-	paymentService *gateway.PaymentService
+	paymentService *provider.PaymentService
 	validate       *validator.Validate
 }
 
 // NewPaymentHandler creates a new payment handler
-func NewPaymentHandler(paymentService *gateway.PaymentService, validate *validator.Validate) *PaymentHandler {
+func NewPaymentHandler(paymentService *provider.PaymentService, validate *validator.Validate) *PaymentHandler {
 	return &PaymentHandler{
 		paymentService: paymentService,
 		validate:       validate,
@@ -33,7 +33,7 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 
 	// Parse the payment request
-	var req gateway.PaymentRequest
+	var req provider.PaymentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
 		return
@@ -127,7 +127,7 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	providerName := chi.URLParam(r, "provider")
 
 	// Parse refund request
-	var req gateway.RefundRequest
+	var req provider.RefundRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
 		return
@@ -189,7 +189,19 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	// Complete 3D payment
 	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, paymentID, conversationID, callbackData)
 	if err != nil {
-		// On error, redirect to the error URL if provided
+		// Check if we have an original callback URL to redirect to
+		if originalCallbackURL := r.URL.Query().Get("originalCallbackUrl"); originalCallbackURL != "" {
+			// Extract error URL from original callback URL if provided
+			if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
+				http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, err.Error()), http.StatusFound)
+				return
+			}
+			// Redirect to original callback URL with error
+			http.Redirect(w, r, fmt.Sprintf("%s?success=false&error=%s", originalCallbackURL, err.Error()), http.StatusFound)
+			return
+		}
+
+		// Legacy: On error, redirect to the error URL if provided
 		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
 			http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, err.Error()), http.StatusFound)
 			return
@@ -198,7 +210,32 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// On success, redirect to success URL if provided
+	// Check if we have an original callback URL to redirect to
+	if originalCallbackURL := r.URL.Query().Get("originalCallbackUrl"); originalCallbackURL != "" {
+		if resp.Success {
+			// Extract success URL from original callback URL if provided
+			if successURL := r.URL.Query().Get("successUrl"); successURL != "" {
+				redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s", successURL, resp.PaymentID, resp.Status)
+				http.Redirect(w, r, redirectURL, http.StatusFound)
+				return
+			}
+			// Redirect to original callback URL with success
+			redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s", originalCallbackURL, resp.PaymentID, resp.Status)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		} else {
+			// Extract error URL from original callback URL if provided
+			if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
+				http.Redirect(w, r, fmt.Sprintf("%s?error=%s", errorURL, resp.Message), http.StatusFound)
+				return
+			}
+			// Redirect to original callback URL with error
+			http.Redirect(w, r, fmt.Sprintf("%s?success=false&error=%s", originalCallbackURL, resp.Message), http.StatusFound)
+			return
+		}
+	}
+
+	// Legacy: On success, redirect to success URL if provided
 	if resp.Success && r.URL.Query().Get("successUrl") != "" {
 		successURL := r.URL.Query().Get("successUrl")
 		redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s", successURL, resp.PaymentID, resp.Status)
