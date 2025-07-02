@@ -76,18 +76,15 @@ func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			rl.mu.Lock()
-			now := time.Now()
-			for ip, v := range rl.visitors {
-				if now.Sub(v.lastReset) > rl.window*2 {
-					delete(rl.visitors, ip)
-				}
+	for range ticker.C {
+		rl.mu.Lock()
+		now := time.Now()
+		for ip, v := range rl.visitors {
+			if now.Sub(v.lastReset) > rl.window*2 {
+				delete(rl.visitors, ip)
 			}
-			rl.mu.Unlock()
 		}
+		rl.mu.Unlock()
 	}
 }
 
