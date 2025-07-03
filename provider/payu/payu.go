@@ -434,7 +434,12 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 		payuReq["successUrl"] = request.CallbackURL
 		payuReq["failureUrl"] = request.CallbackURL
 		payuReq["cancelUrl"] = request.CallbackURL
-		payuReq["notificationUrl"] = fmt.Sprintf("%s/v1/callback/payu", p.gopayBaseURL)
+		// Add tenant ID to webhook URL for proper tenant identification
+		notificationURL := fmt.Sprintf("%s/v1/webhooks/payu", p.gopayBaseURL)
+		if request.TenantID != "" {
+			notificationURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+		}
+		payuReq["notificationUrl"] = notificationURL
 	}
 
 	// Add customer info

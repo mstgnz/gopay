@@ -77,6 +77,7 @@ type PaymentRequest struct {
 	ClientUserAgent  string   `json:"clientUserAgent,omitempty"`
 	MetaData         string   `json:"metaData,omitempty"`
 	RedirectURL      string   `json:"redirectUrl,omitempty"`
+	TenantID         string   `json:"tenantId,omitempty"` // Multi-tenant support
 }
 
 // PaymentResponse contains the result of a payment request

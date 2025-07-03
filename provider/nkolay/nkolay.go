@@ -388,6 +388,17 @@ func (p *NkolayProvider) mapToNkolayRequest(request provider.PaymentRequest, is3
 		callbackURL := request.CallbackURL
 		if callbackURL == "" {
 			callbackURL = p.gopayBaseURL + "/v1/callback/nkolay"
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != "" {
+				callbackURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+			}
+		} else {
+			// Build GoPay's own callback URL with user's original callback URL as parameter
+			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/nkolay?originalCallbackUrl=%s", p.gopayBaseURL, callbackURL)
+			if request.TenantID != "" {
+				gopayCallbackURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
+			}
+			callbackURL = gopayCallbackURL
 		}
 		nkolayReq["callbackUrl"] = callbackURL
 		nkolayReq["use3D"] = true

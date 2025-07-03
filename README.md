@@ -42,16 +42,48 @@ graph TD
     style I fill:#fff9c4
 ```
 
+```mermaid
+graph TD
+    A["APP1<br/>X-Tenant-ID: APP1<br/>Provider: iyzico"] --> B["GoPay<br/>ProcessPayment"]
+    B --> C["Provider: APP1_iyzico<br/>Config"]
+    C --> D["İyzico<br/>Payment Request"]
+    D --> E["3D Secure<br/>Bank Page"]
+    E --> F["İyzico Callback<br/>to GoPay"]
+    F --> G["GoPay Callback Handler<br/>/callback/iyzico?originalCallbackUrl=...&tenantId=APP1"]
+    G --> H["Provider: APP1_iyzico<br/>Complete3D"]
+    H --> I["APP1 Redirect<br/>originalCallbackUrl"]
+
+    J["İyzico Webhook"] --> K["GoPay Webhook Handler<br/>/webhooks/iyzico?tenantId=APP1"]
+    K --> L["Provider: APP1_iyzico<br/>ValidateWebhook"]
+    L --> M["OpenSearch<br/>gopay-app1-iyzico-logs"]
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#ffebee
+    style G fill:#e8f5e8
+    style I fill:#e1f5fe
+    style K fill:#fff9c4
+    style M fill:#e8f5e8
+```
+
 ### 📋 Step-by-Step Flow:
 
-1. **App1** sends payment request to **GoPay**
-2. **GoPay** forwards request to chosen **Provider** (İyzico, Stripe, etc.)
+1. **App1** sends payment request to **GoPay** with `X-Tenant-ID` header
+2. **GoPay** forwards request to chosen **Provider** (İyzico, Stripe, etc.) using tenant-specific configuration
 3. **Provider** returns 3D Secure URL for user authentication
 4. **User** completes 3D authentication on provider's page
-5. **Provider** sends callback to **GoPay** with payment result
-6. **GoPay** processes callback and redirects user back to **App1**
-7. **Provider** sends webhook to **GoPay** for final confirmation
-8. **GoPay** logs everything to **OpenSearch** for analytics
+5. **Provider** sends callback to **GoPay** with payment result (includes tenant ID in URL)
+6. **GoPay** processes callback using correct tenant configuration and redirects user back to **App1**
+7. **Provider** sends webhook to **GoPay** for final confirmation (includes tenant ID in URL)
+8. **GoPay** logs everything to **OpenSearch** in tenant-specific indexes for analytics
+
+### 🔧 **Multi-Tenant Enhancements:**
+
+- ✅ **Tenant ID Preservation**: Callback and webhook URLs include `tenantId` parameter for reliable tenant identification
+- ✅ **Query Parameter Priority**: Callback handlers check query parameters first, then headers for maximum reliability
+- ✅ **Tenant-Specific Logging**: OpenSearch indexes are automatically organized by tenant and provider (`gopay-{tenantId}-{provider}-logs`)
+- ✅ **Enhanced Security**: Each tenant's payments are completely isolated using tenant-specific provider configurations
 
 ## 🌟 Key Features
 

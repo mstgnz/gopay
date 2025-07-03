@@ -328,10 +328,19 @@ func (p *StripeProvider) mapToStripePaymentIntentRequest(request provider.Paymen
 
 		// Add return URL for 3D Secure
 		if request.CallbackURL != "" {
-			intentData["return_url"] = fmt.Sprintf("%s/v1/callback/stripe?originalCallbackUrl=%s",
+			returnURL := fmt.Sprintf("%s/v1/callback/stripe?originalCallbackUrl=%s",
 				p.gopayBaseURL, request.CallbackURL)
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != "" {
+				returnURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
+			}
+			intentData["return_url"] = returnURL
 		} else {
-			intentData["return_url"] = fmt.Sprintf("%s/v1/callback/stripe", p.gopayBaseURL)
+			returnURL := fmt.Sprintf("%s/v1/callback/stripe", p.gopayBaseURL)
+			if request.TenantID != "" {
+				returnURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+			}
+			intentData["return_url"] = returnURL
 		}
 	} else {
 		intentData["payment_method_options"] = map[string]any{

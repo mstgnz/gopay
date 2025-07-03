@@ -352,7 +352,12 @@ func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, is3
 
 	// Add redirect and notification URLs
 	if request.CallbackURL != "" {
-		paparaReq["notificationUrl"] = fmt.Sprintf("%s/v1/callback/papara", p.gopayBaseURL)
+		// Add tenant ID to webhook URL for proper tenant identification
+		notificationURL := fmt.Sprintf("%s/v1/webhooks/papara", p.gopayBaseURL)
+		if request.TenantID != "" {
+			notificationURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+		}
+		paparaReq["notificationUrl"] = notificationURL
 		paparaReq["redirectUrl"] = request.CallbackURL
 	}
 

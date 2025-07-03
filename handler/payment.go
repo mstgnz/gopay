@@ -58,6 +58,9 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
+	// Add tenant ID to request for callback URL generation
+	req.TenantID = tenantID
+
 	// Process the payment
 	resp, err := h.paymentService.CreatePayment(ctx, providerName, req)
 	if err != nil {
@@ -189,8 +192,13 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from query parameter first, then from header (for better callback handling)
+	tenantID := r.URL.Query().Get("tenantId")
+	if tenantID == "" {
+		tenantID = r.Header.Get("X-Tenant-ID")
+	}
+
+	// Construct tenant-specific provider name if tenant ID is present
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
@@ -332,8 +340,13 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from query parameter first, then from header (for webhook reliability)
+	tenantID := r.URL.Query().Get("tenantId")
+	if tenantID == "" {
+		tenantID = r.Header.Get("X-Tenant-ID")
+	}
+
+	// Construct tenant-specific provider name if tenant ID is present
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
