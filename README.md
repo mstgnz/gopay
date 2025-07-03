@@ -274,7 +274,27 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project uses a **dual license** approach:
+
+### 🏗️ **Full Project License (MPL 2.0)**
+
+- **File**: [LICENSE](LICENSE) - Mozilla Public License 2.0
+- **Applies to**: Complete project, forks, distributions
+- ✅ **Free to use** in personal and commercial projects
+- ✅ **Contributions welcome** via pull requests
+- ✅ **Modification allowed** with same license requirements
+- ❌ **Redistribution** must maintain MPL 2.0 license
+- ❌ **Proprietary forks** are not permitted
+
+### 📦 **Go Package License (MIT)**
+
+- **File**: [LICENSE.pkggo](LICENSE.pkggo) - MIT License
+- **Applies to**: Go package usage via `go get` and pkg.go.dev
+- ✅ **Liberal usage** as a Go library/dependency
+- ✅ **Commercial integration** without restrictions
+- ✅ **Compatible** with Go ecosystem standards
+
+> **💡 Summary**: Use GoPay as a **Go library** → MIT applies. Fork/distribute the **full project** → MPL 2.0 applies.
 
 ## 🆘 Support
 
