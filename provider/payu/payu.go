@@ -520,8 +520,11 @@ func (p *PayUProvider) mapToRefundRequest(request provider.RefundRequest) map[st
 
 // mapToPaymentResponse maps PayU response to generic payment response
 func (p *PayUProvider) mapToPaymentResponse(resp PayUResponse) *provider.PaymentResponse {
+	// Determine success: either status is success, or it's pending with redirect URL (3D Secure)
+	isSuccess := resp.Status == statusSuccess || (resp.Status == statusPending && resp.RedirectURL != "")
+
 	paymentResp := &provider.PaymentResponse{
-		Success:          resp.Status == statusSuccess,
+		Success:          isSuccess,
 		PaymentID:        resp.PaymentID,
 		TransactionID:    resp.TransactionID,
 		Amount:           resp.Amount,

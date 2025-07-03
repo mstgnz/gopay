@@ -12,13 +12,21 @@ import (
 	"github.com/mstgnz/gopay/infra/response"
 )
 
+// LoggerInterface defines the interface for logging operations
+type LoggerInterface interface {
+	SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]opensearch.PaymentLog, error)
+	GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]opensearch.PaymentLog, error)
+	GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]opensearch.PaymentLog, error)
+	GetProviderStats(ctx context.Context, tenantID, provider string, hours int) (map[string]any, error)
+}
+
 // LogsHandler handles logs related HTTP requests
 type LogsHandler struct {
-	logger *opensearch.Logger
+	logger LoggerInterface
 }
 
 // NewLogsHandler creates a new logs handler
-func NewLogsHandler(logger *opensearch.Logger) *LogsHandler {
+func NewLogsHandler(logger LoggerInterface) *LogsHandler {
 	return &LogsHandler{
 		logger: logger,
 	}

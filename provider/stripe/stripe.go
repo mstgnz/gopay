@@ -429,7 +429,10 @@ func (p *StripeProvider) mapToPaymentResponse(response map[string]any, statusCod
 		paymentResp.PaymentID = id
 	}
 
-	if amount, ok := response["amount"].(float64); ok {
+	// Handle amount (can be int64 or float64)
+	if amount, ok := response["amount"].(int64); ok {
+		paymentResp.Amount = float64(amount) / 100 // Convert from cents
+	} else if amount, ok := response["amount"].(float64); ok {
 		paymentResp.Amount = amount / 100 // Convert from cents
 	}
 

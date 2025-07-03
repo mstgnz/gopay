@@ -400,8 +400,11 @@ func TestIyzicoProvider_MapToIyzicoPaymentRequest(t *testing.T) {
 			request: request,
 			is3D:    true,
 			validate: func(t *testing.T, result map[string]any) {
-				if result["callbackUrl"] != "https://example.com/callback" {
-					t.Errorf("Expected callbackUrl 'https://example.com/callback', got %v", result["callbackUrl"])
+				// Updated to expect GoPay callback URL format with originalCallbackUrl parameter
+				expectedPattern := "/v1/callback/iyzico?originalCallbackUrl=https://example.com/callback"
+				callbackURL := result["callbackUrl"].(string)
+				if !strings.Contains(callbackURL, expectedPattern) {
+					t.Errorf("Expected callbackUrl to contain '%s', got %v", expectedPattern, callbackURL)
 				}
 			},
 		},

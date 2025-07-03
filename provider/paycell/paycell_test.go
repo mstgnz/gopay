@@ -446,12 +446,19 @@ func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 					t.Error("Expected secure3d to be true for 3D payments")
 				}
 
-				expectedCallbackURL := tt.request.CallbackURL
-				if expectedCallbackURL == "" {
-					expectedCallbackURL = p.gopayBaseURL + "/v1/callback/paycell"
-				}
-				if result["callbackUrl"] != expectedCallbackURL {
-					t.Errorf("Expected callbackUrl '%s', got '%s'", expectedCallbackURL, result["callbackUrl"])
+				callbackURL := result["callbackUrl"].(string)
+				if tt.request.CallbackURL != "" {
+					// Expect GoPay callback URL format with originalCallbackUrl parameter
+					expectedPattern := "/v1/callback/paycell?originalCallbackUrl=" + tt.request.CallbackURL
+					if !strings.Contains(callbackURL, expectedPattern) {
+						t.Errorf("Expected callbackUrl to contain '%s', got '%s'", expectedPattern, callbackURL)
+					}
+				} else {
+					// Expect direct GoPay callback URL
+					expectedPattern := "/v1/callback/paycell"
+					if !strings.Contains(callbackURL, expectedPattern) {
+						t.Errorf("Expected callbackUrl to contain '%s', got '%s'", expectedPattern, callbackURL)
+					}
 				}
 			} else {
 				if _, exists := result["secure3d"]; exists {

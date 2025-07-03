@@ -194,7 +194,7 @@ func TestPaparaProvider_mapToPaparaRequest(t *testing.T) {
 		t.Errorf("Expected conversationId %v, got %v", request.ConversationID, result["conversationId"])
 	}
 
-	expectedNotificationURL := "http://localhost:9999/v1/callback/papara"
+	expectedNotificationURL := "http://localhost:9999/v1/webhooks/papara"
 	if result["notificationUrl"] != expectedNotificationURL {
 		t.Errorf("Expected notificationUrl %v, got %v", expectedNotificationURL, result["notificationUrl"])
 	}

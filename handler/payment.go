@@ -16,14 +16,24 @@ import (
 	"github.com/mstgnz/gopay/provider"
 )
 
+// PaymentServiceInterface defines the interface for payment operations
+type PaymentServiceInterface interface {
+	CreatePayment(ctx context.Context, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
+	GetPaymentStatus(ctx context.Context, providerName, paymentID string) (*provider.PaymentResponse, error)
+	CancelPayment(ctx context.Context, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
+	RefundPayment(ctx context.Context, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
+	Complete3DPayment(ctx context.Context, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
+	ValidateWebhook(ctx context.Context, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
+}
+
 // PaymentHandler handles payment related HTTP requests
 type PaymentHandler struct {
-	paymentService *provider.PaymentService
+	paymentService PaymentServiceInterface
 	validate       *validator.Validate
 }
 
 // NewPaymentHandler creates a new payment handler
-func NewPaymentHandler(paymentService *provider.PaymentService, validate *validator.Validate) *PaymentHandler {
+func NewPaymentHandler(paymentService PaymentServiceInterface, validate *validator.Validate) *PaymentHandler {
 	return &PaymentHandler{
 		paymentService: paymentService,
 		validate:       validate,

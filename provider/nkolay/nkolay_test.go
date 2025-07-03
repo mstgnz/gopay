@@ -234,7 +234,7 @@ func TestNkolayProvider_ValidatePaymentRequest(t *testing.T) {
 			}(),
 			is3D:        true,
 			expectError: true,
-			errorMsg:    "callback URL is required for 3D secure payments",
+			errorMsg:    "callback URL is required for 3D payments",
 		},
 	}
 
