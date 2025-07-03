@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -306,15 +306,17 @@ func SanitizeForLog(data string) string {
 
 	result := data
 	for _, field := range sensitiveFields {
-		// Simple regex replacement for JSON fields
+		// Regex patterns for different formats
 		patterns := []string{
-			fmt.Sprintf(`"%s"\s*:\s*"[^"]*"`, field),
-			fmt.Sprintf(`"%s"\s*:\s*'[^']*'`, field),
-			fmt.Sprintf(`%s=\w+`, field),
+			fmt.Sprintf(`"%s"\s*:\s*"[^"]*"`, field), // JSON format with double quotes
+			fmt.Sprintf(`"%s"\s*:\s*'[^']*'`, field), // JSON format with single quotes
+			fmt.Sprintf(`%s=\w+`, field),             // URL parameter format
 		}
 
 		for _, pattern := range patterns {
-			result = strings.ReplaceAll(result, pattern, fmt.Sprintf(`"%s":"***REDACTED***"`, field))
+			// Use regex.MustCompile for pattern matching and replacement
+			re := regexp.MustCompile(pattern)
+			result = re.ReplaceAllString(result, fmt.Sprintf(`"%s":"***REDACTED***"`, field))
 		}
 	}
 
