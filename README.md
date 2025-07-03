@@ -300,8 +300,8 @@ This project uses a **dual license** approach:
 
 - **📖 Documentation**: Check the docs links above
 - **🐛 Bug Reports**: [GitHub Issues](https://github.com/mstgnz/gopay/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/mstgnz/gopay/discussions)
-- **📧 Contact**: Create an issue for questions
+- **❓ Questions**: Create an issue for questions and help
+- **💡 Feature Requests**: Submit via GitHub Issues
 
 ---
 
