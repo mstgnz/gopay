@@ -23,27 +23,6 @@ GoPay is a centralized payment gateway that abstracts multiple payment providers
 
 ```mermaid
 graph TD
-    A["App1<br/>Payment Request"] --> B["GoPay<br/>/v1/payments/{provider}"]
-    B --> C["Provider<br/>(İyzico, Stripe, etc.)"]
-    C --> D["3D Secure<br/>Authentication"]
-    D --> E["Provider Callback<br/>to GoPay"]
-    E --> F["GoPay Callback Handler<br/>/callback/{provider}"]
-    F --> G["App1 Redirect<br/>originalCallbackUrl"]
-
-    H["Provider<br/>Webhook"] --> I["GoPay Webhook Handler<br/>/webhooks/{provider}"]
-    I --> J["OpenSearch<br/>Logging"]
-
-    style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style C fill:#fff3e0
-    style D fill:#ffebee
-    style F fill:#e8f5e8
-    style G fill:#e1f5fe
-    style I fill:#fff9c4
-```
-
-```mermaid
-graph TD
     A["APP1<br/>X-Tenant-ID: APP1<br/>Provider: iyzico"] --> B["GoPay<br/>ProcessPayment"]
     B --> C["Provider: APP1_iyzico<br/>Config"]
     C --> D["İyzico<br/>Payment Request"]
