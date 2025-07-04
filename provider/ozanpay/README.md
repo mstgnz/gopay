@@ -2,6 +2,8 @@
 
 OzanPay payment gateway integration for GoPay library. This provider supports all major payment operations including 3D Secure payments, refunds, cancellations, and webhook validation.
 
+[Ozanpay API Documentation](https://docs.ozan.com/)
+
 ## Features
 
 - ✅ **Standard Card Payments** - Direct card payments without 3D Secure

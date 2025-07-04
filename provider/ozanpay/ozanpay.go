@@ -2,7 +2,6 @@ package ozanpay
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,31 +17,25 @@ import (
 )
 
 const (
-	// API URLs
-	apiSandboxURL    = "https://sandbox-api.ozan.com"
-	apiProductionURL = "https://api.ozan.com"
+	// API URLs - Updated to match documentation
+	apiSandboxURL    = "https://api-sandbox.ozan.com/api/v3"
+	apiProductionURL = "https://api.ozan.com/api/v3"
 
-	// API Endpoints
-	endpointPayment       = "/api/v1/payments"
-	endpointRefund        = "/api/v1/refunds"
-	endpointPaymentStatus = "/api/v1/payments/%s" // %s will be replaced with paymentId
+	// API Endpoints - Fixed to match documentation
+	endpointPurchase = "/purchase"
+	endpointRefund   = "/refund"
+	endpointStatus   = "/status"
+	endpointCancel   = "/cancel"
+	endpointCapture  = "/capture"
 
-	// OzanPay Status Codes
-	statusApproved   = "APPROVED"
-	statusAuthorized = "AUTHORIZED"
-	statusPending    = "PENDING"
-	statusProcessing = "PROCESSING"
-	statusDeclined   = "DECLINED"
-	statusFailed     = "FAILED"
-	statusCancelled  = "CANCELLED"
-	statusRefunded   = "REFUNDED"
-
-	// OzanPay Error Codes
-	errorCodeInsufficientFunds = "INSUFFICIENT_FUNDS"
-	errorCodeInvalidCard       = "INVALID_CARD"
-	errorCodeExpiredCard       = "EXPIRED_CARD"
-	errorCodeFraudulent        = "FRAUDULENT_TRANSACTION"
-	errorCodeDeclined          = "CARD_DECLINED"
+	// OzanPay Status Codes - Updated to match documentation
+	statusApproved  = "APPROVED"
+	statusPending   = "PENDING"
+	statusWaiting   = "WAITING"
+	statusDeclined  = "DECLINED"
+	statusFailed    = "FAILED"
+	statusCancelled = "CANCELLED"
+	statusRefunded  = "REFUNDED"
 
 	// Default Values
 	defaultTimeout = 30 * time.Second
@@ -51,8 +44,8 @@ const (
 // OzanPayProvider implements the provider.PaymentProvider interface for OzanPay
 type OzanPayProvider struct {
 	apiKey       string
-	secretKey    string
-	merchantID   string
+	secretKey    string // Used for checksum verification
+	providerKey  string // Provider API Key from OzanPay
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
@@ -72,10 +65,10 @@ func NewProvider() provider.PaymentProvider {
 func (p *OzanPayProvider) Initialize(config map[string]string) error {
 	p.apiKey = config["apiKey"]
 	p.secretKey = config["secretKey"]
-	p.merchantID = config["merchantId"]
+	p.providerKey = config["providerKey"]
 
-	if p.apiKey == "" || p.secretKey == "" || p.merchantID == "" {
-		return errors.New("ozanpay: apiKey, secretKey and merchantId are required")
+	if p.apiKey == "" {
+		return errors.New("ozanpay: apiKey is required")
 	}
 
 	// Set GoPay base URL for callbacks
@@ -101,8 +94,6 @@ func (p *OzanPayProvider) CreatePayment(ctx context.Context, request provider.Pa
 		return nil, fmt.Errorf("ozanpay: invalid payment request: %w", err)
 	}
 
-	// OzanPay doesn't differentiate between 3D and non-3D in the initial API call
-	// Instead it decides based on the card and the payment amount
 	return p.processPayment(ctx, request, false)
 }
 
@@ -112,7 +103,6 @@ func (p *OzanPayProvider) Create3DPayment(ctx context.Context, request provider.
 		return nil, fmt.Errorf("ozanpay: invalid 3D payment request: %w", err)
 	}
 
-	// Force 3D secure for this payment
 	return p.processPayment(ctx, request, true)
 }
 
@@ -122,8 +112,8 @@ func (p *OzanPayProvider) Complete3DPayment(ctx context.Context, paymentID strin
 		return nil, errors.New("ozanpay: paymentID is required for 3D completion")
 	}
 
-	// In OzanPay, we don't need to complete the 3D payment with a separate call
-	// The payment status should be checked instead
+	// For OzanPay, 3D completion is handled via status check
+	// The payment should be completed automatically after 3D authentication
 	return p.GetPaymentStatus(ctx, paymentID)
 }
 
@@ -133,11 +123,14 @@ func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		return nil, errors.New("ozanpay: paymentID is required")
 	}
 
-	// Format the endpoint with the payment ID
-	endpoint := fmt.Sprintf(endpointPaymentStatus, paymentID)
+	// Prepare status request according to documentation
+	statusData := map[string]any{
+		"apiKey":        p.apiKey,
+		"transactionId": paymentID,
+	}
 
 	// Send request to get payment status
-	response, err := p.sendRequest(ctx, endpoint, http.MethodGet, nil)
+	response, err := p.sendRequest(ctx, endpointStatus, http.MethodPost, statusData)
 	if err != nil {
 		return nil, err
 	}
@@ -146,44 +139,45 @@ func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, paymentID string
 	return p.mapToPaymentResponse(response)
 }
 
-// CancelPayment cancels a payment
+// CancelPayment cancels a payment using OzanPay's cancel endpoint
 func (p *OzanPayProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
 	if paymentID == "" {
 		return nil, errors.New("ozanpay: paymentID is required")
 	}
 
-	// OzanPay doesn't have a specific cancel endpoint, it's handled through the refund endpoint
-	// so we'll treat this as a full refund
-	refundReq := provider.RefundRequest{
-		PaymentID: paymentID,
-		Reason:    reason,
+	// Prepare cancel request according to documentation
+	cancelData := map[string]any{
+		"apiKey":        p.apiKey,
+		"transactionId": paymentID,
 	}
 
-	// Get payment details first to determine the amount
-	paymentResp, err := p.GetPaymentStatus(ctx, paymentID)
+	// Send cancel request
+	response, err := p.sendRequest(ctx, endpointCancel, http.MethodPost, cancelData)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set the refund amount to the full payment amount
-	refundReq.RefundAmount = paymentResp.Amount
-	refundReq.Currency = paymentResp.Currency
-
-	// Process the refund
-	refundResp, err := p.RefundPayment(ctx, refundReq)
-	if err != nil {
-		return nil, err
+	// Convert response to payment response
+	paymentResp := &provider.PaymentResponse{
+		Success:          response["status"] == statusApproved,
+		Status:           provider.StatusCancelled,
+		PaymentID:        paymentID,
+		ProviderResponse: response,
+		SystemTime:       time.Now(),
 	}
 
-	// Convert the refund response to a payment response
-	paymentResp = &provider.PaymentResponse{
-		Success:    refundResp.Success,
-		Status:     provider.StatusCancelled,
-		Message:    refundResp.Message,
-		ErrorCode:  refundResp.ErrorCode,
-		PaymentID:  paymentID,
-		Amount:     refundResp.RefundAmount,
-		SystemTime: refundResp.SystemTime,
+	if response["status"] == statusApproved {
+		paymentResp.Message = "Payment cancelled successfully"
+	} else {
+		paymentResp.Success = false
+		if errMsg, ok := response["message"].(string); ok {
+			paymentResp.Message = errMsg
+		} else {
+			paymentResp.Message = "Cancellation failed"
+		}
+		if errCode, ok := response["code"].(string); ok {
+			paymentResp.ErrorCode = errCode
+		}
 	}
 
 	return paymentResp, nil
@@ -195,17 +189,13 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 		return nil, errors.New("ozanpay: paymentID is required for refund")
 	}
 
-	// Prepare refund request data for OzanPay
+	// Prepare refund request data according to documentation
 	refundData := map[string]any{
-		"parentId":    request.PaymentID,
-		"amount":      int64(request.RefundAmount * 100), // Convert to minor units
-		"description": request.Description,
-		"reason":      request.Reason,
-		"metadata":    fmt.Sprintf(`{"conversationId":"%s"}`, request.ConversationID),
-	}
-
-	if request.ConversationID == "" {
-		refundData["metadata"] = fmt.Sprintf(`{"conversationId":"%s"}`, uuid.New().String())
+		"apiKey":        p.apiKey,
+		"transactionId": request.PaymentID,
+		"referenceNo":   request.PaymentID,                 // Use payment ID as reference
+		"amount":        int64(request.RefundAmount * 100), // Convert to minor units (cents)
+		"currency":      request.Currency,
 	}
 
 	// Send refund request
@@ -223,20 +213,20 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 		RawResponse:  response,
 	}
 
-	// Extract refund ID
-	if refundID, ok := response["id"].(string); ok {
-		refundResp.RefundID = refundID
+	// Extract refund ID (transaction ID from response)
+	if transactionID, ok := response["transactionId"].(string); ok {
+		refundResp.RefundID = transactionID
 	}
 
 	// Handle error responses
 	if response["status"] != statusApproved {
 		refundResp.Success = false
-		if errMsg, ok := response["errorMessage"].(string); ok && errMsg != "" {
+		if errMsg, ok := response["message"].(string); ok && errMsg != "" {
 			refundResp.Message = errMsg
 		} else {
 			refundResp.Message = "Refund failed"
 		}
-		if errCode, ok := response["errorCode"].(string); ok && errCode != "" {
+		if errCode, ok := response["code"].(string); ok && errCode != "" {
 			refundResp.ErrorCode = errCode
 		}
 	} else {
@@ -247,38 +237,67 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 	return refundResp, nil
 }
 
-// ValidateWebhook validates an incoming webhook notification
+// ValidateWebhook validates an incoming webhook notification using OzanPay checksum verification
 func (p *OzanPayProvider) ValidateWebhook(ctx context.Context, data map[string]string, headers map[string]string) (bool, map[string]string, error) {
-	// Check for signature header
-	signature, ok := headers["X-Ozan-Signature"]
+	// Check for checksum in the data (OzanPay sends checksum as part of response data)
+	checksumFromOzan, ok := data["checksum"]
 	if !ok {
-		return false, nil, errors.New("missing X-Ozan-Signature header")
+		return false, nil, errors.New("missing checksum in webhook data")
 	}
 
-	// Get the raw payload as JSON string
-	rawJson, err := json.Marshal(data)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to marshal webhook data: %w", err)
+	// Extract required fields for checksum verification according to documentation
+	referenceNo, ok := data["referenceNo"]
+	if !ok {
+		return false, nil, errors.New("missing referenceNo in webhook data")
 	}
 
-	// Calculate expected signature
-	h := hmac.New(sha256.New, []byte(p.secretKey))
-	h.Write(rawJson)
-	expectedSignature := hex.EncodeToString(h.Sum(nil))
+	amount, ok := data["amount"]
+	if !ok {
+		return false, nil, errors.New("missing amount in webhook data")
+	}
 
-	// Compare signatures
-	if signature != expectedSignature {
-		return false, nil, errors.New("invalid webhook signature")
+	currency, ok := data["currency"]
+	if !ok {
+		return false, nil, errors.New("missing currency in webhook data")
+	}
+
+	status, ok := data["status"]
+	if !ok {
+		return false, nil, errors.New("missing status in webhook data")
+	}
+
+	message, ok := data["message"]
+	if !ok {
+		return false, nil, errors.New("missing message in webhook data")
+	}
+
+	code, ok := data["code"]
+	if !ok {
+		return false, nil, errors.New("missing code in webhook data")
+	}
+
+	// Generate checksum according to OzanPay documentation
+	// toString = referenceNo + amount + currency + status + message + code + secretKey
+	toString := referenceNo + amount + currency + status + message + code + p.secretKey
+
+	// Calculate SHA256 hash
+	hash := sha256.Sum256([]byte(toString))
+	expectedChecksum := hex.EncodeToString(hash[:])
+
+	// Compare checksums
+	if checksumFromOzan != expectedChecksum {
+		return false, nil, errors.New("invalid webhook checksum")
 	}
 
 	// Extract payment details
 	result := make(map[string]string)
-	if paymentID, ok := data["id"]; ok {
-		result["paymentId"] = paymentID
+	if transactionID, ok := data["transactionId"]; ok {
+		result["paymentId"] = transactionID
 	}
-	if status, ok := data["status"]; ok {
-		result["status"] = status
-	}
+	result["status"] = status
+	result["referenceNo"] = referenceNo
+	result["amount"] = amount
+	result["currency"] = currency
 
 	return true, result, nil
 }
@@ -326,7 +345,7 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 	paymentData := p.mapToOzanPayRequest(request, force3D)
 
 	// Send payment request
-	response, err := p.sendRequest(ctx, endpointPayment, http.MethodPost, paymentData)
+	response, err := p.sendRequest(ctx, endpointPurchase, http.MethodPost, paymentData)
 	if err != nil {
 		return nil, err
 	}
@@ -335,58 +354,48 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 	return p.mapToPaymentResponse(response)
 }
 
-// Helper method to map our common request to OzanPay format
+// Helper method to map our common request to OzanPay format according to documentation
 func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, force3D bool) map[string]any {
-	// Format amount - OzanPay expects amount in minor units (cents, pennies, etc.)
+	// Format amount - OzanPay expects amount in minor units (cents)
 	amountInMinorUnits := int64(request.Amount * 100)
 
-	// Build payment request
+	// Build payment request according to OzanPay API documentation
 	paymentReq := map[string]any{
-		"merchantId":    p.merchantID,
-		"amount":        amountInMinorUnits,
-		"currency":      request.Currency,
-		"paymentMethod": "CREDIT_CARD",
-		"description":   request.Description,
-		"metadata":      request.MetaData,
-		"initiatedBy":   "CUSTOMER",
+		"apiKey":           p.apiKey,
+		"amount":           amountInMinorUnits,
+		"currency":         request.Currency,
+		"number":           request.CardInfo.CardNumber,
+		"expiryMonth":      request.CardInfo.ExpireMonth,
+		"expiryYear":       request.CardInfo.ExpireYear,
+		"cvv":              request.CardInfo.CVV,
+		"referenceNo":      generateReferenceNo(),
+		"description":      request.Description,
+		"billingFirstName": request.Customer.Name,
+		"billingLastName":  request.Customer.Surname,
+		"email":            request.Customer.Email,
+		"billingAddress1":  request.Customer.Address.Address,
+		"billingCountry":   request.Customer.Address.Country,
+		"billingCity":      request.Customer.Address.City,
+		"billingPostcode":  request.Customer.Address.ZipCode,
 	}
 
-	// Add card details
-	paymentReq["card"] = map[string]any{
-		"holderName":  request.CardInfo.CardHolderName,
-		"number":      request.CardInfo.CardNumber,
-		"expireMonth": request.CardInfo.ExpireMonth,
-		"expireYear":  request.CardInfo.ExpireYear,
-		"cvv":         request.CardInfo.CVV,
+	// Add provider key if available
+	if p.providerKey != "" {
+		paymentReq["providerKey"] = p.providerKey
 	}
 
-	// Add customer details
-	paymentReq["customer"] = map[string]any{
-		"id":        request.Customer.ID,
-		"firstName": request.Customer.Name,
-		"lastName":  request.Customer.Surname,
-		"email":     request.Customer.Email,
-		"phone":     request.Customer.PhoneNumber,
-		"ipAddress": request.Customer.IPAddress,
+	// Add optional phone number
+	if request.Customer.PhoneNumber != "" {
+		paymentReq["billingPhone"] = request.Customer.PhoneNumber
 	}
 
-	// Add billing address
-	if request.Customer.Address.City != "" {
-		paymentReq["billingAddress"] = map[string]any{
-			"country":    request.Customer.Address.Country,
-			"city":       request.Customer.Address.City,
-			"address":    request.Customer.Address.Address,
-			"postalCode": request.Customer.Address.ZipCode,
-		}
-	}
+	// Add optional company (not available in Customer struct, use empty string)
 
-	// Add 3D secure settings if needed
+	// Add 3D secure settings
 	if force3D || request.Use3D {
-		secure3DSettings := map[string]any{
-			"enabled": true,
-		}
+		paymentReq["is3d"] = true
 
-		// Build GoPay's own callback URL with user's original callback URL as parameter
+		// Build return URL with GoPay callback
 		if request.CallbackURL != "" {
 			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/ozanpay?originalCallbackUrl=%s",
 				p.gopayBaseURL,
@@ -395,34 +404,86 @@ func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, f
 			if request.TenantID != "" {
 				gopayCallbackURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
 			}
-			secure3DSettings["returnUrl"] = gopayCallbackURL
+			paymentReq["returnUrl"] = gopayCallbackURL
 		} else {
 			// If no callback URL provided, use GoPay's callback without redirect
 			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/ozanpay", p.gopayBaseURL)
 			if request.TenantID != "" {
 				gopayCallbackURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
 			}
-			secure3DSettings["returnUrl"] = gopayCallbackURL
+			paymentReq["returnUrl"] = gopayCallbackURL
 		}
-
-		paymentReq["secure3d"] = secure3DSettings
+	} else {
+		paymentReq["is3d"] = false
 	}
 
-	// Add items if available
+	// Add customer IP if available
+	if request.Customer.IPAddress != "" {
+		paymentReq["customerIp"] = request.Customer.IPAddress
+	}
+
+	// Add customer user agent if available
+	if request.ClientUserAgent != "" {
+		paymentReq["customerUserAgent"] = request.ClientUserAgent
+	}
+
+	// Add browser info for 3D secure (required for 3D payments)
+	if force3D || request.Use3D {
+		browserInfo := map[string]any{
+			"language":     "en-US", // Default value
+			"colorDepth":   24,      // Default value
+			"screenHeight": 900,     // Default value
+			"screenWidth":  1440,    // Default value
+			"screenTZ":     "-180",  // Default value
+			"javaEnabled":  false,   // Default value
+			"acceptHeader": "/",     // Default value
+		}
+
+		paymentReq["browserInfo"] = browserInfo
+	}
+
+	// Add basket items (required according to documentation)
 	if len(request.Items) > 0 {
-		items := make([]map[string]any, len(request.Items))
+		basketItems := make([]map[string]any, len(request.Items))
 		for i, item := range request.Items {
-			items[i] = map[string]any{
+			basketItems[i] = map[string]any{
 				"name":        item.Name,
 				"description": item.Description,
+				"category":    getItemCategory(item), // Default or from metadata
+				"extraField":  "",                    // Optional field
 				"quantity":    item.Quantity,
-				"price":       int64(item.Price * 100), // Convert to minor units
+				"unitPrice":   int64(item.Price * 100), // Price in minor units
 			}
 		}
-		paymentReq["items"] = items
+		paymentReq["basketItems"] = basketItems
+	} else {
+		// Create default basket item if none provided (required for OzanPay)
+		defaultItem := map[string]any{
+			"name":        "Payment",
+			"description": request.Description,
+			"category":    "General",
+			"extraField":  "",
+			"quantity":    1,
+			"unitPrice":   amountInMinorUnits,
+		}
+		paymentReq["basketItems"] = []map[string]any{defaultItem}
 	}
 
 	return paymentReq
+}
+
+// Helper function to generate reference number
+func generateReferenceNo() string {
+	return fmt.Sprintf("gopay-%d-%s", time.Now().Unix(), uuid.New().String()[:8])
+}
+
+// Helper function to get item category
+func getItemCategory(item provider.Item) string {
+	// Use the Category field from Item struct if available
+	if item.Category != "" {
+		return item.Category
+	}
+	return "General" // Default category
 }
 
 // Helper method to map OzanPay response to our common format
@@ -454,19 +515,16 @@ func (p *OzanPayProvider) mapToPaymentResponse(response map[string]any) (*provid
 
 	// Extract status
 	if status, ok := response["status"].(string); ok {
-		paymentResp.Success = (status == statusApproved || status == statusAuthorized)
+		paymentResp.Success = (status == statusApproved)
 
-		// Map OzanPay status to our common status
+		// Map OzanPay status to our common status according to documentation
 		switch status {
-		case statusApproved, statusAuthorized:
+		case statusApproved:
 			paymentResp.Status = provider.StatusSuccessful
 			paymentResp.Message = "Payment successful"
-		case statusPending:
+		case statusPending, statusWaiting:
 			paymentResp.Status = provider.StatusPending
 			paymentResp.Message = "Payment pending"
-		case statusProcessing:
-			paymentResp.Status = provider.StatusProcessing
-			paymentResp.Message = "Payment processing"
 		case statusDeclined, statusFailed:
 			paymentResp.Status = provider.StatusFailed
 			paymentResp.Message = "Payment failed"
@@ -483,13 +541,13 @@ func (p *OzanPayProvider) mapToPaymentResponse(response map[string]any) (*provid
 	}
 
 	// Extract error message if available
-	if errMsg, ok := response["errorMessage"].(string); ok && errMsg != "" {
+	if errMsg, ok := response["message"].(string); ok && errMsg != "" {
 		paymentResp.Success = false
 		paymentResp.Message = errMsg
 	}
 
 	// Extract error code if available
-	if errCode, ok := response["errorCode"].(string); ok && errCode != "" {
+	if errCode, ok := response["code"].(string); ok && errCode != "" {
 		paymentResp.Success = false
 		paymentResp.ErrorCode = errCode
 	}
@@ -524,25 +582,12 @@ func (p *OzanPayProvider) sendRequest(ctx context.Context, endpoint string, meth
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
+	// Set headers according to OzanPay documentation
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	// Set authentication headers
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-	req.Header.Set("X-Ozan-Merchant", p.merchantID)
-	req.Header.Set("X-Ozan-Timestamp", timestamp)
-
-	// Calculate and set signature
-	var dataToSign string
-	if method == http.MethodGet {
-		dataToSign = method + endpoint + timestamp
-	} else {
-		dataToSign = method + endpoint + timestamp + string(jsonData)
-	}
-
-	signature := p.generateSignature(dataToSign)
-	req.Header.Set("X-Ozan-Signature", signature)
+	// Note: OzanPay authentication is handled via apiKey parameter in the request body,
+	// not through headers. No special authentication headers needed.
 
 	// Send request
 	resp, err := p.client.Do(req)
@@ -569,11 +614,4 @@ func (p *OzanPayProvider) sendRequest(ctx context.Context, endpoint string, meth
 	}
 
 	return responseData, nil
-}
-
-// Helper method to generate HMAC signature for OzanPay
-func (p *OzanPayProvider) generateSignature(data string) string {
-	h := hmac.New(sha256.New, []byte(p.secretKey))
-	h.Write([]byte(data))
-	return hex.EncodeToString(h.Sum(nil))
 }

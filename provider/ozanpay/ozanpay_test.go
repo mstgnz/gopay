@@ -2,6 +2,8 @@ package ozanpay
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -27,8 +29,8 @@ func TestNewProvider(t *testing.T) {
 		t.Error("HTTP client should be initialized")
 	}
 
-	if ozanPayProvider.client.Timeout != defaultTimeout {
-		t.Errorf("HTTP client timeout should be %v, got %v", defaultTimeout, ozanPayProvider.client.Timeout)
+	if ozanPayProvider.client.Timeout != 30*time.Second {
+		t.Errorf("HTTP client timeout should be %v, got %v", 30*time.Second, ozanPayProvider.client.Timeout)
 	}
 }
 
@@ -45,7 +47,7 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 			config: map[string]string{
 				"apiKey":      "test-api-key",
 				"secretKey":   "test-secret-key",
-				"merchantId":  "test-merchant-id",
+				"providerKey": "test-merchant-id",
 				"environment": "sandbox",
 			},
 			expectError: false,
@@ -57,7 +59,7 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 			config: map[string]string{
 				"apiKey":      "test-api-key",
 				"secretKey":   "test-secret-key",
-				"merchantId":  "test-merchant-id",
+				"providerKey": "test-merchant-id",
 				"environment": "production",
 			},
 			expectError: false,
@@ -67,9 +69,9 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 		{
 			name: "Default to sandbox",
 			config: map[string]string{
-				"apiKey":     "test-api-key",
-				"secretKey":  "test-secret-key",
-				"merchantId": "test-merchant-id",
+				"apiKey":      "test-api-key",
+				"secretKey":   "test-secret-key",
+				"providerKey": "test-merchant-id",
 			},
 			expectError: false,
 			expectProd:  false,
@@ -79,28 +81,21 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 			name: "Missing apiKey",
 			config: map[string]string{
 				"secretKey":   "test-secret-key",
-				"merchantId":  "test-merchant-id",
+				"providerKey": "test-merchant-id",
 				"environment": "sandbox",
 			},
 			expectError: true,
 		},
 		{
-			name: "Missing secretKey",
+			name: "Missing secretKey - should work",
 			config: map[string]string{
 				"apiKey":      "test-api-key",
-				"merchantId":  "test-merchant-id",
+				"providerKey": "test-provider-key",
 				"environment": "sandbox",
 			},
-			expectError: true,
-		},
-		{
-			name: "Missing merchantId",
-			config: map[string]string{
-				"apiKey":      "test-api-key",
-				"secretKey":   "test-secret-key",
-				"environment": "sandbox",
-			},
-			expectError: true,
+			expectError: false,
+			expectProd:  false,
+			expectURL:   apiSandboxURL,
 		},
 		{
 			name:        "Empty config",
@@ -134,8 +129,8 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 				t.Errorf("Expected secretKey %s, got %s", tt.config["secretKey"], provider.secretKey)
 			}
 
-			if provider.merchantID != tt.config["merchantId"] {
-				t.Errorf("Expected merchantId %s, got %s", tt.config["merchantId"], provider.merchantID)
+			if provider.providerKey != tt.config["providerKey"] {
+				t.Errorf("Expected providerKey %s, got %s", tt.config["providerKey"], provider.providerKey)
 			}
 
 			if provider.isProduction != tt.expectProd {
@@ -324,7 +319,8 @@ func TestOzanPayProvider_ValidatePaymentRequest(t *testing.T) {
 
 func TestOzanPayProvider_MapToOzanPayRequest(t *testing.T) {
 	ozanPayProvider := &OzanPayProvider{
-		merchantID:   "test-merchant",
+		apiKey:       "test-api-key",
+		providerKey:  "test-provider-key",
 		gopayBaseURL: "https://test.gopay.com",
 	}
 
@@ -372,32 +368,60 @@ func TestOzanPayProvider_MapToOzanPayRequest(t *testing.T) {
 			request: request,
 			force3D: false,
 			validate: func(t *testing.T, result map[string]any) {
+				// Check basic payment info
 				if result["amount"] != int64(10050) { // 100.50 * 100
 					t.Errorf("Expected amount 10050, got %v", result["amount"])
 				}
 				if result["currency"] != "USD" {
 					t.Errorf("Expected currency 'USD', got %v", result["currency"])
 				}
-				if result["merchantId"] != "test-merchant" {
-					t.Errorf("Expected merchantId 'test-merchant', got %v", result["merchantId"])
+				if result["apiKey"] != "test-api-key" {
+					t.Errorf("Expected apiKey 'test-api-key', got %v", result["apiKey"])
 				}
 
-				customer, ok := result["customer"].(map[string]any)
-				if !ok {
-					t.Error("customer should be a map")
-					return
+				// Check card info (now flat in main object)
+				if result["number"] != "4111111111111111" {
+					t.Errorf("Expected number '4111111111111111', got %v", result["number"])
 				}
-				if customer["email"] != "john@example.com" {
-					t.Errorf("Expected customer email 'john@example.com', got %v", customer["email"])
+				if result["cvv"] != "123" {
+					t.Errorf("Expected cvv '123', got %v", result["cvv"])
 				}
 
-				card, ok := result["card"].(map[string]any)
+				// Check customer info (now flat in main object)
+				if result["email"] != "john@example.com" {
+					t.Errorf("Expected email 'john@example.com', got %v", result["email"])
+				}
+				if result["billingFirstName"] != "John" {
+					t.Errorf("Expected billingFirstName 'John', got %v", result["billingFirstName"])
+				}
+				if result["billingLastName"] != "Doe" {
+					t.Errorf("Expected billingLastName 'Doe', got %v", result["billingLastName"])
+				}
+
+				// Check address info (now flat in main object)
+				if result["billingCity"] != "New York" {
+					t.Errorf("Expected billingCity 'New York', got %v", result["billingCity"])
+				}
+				if result["billingCountry"] != "USA" {
+					t.Errorf("Expected billingCountry 'USA', got %v", result["billingCountry"])
+				}
+
+				// Check 3D is disabled
+				if result["is3d"] != false {
+					t.Errorf("Expected is3d false, got %v", result["is3d"])
+				}
+
+				// Check basket items are present
+				basketItems, ok := result["basketItems"].([]map[string]any)
 				if !ok {
-					t.Error("card should be a map")
+					t.Error("basketItems should be an array")
 					return
 				}
-				if card["number"] != "4111111111111111" {
-					t.Errorf("Expected card number '4111111111111111', got %v", card["number"])
+				if len(basketItems) != 1 {
+					t.Errorf("Expected 1 basket item, got %d", len(basketItems))
+				}
+				if basketItems[0]["name"] != "Test Item" {
+					t.Errorf("Expected item name 'Test Item', got %v", basketItems[0]["name"])
 				}
 			},
 		},
@@ -406,18 +430,25 @@ func TestOzanPayProvider_MapToOzanPayRequest(t *testing.T) {
 			request: request,
 			force3D: true,
 			validate: func(t *testing.T, result map[string]any) {
-				secure3d, ok := result["secure3d"].(map[string]any)
-				if !ok {
-					t.Error("secure3d should be a map")
-					return
-				}
-				if secure3d["enabled"] != true {
-					t.Errorf("Expected secure3d enabled to be true, got %v", secure3d["enabled"])
+				// Check 3D is enabled
+				if result["is3d"] != true {
+					t.Errorf("Expected is3d true, got %v", result["is3d"])
 				}
 
+				// Check return URL is set
 				expectedURL := "https://test.gopay.com/v1/callback/ozanpay?originalCallbackUrl=https://example.com/callback"
-				if secure3d["returnUrl"] != expectedURL {
-					t.Errorf("Expected returnUrl '%s', got %v", expectedURL, secure3d["returnUrl"])
+				if result["returnUrl"] != expectedURL {
+					t.Errorf("Expected returnUrl '%s', got %v", expectedURL, result["returnUrl"])
+				}
+
+				// Check browser info is present for 3D payments
+				browserInfo, ok := result["browserInfo"].(map[string]any)
+				if !ok {
+					t.Error("browserInfo should be a map for 3D payments")
+					return
+				}
+				if browserInfo["language"] != "en-US" {
+					t.Errorf("Expected browserInfo language 'en-US', got %v", browserInfo["language"])
 				}
 			},
 		},
@@ -457,9 +488,9 @@ func TestOzanPayProvider_MapToPaymentResponse(t *testing.T) {
 		{
 			name: "Failed payment",
 			response: map[string]any{
-				"status":       statusFailed,
-				"errorCode":    errorCodeInvalidCard,
-				"errorMessage": "Invalid card number",
+				"status":  statusFailed,
+				"code":    "14", // Invalid card number error code
+				"message": "Invalid card number",
 			},
 			expectedStatus:  provider.StatusFailed,
 			expectedSuccess: false,
@@ -514,10 +545,10 @@ func TestOzanPayProvider_CreatePayment(t *testing.T) {
 	defer server.Close()
 
 	ozanPayProvider := &OzanPayProvider{
-		apiKey:     "test-key",
-		secretKey:  "test-secret",
-		merchantID: "test-merchant",
-		baseURL:    server.URL,
+		apiKey:      "test-key",
+		secretKey:   "test-secret",
+		providerKey: "test-merchant",
+		baseURL:     server.URL,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -570,7 +601,7 @@ func TestOzanPayProvider_Create3DPayment(t *testing.T) {
 	ozanPayProvider := &OzanPayProvider{
 		apiKey:       "test-key",
 		secretKey:    "test-secret",
-		merchantID:   "test-merchant",
+		providerKey:  "test-merchant",
 		baseURL:      server.URL,
 		gopayBaseURL: "https://test.gopay.com",
 		client: &http.Client{
@@ -625,10 +656,10 @@ func TestOzanPayProvider_GetPaymentStatus(t *testing.T) {
 	defer server.Close()
 
 	ozanPayProvider := &OzanPayProvider{
-		apiKey:     "test-key",
-		secretKey:  "test-secret",
-		merchantID: "test-merchant",
-		baseURL:    server.URL,
+		apiKey:      "test-key",
+		secretKey:   "test-secret",
+		providerKey: "test-merchant",
+		baseURL:     server.URL,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -657,18 +688,18 @@ func TestOzanPayProvider_GetPaymentStatus(t *testing.T) {
 func TestOzanPayProvider_RefundPayment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]any{
-			"id":     "refund123",
-			"status": statusApproved,
+			"transactionId": "refund123", // OzanPay uses transactionId for refund ID
+			"status":        statusApproved,
 		}
 		json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
 	ozanPayProvider := &OzanPayProvider{
-		apiKey:     "test-key",
-		secretKey:  "test-secret",
-		merchantID: "test-merchant",
-		baseURL:    server.URL,
+		apiKey:      "test-key",
+		secretKey:   "test-secret",
+		providerKey: "test-merchant",
+		baseURL:     server.URL,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -697,44 +728,30 @@ func TestOzanPayProvider_RefundPayment(t *testing.T) {
 	}
 }
 
-func TestOzanPayProvider_GenerateSignature(t *testing.T) {
-	ozanPayProvider := &OzanPayProvider{
-		secretKey: "test-secret-key",
-	}
-
-	data := "POST/api/v1/payments2024-01-01T00:00:00Z{\"test\":\"data\"}"
-	signature := ozanPayProvider.generateSignature(data)
-
-	if signature == "" {
-		t.Error("Signature should not be empty")
-	}
-
-	// Test that same data produces same signature
-	signature2 := ozanPayProvider.generateSignature(data)
-	if signature != signature2 {
-		t.Error("Same data should produce same signature")
-	}
-
-	// Test that different data produces different signature
-	signature3 := ozanPayProvider.generateSignature("different-data")
-	if signature == signature3 {
-		t.Error("Different data should produce different signature")
-	}
-}
-
 func TestOzanPayProvider_ValidateWebhook(t *testing.T) {
 	ozanPayProvider := &OzanPayProvider{
 		secretKey: "test-secret-key",
 	}
 
-	data := map[string]string{
-		"id":     "payment123",
-		"status": "APPROVED",
+	// Sample webhook data based on OzanPay documentation
+	validData := map[string]string{
+		"transactionId": "9-1438782271-1",
+		"referenceNo":   "1-1386413490-0089-14",
+		"amount":        "1234",
+		"currency":      "TRY",
+		"status":        "APPROVED",
+		"message":       "Auth3D is APPROVED",
+		"code":          "00",
 	}
 
-	// Calculate correct signature
-	rawJson, _ := json.Marshal(data)
-	correctSignature := ozanPayProvider.generateSignature(string(rawJson))
+	// Calculate correct checksum according to OzanPay documentation
+	// checksum = SHA256(referenceNo + amount + currency + status + message + code + secretKey)
+	checksumString := validData["referenceNo"] + validData["amount"] + validData["currency"] +
+		validData["status"] + validData["message"] + validData["code"] + "test-secret-key"
+
+	hash := sha256.Sum256([]byte(checksumString))
+	correctChecksum := hex.EncodeToString(hash[:])
+	validData["checksum"] = correctChecksum
 
 	tests := []struct {
 		name        string
@@ -744,26 +761,52 @@ func TestOzanPayProvider_ValidateWebhook(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name: "Valid webhook",
-			data: data,
-			headers: map[string]string{
-				"X-Ozan-Signature": correctSignature,
-			},
+			name:        "Valid webhook with correct checksum",
+			data:        validData,
+			headers:     map[string]string{}, // OzanPay doesn't use headers for validation
 			expectValid: true,
 			expectError: false,
 		},
 		{
-			name: "Invalid signature",
-			data: data,
-			headers: map[string]string{
-				"X-Ozan-Signature": "invalid-signature",
-			},
+			name: "Invalid checksum",
+			data: func() map[string]string {
+				data := make(map[string]string)
+				for k, v := range validData {
+					data[k] = v
+				}
+				data["checksum"] = "invalid-checksum"
+				return data
+			}(),
+			headers:     map[string]string{},
 			expectValid: false,
 			expectError: true,
 		},
 		{
-			name:        "Missing signature header",
-			data:        data,
+			name: "Missing checksum",
+			data: func() map[string]string {
+				data := make(map[string]string)
+				for k, v := range validData {
+					if k != "checksum" {
+						data[k] = v
+					}
+				}
+				return data
+			}(),
+			headers:     map[string]string{},
+			expectValid: false,
+			expectError: true,
+		},
+		{
+			name: "Missing required field",
+			data: func() map[string]string {
+				data := make(map[string]string)
+				for k, v := range validData {
+					if k != "referenceNo" { // Remove required field
+						data[k] = v
+					}
+				}
+				return data
+			}(),
 			headers:     map[string]string{},
 			expectValid: false,
 			expectError: true,
@@ -792,8 +835,8 @@ func TestOzanPayProvider_ValidateWebhook(t *testing.T) {
 			}
 
 			if tt.expectValid {
-				if result["paymentId"] != "payment123" {
-					t.Errorf("Expected paymentId 'payment123', got %v", result["paymentId"])
+				if result["paymentId"] != "9-1438782271-1" {
+					t.Errorf("Expected paymentId '9-1438782271-1', got %v", result["paymentId"])
 				}
 				if result["status"] != "APPROVED" {
 					t.Errorf("Expected status 'APPROVED', got %v", result["status"])

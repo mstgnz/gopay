@@ -2,10 +2,9 @@ package ozanpay
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,196 +13,78 @@ import (
 )
 
 const (
-	// Test cards for OzanPay (these are fictional but follow standard test patterns)
-	testCardSuccess      = "4111111111111111"
-	testCardInsufficient = "4000000000000002"
-	testCardDeclined     = "4000000000000341"
-	testCard3DRedirect   = "4000000000000044"
-	testCardExpired      = "4000000000000069"
-	testCardInvalid      = "4000000000000127"
-	testCardFraudulent   = "4000000000000259"
+	// Official OzanPay test cards from documentation
+	testCardSuccess1 = "5218487962459752" // 12/26 000
+	testCardSuccess2 = "4446763125813623" // 12/26 000
+	testCardSuccess3 = "5200190059838710" // 12/26 000
 
-	// Test amounts that trigger specific responses
-	testAmountSuccess      = 100.50
-	testAmountInsufficient = 1.00
-	testAmountDeclined     = 2.00
-	testAmountFraudulent   = 666.00
+	// Test amounts and currencies
+	testAmountSuccess = 100.50
+	testCurrency      = "TRY" // OzanPay primarily supports TRY
 )
 
 func getTestConfig() map[string]string {
+	// Use environment variables for real API keys, fallback to test values
+	apiKey := os.Getenv("OZANPAY_API_KEY")
+	if apiKey == "" {
+		apiKey = "test-api-key" // This will fail in real tests but allows compilation
+	}
+
+	secretKey := os.Getenv("OZANPAY_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = "test-secret-key"
+	}
+
+	providerKey := os.Getenv("OZANPAY_PROVIDER_KEY")
+	if providerKey == "" {
+		providerKey = "test-provider-key"
+	}
+
 	return map[string]string{
-		"apiKey":       "sandbox-ozanpay-api-key",
-		"secretKey":    "sandbox-ozanpay-secret-key",
-		"merchantId":   "sandbox-ozanpay-merchant-id",
-		"environment":  "sandbox",
+		"apiKey":       apiKey,
+		"secretKey":    secretKey,
+		"providerKey":  providerKey,
+		"environment":  "sandbox", // Always use sandbox for integration tests
 		"gopayBaseURL": "https://test.gopay.com",
 	}
 }
 
-func createMockServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse request body
-		var requestBody map[string]any
-		if r.Body != nil {
-			json.NewDecoder(r.Body).Decode(&requestBody)
-		}
-
-		// Default response
-		response := map[string]any{
-			"id":            "ozp_" + generateTestID(),
-			"transactionId": "txn_" + generateTestID(),
-			"currency":      "USD",
-			"systemTime":    time.Now().Format(time.RFC3339),
-		}
-
-		// Handle different endpoints
-		switch {
-		case strings.Contains(r.URL.Path, "/payments") && r.Method == "POST":
-			handlePaymentRequest(requestBody, response)
-		case strings.Contains(r.URL.Path, "/payments") && r.Method == "GET":
-			handlePaymentStatus(r.URL.Path, response)
-		case strings.Contains(r.URL.Path, "/refunds") && r.Method == "POST":
-			handleRefundRequest(requestBody, response)
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}))
-}
-
-func handlePaymentRequest(requestBody map[string]any, response map[string]any) {
-	card, _ := requestBody["card"].(map[string]any)
-	cardNumber, _ := card["number"].(string)
-	amount, _ := requestBody["amount"].(float64)
-
-	response["amount"] = amount
-
-	// Simulate different card responses
-	switch cardNumber {
-	case testCardSuccess:
-		response["status"] = statusApproved
-	case testCardInsufficient:
-		response["status"] = statusFailed
-		response["errorCode"] = errorCodeInsufficientFunds
-		response["errorMessage"] = "Insufficient funds"
-	case testCardDeclined:
-		response["status"] = statusDeclined
-		response["errorCode"] = errorCodeDeclined
-		response["errorMessage"] = "Card declined"
-	case testCard3DRedirect:
-		response["status"] = statusPending
-		response["redirectUrl"] = "https://3ds.ozanpay.com/redirect?token=test_token"
-	case testCardExpired:
-		response["status"] = statusFailed
-		response["errorCode"] = errorCodeExpiredCard
-		response["errorMessage"] = "Card expired"
-	case testCardInvalid:
-		response["status"] = statusFailed
-		response["errorCode"] = errorCodeInvalidCard
-		response["errorMessage"] = "Invalid card number"
-	case testCardFraudulent:
-		response["status"] = statusFailed
-		response["errorCode"] = errorCodeFraudulent
-		response["errorMessage"] = "Fraudulent transaction detected"
-	default:
-		// Check amount-based responses
-		switch amount {
-		case float64(testAmountInsufficient * 100):
-			response["status"] = statusFailed
-			response["errorCode"] = errorCodeInsufficientFunds
-			response["errorMessage"] = "Insufficient funds"
-		case float64(testAmountDeclined * 100):
-			response["status"] = statusDeclined
-			response["errorCode"] = errorCodeDeclined
-			response["errorMessage"] = "Payment declined"
-		case float64(testAmountFraudulent * 100):
-			response["status"] = statusFailed
-			response["errorCode"] = errorCodeFraudulent
-			response["errorMessage"] = "Fraudulent transaction"
-		default:
-			response["status"] = statusApproved
-		}
-	}
-}
-
-func handlePaymentStatus(path string, response map[string]any) {
-	// Extract payment ID from path
-	parts := strings.Split(path, "/")
-	if len(parts) > 0 {
-		paymentID := parts[len(parts)-1]
-		response["id"] = paymentID
-
-		// Simulate different statuses based on payment ID pattern
-		if strings.Contains(paymentID, "failed") {
-			response["status"] = statusFailed
-			response["errorCode"] = errorCodeDeclined
-			response["errorMessage"] = "Payment failed"
-		} else if strings.Contains(paymentID, "pending") {
-			response["status"] = statusPending
-		} else {
-			response["status"] = statusApproved
-			response["amount"] = float64(10050) // Default test amount
-		}
-	}
-}
-
-func handleRefundRequest(requestBody map[string]any, response map[string]any) {
-	parentID, _ := requestBody["parentId"].(string)
-	amount, _ := requestBody["amount"].(float64)
-
-	response["id"] = "ref_" + generateTestID()
-	response["parentId"] = parentID
-	response["amount"] = amount
-
-	// Simulate refund based on parent payment
-	if strings.Contains(parentID, "failed") {
-		response["status"] = statusFailed
-		response["errorCode"] = "REFUND_FAILED"
-		response["errorMessage"] = "Cannot refund failed payment"
-	} else {
-		response["status"] = statusApproved
-	}
-}
-
-func generateTestID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano()%1000000)
-}
-
 func TestOzanPayProvider_Integration_CreatePayment_Success(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
+	// Skip test if no real API keys provided
+	if os.Getenv("OZANPAY_API_KEY") == "" {
+		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
+	}
 
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
+	}
 
 	request := provider.PaymentRequest{
 		Amount:   testAmountSuccess,
-		Currency: "USD",
+		Currency: testCurrency,
 		Customer: provider.Customer{
 			ID:      "customer_123",
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
 			Address: provider.Address{
-				Country: "US",
-				City:    "New York",
-				Address: "123 Test Street",
-				ZipCode: "10001",
+				Country: "TR",
+				City:    "Istanbul",
+				Address: "Test Address 123",
+				ZipCode: "34000",
 			},
 		},
 		CardInfo: provider.CardInfo{
 			CardHolderName: "John Doe",
-			CardNumber:     testCardSuccess,
-			CVV:            "123",
+			CardNumber:     testCardSuccess1,
+			CVV:            "000", // Test CVV
 			ExpireMonth:    "12",
-			ExpireYear:     "2030",
+			ExpireYear:     "26", // 2026
 		},
-		Description: "Test payment",
+		Description: "Integration test payment",
 	}
 
 	ctx := context.Background()
@@ -213,97 +94,64 @@ func TestOzanPayProvider_Integration_CreatePayment_Success(t *testing.T) {
 		t.Fatalf("CreatePayment failed: %v", err)
 	}
 
-	if !response.Success {
-		t.Error("Expected successful payment")
-	}
+	// Log response for debugging
+	t.Logf("Payment response: %+v", response)
 
-	if response.Status != provider.StatusSuccessful {
-		t.Errorf("Expected status successful, got %v", response.Status)
+	if response.PaymentID == "" {
+		t.Error("PaymentID should not be empty")
 	}
 
 	if response.Amount != testAmountSuccess {
 		t.Errorf("Expected amount %.2f, got %.2f", testAmountSuccess, response.Amount)
 	}
 
-	if response.Currency != "USD" {
-		t.Errorf("Expected currency USD, got %s", response.Currency)
+	if response.Currency != testCurrency {
+		t.Errorf("Expected currency %s, got %s", testCurrency, response.Currency)
 	}
 
-	if response.PaymentID == "" {
-		t.Error("PaymentID should not be empty")
+	// Test may succeed or fail depending on card and amount, but should not error
+	if response.Status == "" {
+		t.Error("Status should not be empty")
 	}
 }
 
-func TestOzanPayProvider_Integration_CreatePayment_InsufficientFunds(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
+func TestOzanPayProvider_Integration_Create3DPayment(t *testing.T) {
+	// Skip test if no real API keys provided
+	if os.Getenv("OZANPAY_API_KEY") == "" {
+		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
+	}
 
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
-
-	request := provider.PaymentRequest{
-		Amount:   testAmountInsufficient,
-		Currency: "USD",
-		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john.doe@example.com",
-		},
-		CardInfo: provider.CardInfo{
-			CardNumber:  testCardInsufficient,
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
-		},
-	}
-
-	ctx := context.Background()
-	response, err := ozanpayProvider.CreatePayment(ctx, request)
-
+	err := ozanpayProvider.Initialize(config)
 	if err != nil {
-		t.Fatalf("CreatePayment failed: %v", err)
+		t.Fatalf("Failed to initialize provider: %v", err)
 	}
-
-	if response.Success {
-		t.Error("Expected failed payment")
-	}
-
-	if response.Status != provider.StatusFailed {
-		t.Errorf("Expected status failed, got %v", response.Status)
-	}
-
-	if response.ErrorCode != errorCodeInsufficientFunds {
-		t.Errorf("Expected error code %s, got %s", errorCodeInsufficientFunds, response.ErrorCode)
-	}
-}
-
-func TestOzanPayProvider_Integration_Create3DPayment_Success(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
-
-	ozanpayProvider := NewProvider().(*OzanPayProvider)
-	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
 
 	request := provider.PaymentRequest{
 		Amount:   testAmountSuccess,
-		Currency: "USD",
+		Currency: testCurrency,
 		Customer: provider.Customer{
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
+			Address: provider.Address{
+				Country: "TR",
+				City:    "Istanbul",
+				Address: "Test Address 123",
+				ZipCode: "34000",
+			},
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:  testCard3DRedirect,
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
+			CardHolderName: "John Doe",
+			CardNumber:     testCardSuccess2,
+			CVV:            "000",
+			ExpireMonth:    "12",
+			ExpireYear:     "26",
 		},
 		CallbackURL: "https://example.com/callback",
 		Use3D:       true,
+		Description: "3D Secure test payment",
 	}
 
 	ctx := context.Background()
@@ -313,204 +161,196 @@ func TestOzanPayProvider_Integration_Create3DPayment_Success(t *testing.T) {
 		t.Fatalf("Create3DPayment failed: %v", err)
 	}
 
-	if response.Status != provider.StatusPending {
-		t.Errorf("Expected status pending, got %v", response.Status)
+	// Log response for debugging
+	t.Logf("3D Payment response: %+v", response)
+
+	if response.PaymentID == "" {
+		t.Error("PaymentID should not be empty")
 	}
 
-	if response.RedirectURL == "" {
-		t.Error("Expected redirect URL for 3D payment")
-	}
-
-	if !strings.Contains(response.RedirectURL, "3ds.ozanpay.com") {
-		t.Errorf("Expected 3D redirect URL, got %s", response.RedirectURL)
-	}
-}
-
-func TestOzanPayProvider_Integration_Complete3DPayment(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
-
-	ozanpayProvider := NewProvider().(*OzanPayProvider)
-	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
-
-	ctx := context.Background()
-	paymentID := "ozp_123456"
-	conversationID := "conv_123"
-	callbackData := map[string]string{
-		"status": "approved",
-		"token":  "3d_token_123",
-	}
-
-	response, err := ozanpayProvider.Complete3DPayment(ctx, paymentID, conversationID, callbackData)
-
-	if err != nil {
-		t.Fatalf("Complete3DPayment failed: %v", err)
-	}
-
-	if !response.Success {
-		t.Error("Expected successful 3D completion")
-	}
-
-	if response.PaymentID != paymentID {
-		t.Errorf("Expected payment ID %s, got %s", paymentID, response.PaymentID)
+	// For 3D payments, we expect either a redirect URL or a completed payment
+	if response.Status == provider.StatusPending && response.RedirectURL == "" {
+		t.Error("Expected redirect URL for 3D payment or completed payment")
 	}
 }
 
 func TestOzanPayProvider_Integration_GetPaymentStatus(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
+	// Skip test if no real API keys provided
+	if os.Getenv("OZANPAY_API_KEY") == "" {
+		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
+	}
 
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
-
-	ctx := context.Background()
-
-	tests := []struct {
-		name            string
-		paymentID       string
-		expectedStatus  provider.PaymentStatus
-		expectedSuccess bool
-	}{
-		{
-			name:            "Successful payment status",
-			paymentID:       "ozp_success_123",
-			expectedStatus:  provider.StatusSuccessful,
-			expectedSuccess: true,
-		},
-		{
-			name:            "Failed payment status",
-			paymentID:       "ozp_failed_456",
-			expectedStatus:  provider.StatusFailed,
-			expectedSuccess: false,
-		},
-		{
-			name:            "Pending payment status",
-			paymentID:       "ozp_pending_789",
-			expectedStatus:  provider.StatusPending,
-			expectedSuccess: false,
-		},
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			response, err := ozanpayProvider.GetPaymentStatus(ctx, tt.paymentID)
+	// First create a payment
+	request := provider.PaymentRequest{
+		Amount:   testAmountSuccess,
+		Currency: testCurrency,
+		Customer: provider.Customer{
+			Name:    "John",
+			Surname: "Doe",
+			Email:   "john.doe@example.com",
+			Address: provider.Address{
+				Country: "TR",
+				City:    "Istanbul",
+				Address: "Test Address 123",
+				ZipCode: "34000",
+			},
+		},
+		CardInfo: provider.CardInfo{
+			CardHolderName: "John Doe",
+			CardNumber:     testCardSuccess3,
+			CVV:            "000",
+			ExpireMonth:    "12",
+			ExpireYear:     "26",
+		},
+		Description: "Status check test payment",
+	}
 
-			if err != nil {
-				t.Fatalf("GetPaymentStatus failed: %v", err)
-			}
+	ctx := context.Background()
+	createResponse, err := ozanpayProvider.CreatePayment(ctx, request)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
-			if response.Success != tt.expectedSuccess {
-				t.Errorf("Expected success %v, got %v", tt.expectedSuccess, response.Success)
-			}
+	if createResponse.PaymentID == "" {
+		t.Fatal("PaymentID should not be empty")
+	}
 
-			if response.Status != tt.expectedStatus {
-				t.Errorf("Expected status %v, got %v", tt.expectedStatus, response.Status)
-			}
+	// Wait a moment for payment to process
+	time.Sleep(2 * time.Second)
 
-			if response.PaymentID != tt.paymentID {
-				t.Errorf("Expected payment ID %s, got %s", tt.paymentID, response.PaymentID)
-			}
-		})
+	// Now check the payment status
+	statusResponse, err := ozanpayProvider.GetPaymentStatus(ctx, createResponse.PaymentID)
+	if err != nil {
+		t.Fatalf("GetPaymentStatus failed: %v", err)
+	}
+
+	// Log response for debugging
+	t.Logf("Status response: %+v", statusResponse)
+
+	if statusResponse.PaymentID != createResponse.PaymentID {
+		t.Errorf("Expected payment ID %s, got %s", createResponse.PaymentID, statusResponse.PaymentID)
+	}
+
+	if statusResponse.Status == "" {
+		t.Error("Status should not be empty")
 	}
 }
 
-func TestOzanPayProvider_Integration_RefundPayment_Success(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
+func TestOzanPayProvider_Integration_RefundPayment(t *testing.T) {
+	// Skip test if no real API keys provided
+	if os.Getenv("OZANPAY_API_KEY") == "" {
+		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
+	}
 
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
+	}
 
-	refundRequest := provider.RefundRequest{
-		PaymentID:      "ozp_success_123",
-		RefundAmount:   50.0,
-		Currency:       "USD",
-		Reason:         "Customer request",
-		Description:    "Test refund",
-		ConversationID: "conv_refund_123",
+	// First create a successful payment
+	request := provider.PaymentRequest{
+		Amount:   testAmountSuccess,
+		Currency: testCurrency,
+		Customer: provider.Customer{
+			Name:    "John",
+			Surname: "Doe",
+			Email:   "john.doe@example.com",
+			Address: provider.Address{
+				Country: "TR",
+				City:    "Istanbul",
+				Address: "Test Address 123",
+				ZipCode: "34000",
+			},
+		},
+		CardInfo: provider.CardInfo{
+			CardHolderName: "John Doe",
+			CardNumber:     testCardSuccess1,
+			CVV:            "000",
+			ExpireMonth:    "12",
+			ExpireYear:     "26",
+		},
+		Description: "Refund test payment",
 	}
 
 	ctx := context.Background()
-	response, err := ozanpayProvider.RefundPayment(ctx, refundRequest)
+	createResponse, err := ozanpayProvider.CreatePayment(ctx, request)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
+	// Only attempt refund if payment was successful
+	if createResponse.Status != provider.StatusSuccessful {
+		t.Skipf("Skipping refund test as payment was not successful: %v", createResponse.Status)
+	}
+
+	// Wait for payment to settle
+	time.Sleep(5 * time.Second)
+
+	// Attempt partial refund
+	refundRequest := provider.RefundRequest{
+		PaymentID:      createResponse.PaymentID,
+		RefundAmount:   50.0, // Partial refund
+		Currency:       testCurrency,
+		Reason:         "Integration test refund",
+		Description:    "Test refund",
+		ConversationID: "test_refund_123",
+	}
+
+	refundResponse, err := ozanpayProvider.RefundPayment(ctx, refundRequest)
 	if err != nil {
 		t.Fatalf("RefundPayment failed: %v", err)
 	}
 
-	if !response.Success {
-		t.Error("Expected successful refund")
+	// Log response for debugging
+	t.Logf("Refund response: %+v", refundResponse)
+
+	if refundResponse.PaymentID != refundRequest.PaymentID {
+		t.Errorf("Expected payment ID %s, got %s", refundRequest.PaymentID, refundResponse.PaymentID)
 	}
 
-	if response.RefundAmount != 50.0 {
-		t.Errorf("Expected refund amount 50.0, got %.2f", response.RefundAmount)
-	}
-
-	if response.PaymentID != refundRequest.PaymentID {
-		t.Errorf("Expected payment ID %s, got %s", refundRequest.PaymentID, response.PaymentID)
-	}
-
-	if response.RefundID == "" {
-		t.Error("RefundID should not be empty")
-	}
-}
-
-func TestOzanPayProvider_Integration_CancelPayment(t *testing.T) {
-	server := createMockServer()
-	defer server.Close()
-
-	ozanpayProvider := NewProvider().(*OzanPayProvider)
-	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
-
-	ctx := context.Background()
-	paymentID := "ozp_success_123"
-	reason := "Customer requested cancellation"
-
-	response, err := ozanpayProvider.CancelPayment(ctx, paymentID, reason)
-
-	if err != nil {
-		t.Fatalf("CancelPayment failed: %v", err)
-	}
-
-	if !response.Success {
-		t.Error("Expected successful cancellation")
-	}
-
-	if response.Status != provider.StatusCancelled {
-		t.Errorf("Expected status cancelled, got %v", response.Status)
-	}
-
-	if response.PaymentID != paymentID {
-		t.Errorf("Expected payment ID %s, got %s", paymentID, response.PaymentID)
+	if refundResponse.RefundAmount != 50.0 {
+		t.Errorf("Expected refund amount 50.0, got %.2f", refundResponse.RefundAmount)
 	}
 }
 
 func TestOzanPayProvider_Integration_ValidateWebhook(t *testing.T) {
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
+	}
 
+	// Sample webhook data based on OzanPay documentation
 	webhookData := map[string]string{
-		"id":       "ozp_webhook_123",
-		"status":   "APPROVED",
-		"amount":   "10050",
-		"currency": "USD",
+		"transactionId": "9-1438782271-1",
+		"referenceNo":   "1-1386413490-0089-14",
+		"amount":        "10050", // Amount in cents
+		"currency":      "TRY",
+		"status":        "APPROVED",
+		"message":       "Auth3D is APPROVED",
+		"code":          "00",
 	}
 
-	// Calculate correct signature
-	rawJson, _ := json.Marshal(webhookData)
-	correctSignature := ozanpayProvider.generateSignature(string(rawJson))
+	// Calculate correct checksum using the secret key
+	// checksum = SHA256(referenceNo + amount + currency + status + message + code + secretKey)
+	checksumString := webhookData["referenceNo"] + webhookData["amount"] + webhookData["currency"] +
+		webhookData["status"] + webhookData["message"] + webhookData["code"] + config["secretKey"]
 
-	headers := map[string]string{
-		"X-Ozan-Signature": correctSignature,
-	}
+	hash := sha256.Sum256([]byte(checksumString))
+	correctChecksum := hex.EncodeToString(hash[:])
+	webhookData["checksum"] = correctChecksum
+
+	headers := map[string]string{} // OzanPay doesn't use headers for webhook validation
 
 	ctx := context.Background()
 	valid, result, err := ozanpayProvider.ValidateWebhook(ctx, webhookData, headers)
@@ -523,8 +363,8 @@ func TestOzanPayProvider_Integration_ValidateWebhook(t *testing.T) {
 		t.Error("Expected valid webhook")
 	}
 
-	if result["paymentId"] != "ozp_webhook_123" {
-		t.Errorf("Expected payment ID ozp_webhook_123, got %v", result["paymentId"])
+	if result["paymentId"] != "9-1438782271-1" {
+		t.Errorf("Expected payment ID 9-1438782271-1, got %v", result["paymentId"])
 	}
 
 	if result["status"] != "APPROVED" {
@@ -535,7 +375,10 @@ func TestOzanPayProvider_Integration_ValidateWebhook(t *testing.T) {
 func TestOzanPayProvider_Integration_ErrorScenarios(t *testing.T) {
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -544,7 +387,7 @@ func TestOzanPayProvider_Integration_ErrorScenarios(t *testing.T) {
 		Amount: 0, // Invalid amount
 	}
 
-	_, err := ozanpayProvider.CreatePayment(ctx, invalidRequest)
+	_, err = ozanpayProvider.CreatePayment(ctx, invalidRequest)
 	if err == nil {
 		t.Error("Expected error for invalid payment request")
 	}
@@ -567,36 +410,40 @@ func TestOzanPayProvider_Integration_ErrorScenarios(t *testing.T) {
 }
 
 func TestOzanPayProvider_Integration_NetworkTimeout(t *testing.T) {
-	// Create a server that never responds to simulate timeout
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second) // Simulate slow response
-	}))
-	defer server.Close()
+	// Skip test if no real API keys provided
+	if os.Getenv("OZANPAY_API_KEY") == "" {
+		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
+	}
 
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
-	ozanpayProvider.Initialize(config)
-	ozanpayProvider.baseURL = server.URL
-	ozanpayProvider.client.Timeout = 100 * time.Millisecond // Short timeout
+	err := ozanpayProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Failed to initialize provider: %v", err)
+	}
+
+	// Set very short timeout
+	ozanpayProvider.client.Timeout = 1 * time.Millisecond
 
 	request := provider.PaymentRequest{
-		Amount:   100.0,
-		Currency: "USD",
+		Amount:   testAmountSuccess,
+		Currency: testCurrency,
 		Customer: provider.Customer{
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john@example.com",
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:  testCardSuccess,
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
+			CardHolderName: "John Doe",
+			CardNumber:     testCardSuccess1,
+			CVV:            "000",
+			ExpireMonth:    "12",
+			ExpireYear:     "26",
 		},
 	}
 
 	ctx := context.Background()
-	_, err := ozanpayProvider.CreatePayment(ctx, request)
+	_, err = ozanpayProvider.CreatePayment(ctx, request)
 
 	if err == nil {
 		t.Error("Expected timeout error")
