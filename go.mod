@@ -11,6 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/stretchr/testify v1.10.0
+	github.com/stripe/stripe-go/v82 v82.3.0
 )
 
 require (

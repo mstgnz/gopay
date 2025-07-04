@@ -123,7 +123,7 @@ graph TD
 | Provider    | Status         | Documentation                       | Features                    |
 | ----------- | -------------- | ----------------------------------- | --------------------------- |
 | **İyzico**  | ✅ Production  | [Guide](provider/iyzico/README.md)  | Payment, 3D, Refund, Cancel |
-| **Stripe**  | 🚧 Development | [Guide](provider/stripe/README.md)  | Payment, 3D, Refund, Cancel |
+| **Stripe**  | ✅ Production  | [Guide](provider/stripe/README.md)  | Payment, 3D, Refund, Cancel |
 | **OzanPay** | ✅ Production  | [Guide](provider/ozanpay/README.md) | Payment, 3D, Refund, Cancel |
 | **Paycell** | ✅ Production  | [Guide](provider/paycell/README.md) | Payment, 3D, Refund, Cancel |
 | **Papara**  | 🚧 Development | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
