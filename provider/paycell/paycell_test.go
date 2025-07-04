@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,9 +142,15 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 					if !p.isProduction || p.baseURL != apiProductionURL {
 						t.Error("Production environment not set correctly")
 					}
+					if p.paymentManagementURL != paymentManagementProductionURL {
+						t.Error("Production payment management URL not set correctly")
+					}
 				} else {
 					if p.isProduction || p.baseURL != apiSandboxURL {
 						t.Error("Sandbox environment not set correctly")
+					}
+					if p.paymentManagementURL != paymentManagementSandboxURL {
+						t.Error("Sandbox payment management URL not set correctly")
 					}
 				}
 
@@ -412,73 +419,76 @@ func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 			if result["terminalId"] != p.terminalID {
 				t.Errorf("Expected terminalId '%s', got '%s'", p.terminalID, result["terminalId"])
 			}
-			if result["amount"] != int64(tt.request.Amount*100) {
-				t.Errorf("Expected amount %d, got %v", int64(tt.request.Amount*100), result["amount"])
+
+			// Verify orderId is present
+			if _, exists := result["orderId"]; !exists {
+				t.Error("Expected orderId to be present")
+			}
+
+			// Amount should be string format
+			expectedAmount := fmt.Sprintf("%.2f", tt.request.Amount)
+			if result["amount"] != expectedAmount {
+				t.Errorf("Expected amount '%s', got '%v'", expectedAmount, result["amount"])
 			}
 			if result["currency"] != tt.request.Currency {
 				t.Errorf("Expected currency '%s', got '%s'", tt.request.Currency, result["currency"])
 			}
 
-			// Verify customer data
-			customer, ok := result["customer"].(map[string]any)
-			if !ok {
-				t.Fatal("Customer data should be a map")
+			// Verify customer data (flat structure)
+			expectedCustomerName := tt.request.Customer.Name + " " + tt.request.Customer.Surname
+			if result["customerName"] != expectedCustomerName {
+				t.Errorf("Expected customerName '%s', got '%s'", expectedCustomerName, result["customerName"])
 			}
-			if customer["name"] != tt.request.Customer.Name {
-				t.Errorf("Expected customer name '%s', got '%s'", tt.request.Customer.Name, customer["name"])
-			}
-			if customer["email"] != tt.request.Customer.Email {
-				t.Errorf("Expected customer email '%s', got '%s'", tt.request.Customer.Email, customer["email"])
+			if result["customerEmail"] != tt.request.Customer.Email {
+				t.Errorf("Expected customerEmail '%s', got '%s'", tt.request.Customer.Email, result["customerEmail"])
 			}
 
-			// Verify card data
-			card, ok := result["card"].(map[string]any)
-			if !ok {
-				t.Fatal("Card data should be a map")
-			}
-			if card["cardNumber"] != tt.request.CardInfo.CardNumber {
-				t.Errorf("Expected card number '%s', got '%s'", tt.request.CardInfo.CardNumber, card["cardNumber"])
+			// Verify card data (flat structure)
+			if result["cardNumber"] != tt.request.CardInfo.CardNumber {
+				t.Errorf("Expected cardNumber '%s', got '%s'", tt.request.CardInfo.CardNumber, result["cardNumber"])
 			}
 
 			// Verify 3D specific fields
 			if tt.is3D {
-				if result["secure3d"] != true {
-					t.Error("Expected secure3d to be true for 3D payments")
+				if result["secure3d"] != "true" {
+					t.Error("Expected secure3d to be 'true' string for 3D payments")
 				}
 
-				callbackURL := result["callbackUrl"].(string)
+				successURL := result["successUrl"].(string)
+				failureURL := result["failureUrl"].(string)
+
 				if tt.request.CallbackURL != "" {
 					// Expect GoPay callback URL format with originalCallbackUrl parameter
 					expectedPattern := "/v1/callback/paycell?originalCallbackUrl=" + tt.request.CallbackURL
-					if !strings.Contains(callbackURL, expectedPattern) {
-						t.Errorf("Expected callbackUrl to contain '%s', got '%s'", expectedPattern, callbackURL)
+					if !strings.Contains(successURL, expectedPattern) {
+						t.Errorf("Expected successUrl to contain '%s', got '%s'", expectedPattern, successURL)
+					}
+					if !strings.Contains(failureURL, expectedPattern) {
+						t.Errorf("Expected failureUrl to contain '%s', got '%s'", expectedPattern, failureURL)
 					}
 				} else {
 					// Expect direct GoPay callback URL
 					expectedPattern := "/v1/callback/paycell"
-					if !strings.Contains(callbackURL, expectedPattern) {
-						t.Errorf("Expected callbackUrl to contain '%s', got '%s'", expectedPattern, callbackURL)
+					if !strings.Contains(successURL, expectedPattern) {
+						t.Errorf("Expected successUrl to contain '%s', got '%s'", expectedPattern, successURL)
+					}
+					if !strings.Contains(failureURL, expectedPattern) {
+						t.Errorf("Expected failureUrl to contain '%s', got '%s'", expectedPattern, failureURL)
 					}
 				}
 			} else {
 				if _, exists := result["secure3d"]; exists {
 					t.Error("secure3d should not be set for non-3D payments")
 				}
-				if _, exists := result["callbackUrl"]; exists {
-					t.Error("callbackUrl should not be set for non-3D payments")
+				if _, exists := result["successUrl"]; exists {
+					t.Error("successUrl should not be set for non-3D payments")
+				}
+				if _, exists := result["failureUrl"]; exists {
+					t.Error("failureUrl should not be set for non-3D payments")
 				}
 			}
 
-			// Verify items if present
-			if len(tt.request.Items) > 0 {
-				items, ok := result["items"].([]map[string]any)
-				if !ok {
-					t.Fatal("Items should be a slice of maps")
-				}
-				if len(items) != len(tt.request.Items) {
-					t.Errorf("Expected %d items, got %d", len(tt.request.Items), len(items))
-				}
-			}
+			// Note: Items are no longer included in the new Paycell API format
 		})
 	}
 }
@@ -499,7 +509,7 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 				Status:        statusSuccess,
 				PaymentID:     "pay123",
 				TransactionID: "txn123",
-				Amount:        10050,
+				Amount:        "100.50",
 				Currency:      "TRY",
 				Message:       "Payment successful",
 			},
@@ -513,7 +523,7 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 				Status:        statusPending,
 				PaymentID:     "pay123",
 				TransactionID: "txn123",
-				Amount:        10050,
+				Amount:        "100.50",
 				Currency:      "TRY",
 				Message:       "Payment pending",
 			},
@@ -527,7 +537,7 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 				Status:        statusFailed,
 				PaymentID:     "pay123",
 				TransactionID: "txn123",
-				Amount:        10050,
+				Amount:        "100.50",
 				Currency:      "TRY",
 				Message:       "Payment failed",
 				ErrorCode:     errorCodeInsufficientFunds,
@@ -542,7 +552,7 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 				Status:        statusCancelled,
 				PaymentID:     "pay123",
 				TransactionID: "txn123",
-				Amount:        10050,
+				Amount:        "100.50",
 				Currency:      "TRY",
 				Message:       "Payment cancelled",
 			},
@@ -556,7 +566,7 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 				Status:        statusPending,
 				PaymentID:     "pay123",
 				TransactionID: "txn123",
-				Amount:        10050,
+				Amount:        "100.50",
 				Currency:      "TRY",
 				Message:       "3D authentication required",
 				RedirectURL:   "https://3ds.paycell.com/auth",
@@ -583,8 +593,9 @@ func TestPaycellProvider_MapToPaymentResponse(t *testing.T) {
 			if result.TransactionID != tt.paycellResp.TransactionID {
 				t.Errorf("Expected transactionId '%s', got '%s'", tt.paycellResp.TransactionID, result.TransactionID)
 			}
-			if result.Amount != float64(tt.paycellResp.Amount)/100 {
-				t.Errorf("Expected amount %f, got %f", float64(tt.paycellResp.Amount)/100, result.Amount)
+			expectedAmount := 100.50 // Since all test cases use "100.50"
+			if result.Amount != expectedAmount {
+				t.Errorf("Expected amount %f, got %f", expectedAmount, result.Amount)
 			}
 			if result.Currency != tt.paycellResp.Currency {
 				t.Errorf("Expected currency '%s', got '%s'", tt.paycellResp.Currency, result.Currency)
@@ -645,8 +656,8 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 		if r.Method != "POST" {
 			t.Errorf("Expected POST method, got %s", r.Method)
 		}
-		if r.URL.Path != endpointPayment {
-			t.Errorf("Expected path %s, got %s", endpointPayment, r.URL.Path)
+		if r.URL.Path != endpointProvision {
+			t.Errorf("Expected path %s, got %s", endpointProvision, r.URL.Path)
 		}
 
 		// Verify headers
@@ -666,7 +677,7 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 			Status:        statusSuccess,
 			PaymentID:     "pay123",
 			TransactionID: "txn123",
-			Amount:        10050,
+			Amount:        "100.50",
 			Currency:      "TRY",
 			Message:       "Payment successful",
 		}

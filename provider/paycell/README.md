@@ -1,6 +1,13 @@
 # GoPay Paycell Integration
 
-This package provides a complete integration between GoPay and Paycell, Turkcell's payment processing solution. Paycell offers secure payment processing for Turkish market with comprehensive REST API support.
+This package provides a complete integration between GoPay and Paycell (TPay), Turkcell's payment processing solution. Paycell offers secure payment processing for Turkish market with comprehensive tPay REST API support.
+
+## API URLs
+
+- **Test Environment**: `https://tpay-test.turkcell.com.tr`
+- **Production Environment**: `https://tpay.turkcell.com.tr`
+- **3D Secure Management (Test)**: `https://omccstb.turkcell.com.tr`
+- **3D Secure Management (Prod)**: `https://secure.paycell.com.tr`
 
 ## Table of Contents
 
@@ -442,15 +449,23 @@ Headers:
 
 ## API Reference
 
-### Endpoints
+### Provision Services Endpoints
 
-| Method | Endpoint                           | Description              |
-| ------ | ---------------------------------- | ------------------------ |
-| POST   | `/api/payments`                    | Create regular payment   |
-| POST   | `/api/payments/3d`                 | Create 3D secure payment |
-| GET    | `/api/payments/{paymentId}`        | Get payment status       |
-| POST   | `/api/payments/{paymentId}/cancel` | Cancel payment           |
-| POST   | `/api/refunds`                     | Create refund            |
+| Method | Endpoint                                                                | Description                |
+| ------ | ----------------------------------------------------------------------- | -------------------------- |
+| POST   | `/tpay/provision/services/restful/getCardToken/provision/`              | Create regular payment     |
+| POST   | `/tpay/provision/services/restful/getCardToken/getThreeDSession/`       | Create 3D secure session   |
+| POST   | `/tpay/provision/services/restful/getCardToken/inquire/`                | Get payment status         |
+| POST   | `/tpay/provision/services/restful/getCardToken/reverse/`                | Cancel/Reverse payment     |
+| POST   | `/tpay/provision/services/restful/getCardToken/refund/`                 | Create refund              |
+| POST   | `/tpay/provision/services/restful/getCardToken/getThreeDSessionResult/` | Complete 3D secure payment |
+
+### Payment Management Endpoints (3D Secure)
+
+| Method | Endpoint                                     | Description              |
+| ------ | -------------------------------------------- | ------------------------ |
+| POST   | `/paymentmanagement/rest/getCardTokenSecure` | Get secure card token    |
+| POST   | `/paymentmanagement/rest/threeDSecure`       | 3D Secure authentication |
 
 ### Request Headers
 
@@ -461,19 +476,65 @@ X-Paycell-Timestamp: unix_timestamp
 X-Paycell-Signature: calculated_signature
 ```
 
+### Request Format (Example)
+
+```json
+{
+  "orderId": "gopay_12345",
+  "merchantId": "your_merchant_id",
+  "terminalId": "your_terminal_id",
+  "amount": "100.50",
+  "currency": "TRY",
+  "description": "Payment description",
+  "timestamp": 1699876543,
+  "cardNumber": "5528790000000008",
+  "expireMonth": "12",
+  "expireYear": "2030",
+  "cvv": "123",
+  "cardHolderName": "AHMET YILMAZ",
+  "customerName": "Ahmet Yılmaz",
+  "customerEmail": "ahmet@example.com",
+  "customerPhone": "+90555123456",
+  "successUrl": "https://your-app.com/success",
+  "failureUrl": "https://your-app.com/failure",
+  "secure3d": "true"
+}
+```
+
 ### Response Format
+
+#### Regular Payment Response
 
 ```json
 {
   "success": true,
   "status": "SUCCESS",
+  "orderId": "gopay_12345",
   "paymentId": "pay_1234567890",
   "transactionId": "txn_0987654321",
-  "amount": 10050,
+  "amount": "100.50",
   "currency": "TRY",
   "message": "Payment successful",
-  "redirectUrl": "https://3ds.paycell.com/auth", // Only for 3D payments
-  "html": "<form>...</form>" // Only for 3D payments
+  "responseCode": "00",
+  "responseMessage": "Success",
+  "provisionResponse": "approved"
+}
+```
+
+#### 3D Secure Payment Response
+
+```json
+{
+  "success": true,
+  "status": "PENDING",
+  "orderId": "gopay_12345",
+  "threeDSessionId": "3ds_session_123",
+  "threeDUrl": "https://omccstb.turkcell.com.tr/paymentmanagement/rest/threeDSecure",
+  "amount": "100.50",
+  "currency": "TRY",
+  "message": "3D Secure authentication required",
+  "responseCode": "3D",
+  "responseMessage": "3D Secure Required"
 }
 ```
 
@@ -580,10 +641,12 @@ For technical support:
 
 ### Environment URLs
 
-| Environment | URL                         |
-| ----------- | --------------------------- |
-| Sandbox     | https://test.paycell.com.tr |
-| Production  | https://api.paycell.com.tr  |
+| Environment            | URL                               |
+| ---------------------- | --------------------------------- |
+| Sandbox (tPay)         | https://tpay-test.turkcell.com.tr |
+| Production (tPay)      | https://tpay.turkcell.com.tr      |
+| Sandbox (3D Secure)    | https://omccstb.turkcell.com.tr   |
+| Production (3D Secure) | https://secure.paycell.com.tr     |
 
 ## Contributing
 

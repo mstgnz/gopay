@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,19 +17,28 @@ import (
 func createMockPaycellServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case endpointPayment:
+		case endpointProvision:
 			handleMockPayment(w, r, false)
-		case endpointPayment3D:
+		case endpointGetThreeDSession:
 			handleMockPayment(w, r, true)
-		case fmt.Sprintf(endpointPaymentStatus, "pay_success"):
-			handleMockPaymentStatus(w, r, "SUCCESS")
-		case fmt.Sprintf(endpointPaymentStatus, "pay_pending"):
-			handleMockPaymentStatus(w, r, "PENDING")
-		case fmt.Sprintf(endpointPaymentStatus, "pay_failed"):
-			handleMockPaymentStatus(w, r, "FAILED")
+		case endpointInquire:
+			// Extract paymentId from request body to determine status
+			var reqData map[string]any
+			json.NewDecoder(r.Body).Decode(&reqData)
+			paymentID, _ := reqData["paymentId"].(string)
+
+			if strings.Contains(paymentID, "success") {
+				handleMockPaymentStatus(w, r, "SUCCESS")
+			} else if strings.Contains(paymentID, "pending") {
+				handleMockPaymentStatus(w, r, "PENDING")
+			} else if strings.Contains(paymentID, "failed") {
+				handleMockPaymentStatus(w, r, "FAILED")
+			} else {
+				handleMockPaymentStatus(w, r, "SUCCESS")
+			}
 		case endpointRefund:
 			handleMockRefund(w, r)
-		case fmt.Sprintf(endpointCancel, "pay_success"):
+		case endpointReverse:
 			handleMockCancel(w, r)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -45,16 +53,15 @@ func handleMockPayment(w http.ResponseWriter, r *http.Request, is3D bool) {
 	var reqData map[string]any
 	json.NewDecoder(r.Body).Decode(&reqData)
 
-	// Extract card number for test scenarios
-	card, _ := reqData["card"].(map[string]any)
-	cardNumber, _ := card["cardNumber"].(string)
-	amount, _ := reqData["amount"].(float64)
+	// Extract card number for test scenarios - now flat structure
+	cardNumber, _ := reqData["cardNumber"].(string)
+	amountStr, _ := reqData["amount"].(string)
 
 	response := PaycellResponse{
 		PaymentID:     "pay_" + generateMockID(),
 		TransactionID: "txn_" + generateMockID(),
 		Currency:      "TRY",
-		Amount:        int64(amount),
+		Amount:        amountStr,
 	}
 
 	// Determine response based on test card numbers and amounts
@@ -96,7 +103,7 @@ func handleMockPayment(w http.ResponseWriter, r *http.Request, is3D bool) {
 			response.RedirectURL = "https://3ds.test.paycell.com/auth?token=mock_token"
 			response.HTML = `<form action="https://3ds.test.paycell.com/auth" method="POST">
 				<input type="hidden" name="token" value="mock_token">
-				<input type="hidden" name="amount" value="` + strconv.FormatInt(int64(amount), 10) + `">
+				<input type="hidden" name="amount" value="` + amountStr + `">
 			</form>`
 		} else {
 			response.Success = true
@@ -104,7 +111,7 @@ func handleMockPayment(w http.ResponseWriter, r *http.Request, is3D bool) {
 			response.Message = "Payment successful"
 		}
 
-	case amount == 999.99: // Test amount that triggers timeout
+	case amountStr == "999.99": // Test amount that triggers timeout
 		time.Sleep(35 * time.Second) // Simulate timeout
 		response.Success = false
 		response.Status = statusFailed
@@ -130,7 +137,7 @@ func handleMockPaymentStatus(w http.ResponseWriter, r *http.Request, status stri
 		Status:        status,
 		PaymentID:     "pay_" + generateMockID(),
 		TransactionID: "txn_" + generateMockID(),
-		Amount:        10050,
+		Amount:        "100.50",
 		Currency:      "TRY",
 	}
 
@@ -159,7 +166,7 @@ func handleMockRefund(w http.ResponseWriter, r *http.Request) {
 		Status:        statusRefunded,
 		PaymentID:     reqData["paymentId"].(string),
 		TransactionID: "ref_" + generateMockID(),
-		Amount:        int64(refundAmount),
+		Amount:        fmt.Sprintf("%.2f", refundAmount),
 		Currency:      "TRY",
 		Message:       "Refund processed successfully",
 	}
@@ -177,7 +184,7 @@ func handleMockCancel(w http.ResponseWriter, r *http.Request) {
 		Status:        statusCancelled,
 		PaymentID:     reqData["paymentId"].(string),
 		TransactionID: "can_" + generateMockID(),
-		Amount:        10050,
+		Amount:        "100.50",
 		Currency:      "TRY",
 		Message:       "Payment cancelled successfully",
 	}
@@ -202,6 +209,7 @@ func setupTestProvider(serverURL string) *PaycellProvider {
 	}
 	p.Initialize(config)
 	p.baseURL = serverURL
+	p.paymentManagementURL = serverURL // Use same server for tests
 	return p
 }
 
