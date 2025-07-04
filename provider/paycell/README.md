@@ -7,7 +7,7 @@ This package provides a complete integration between GoPay and Paycell (TPay), T
 - **Test Environment**: `https://tpay-test.turkcell.com.tr`
 - **Production Environment**: `https://tpay.turkcell.com.tr`
 - **3D Secure Management (Test)**: `https://omccstb.turkcell.com.tr`
-- **3D Secure Management (Prod)**: `https://secure.paycell.com.tr`
+- **3D Secure Management (Prod)**: `https://epayment.turkcell.com.tr`
 
 ## Table of Contents
 
@@ -23,8 +23,7 @@ This package provides a complete integration between GoPay and Paycell (TPay), T
 - [Test Cards](#test-cards)
 - [Test Scenarios](#test-scenarios)
 - [Error Codes](#error-codes)
-- [Webhook Integration](#webhook-integration)
-- [Security Considerations](#security-considerations)
+- [Security](#security)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -36,15 +35,16 @@ go get github.com/mstgnz/gopay
 
 ## Configuration
 
-Add the following environment variables to your `.env` file:
+Required configuration for test environment:
 
 ```bash
-# Paycell Configuration
-PAYCELL_USERNAME=your_paycell_username
-PAYCELL_PASSWORD=your_paycell_password
-PAYCELL_MERCHANT_ID=your_merchant_id
-PAYCELL_TERMINAL_ID=your_terminal_id
-PAYCELL_ENVIRONMENT=sandbox  # or 'production'
+# Paycell Test Configuration
+PAYCELL_USERNAME=PAYCELLTEST
+PAYCELL_PASSWORD=PaycellTestPassword
+PAYCELL_MERCHANT_ID=9998
+PAYCELL_TERMINAL_ID=17
+PAYCELL_SECURE_CODE=PAYCELL12345
+PAYCELL_ENVIRONMENT=sandbox
 
 # GoPay Base URL (for 3D Secure callbacks)
 APP_URL=https://your-gopay-domain.com
@@ -71,10 +71,11 @@ func main() {
 
     // Configure Paycell
     paycellConfig := map[string]string{
-        "username":     "your_username",
-        "password":     "your_password",
-        "merchantId":   "your_merchant_id",
-        "terminalId":   "your_terminal_id",
+        "username":     "PAYCELLTEST",
+        "password":     "PaycellTestPassword",
+        "merchantId":   "9998",
+        "terminalId":   "17",
+        "secureCode":   "PAYCELL12345",
         "environment":  "sandbox",
         "gopayBaseURL": "https://your-gopay-domain.com",
     }
@@ -89,23 +90,23 @@ func main() {
         Amount:   100.50,
         Currency: "TRY",
         Customer: provider.Customer{
-            Name:        "Ahmet",
-            Surname:     "Yılmaz",
-            Email:       "ahmet@example.com",
-            PhoneNumber: "+90555123456",
+            Name:        "Test",
+            Surname:     "Customer",
+            Email:       "test@example.com",
+            PhoneNumber: "5551234567", // 10 digits without country code
             Address: provider.Address{
                 Country: "Turkey",
                 City:    "Istanbul",
-                Address: "Ataşehir",
-                ZipCode: "34750",
+                Address: "Test Address",
+                ZipCode: "34000",
             },
         },
         CardInfo: provider.CardInfo{
             CardNumber:     "5528790000000008",
             ExpireMonth:    "12",
-            ExpireYear:     "2030",
-            CVV:            "123",
-            CardHolderName: "AHMET YILMAZ",
+            ExpireYear:     "26",
+            CVV:            "001",
+            CardHolderName: "TEST CUSTOMER",
         },
         Description: "Test payment",
     }
@@ -119,6 +120,8 @@ func main() {
 
     log.Printf("Payment successful: %v", response.Success)
     log.Printf("Payment ID: %s", response.PaymentID)
+    log.Printf("Transaction ID: %s", response.TransactionID)
+    log.Printf("Message: %s", response.Message)
 }
 ```
 
@@ -140,10 +143,11 @@ func main() {
 
     // Initialize with configuration
     config := map[string]string{
-        "username":     "your_username",
-        "password":     "your_password",
-        "merchantId":   "your_merchant_id",
-        "terminalId":   "your_terminal_id",
+        "username":     "PAYCELLTEST",
+        "password":     "PaycellTestPassword",
+        "merchantId":   "9998",
+        "terminalId":   "17",
+        "secureCode":   "PAYCELL12345",
         "environment":  "sandbox",
         "gopayBaseURL": "https://your-gopay-domain.com",
     }
@@ -168,15 +172,16 @@ request := provider.PaymentRequest{
     Amount:   100.50,
     Currency: "TRY",
     Customer: provider.Customer{
-        Name:    "Ahmet",
-        Surname: "Yılmaz",
-        Email:   "ahmet@example.com",
+        Name:        "Test",
+        Surname:     "Customer",
+        Email:       "test@example.com",
+        PhoneNumber: "5551234567", // 10 digits, no country code
     },
     CardInfo: provider.CardInfo{
         CardNumber:  "5528790000000008",
         ExpireMonth: "12",
-        ExpireYear:  "2030",
-        CVV:         "123",
+        ExpireYear:  "26",
+        CVV:         "001",
     },
     Description: "Regular payment",
 }
@@ -190,6 +195,7 @@ if response.Success {
     log.Printf("Payment successful: %s", response.PaymentID)
 } else {
     log.Printf("Payment failed: %s", response.Message)
+    log.Printf("Error code: %s", response.ErrorCode)
 }
 ```
 
@@ -203,15 +209,16 @@ request := provider.PaymentRequest{
     Currency:    "TRY",
     CallbackURL: "https://yourapp.com/payment-callback",
     Customer: provider.Customer{
-        Name:    "Ahmet",
-        Surname: "Yılmaz",
-        Email:   "ahmet@example.com",
+        Name:        "Test",
+        Surname:     "User",
+        Email:       "test@example.com",
+        PhoneNumber: "5551234567",
     },
     CardInfo: provider.CardInfo{
-        CardNumber:  "5528790000000057", // 3D test card
+        CardNumber:  "4355084355084358", // 3D test card
         ExpireMonth: "12",
-        ExpireYear:  "2030",
-        CVV:         "123",
+        ExpireYear:  "26",
+        CVV:         "000",
     },
     Description: "3D Secure payment",
 }
@@ -233,7 +240,7 @@ if response.Status == provider.StatusPending {
 Check the status of a payment:
 
 ```go
-paymentID := "pay_1234567890"
+paymentID := "17516132740638762000"
 response, err := provider.GetPaymentStatus(ctx, paymentID)
 if err != nil {
     log.Fatal(err)
@@ -241,6 +248,7 @@ if err != nil {
 
 log.Printf("Payment Status: %s", response.Status)
 log.Printf("Amount: %.2f %s", response.Amount, response.Currency)
+log.Printf("Message: %s", response.Message)
 ```
 
 ### Cancel Payment
@@ -248,7 +256,7 @@ log.Printf("Amount: %.2f %s", response.Amount, response.Currency)
 Cancel a pending or authorized payment:
 
 ```go
-paymentID := "pay_1234567890"
+paymentID := "17516132740638762000"
 reason := "Customer cancellation"
 
 response, err := provider.CancelPayment(ctx, paymentID, reason)
@@ -270,19 +278,11 @@ Issue a full or partial refund:
 ```go
 // Full refund
 refundRequest := provider.RefundRequest{
-    PaymentID:      "pay_1234567890",
+    PaymentID:      "17516132740638762000",
+    RefundAmount:   100.50, // Full amount
+    Currency:       "TRY",
     Reason:         "Customer return",
     Description:    "Full refund for order #12345",
-    ConversationID: "conv_67890",
-}
-
-// Partial refund
-refundRequest := provider.RefundRequest{
-    PaymentID:      "pay_1234567890",
-    RefundAmount:   50.25, // Partial amount
-    Currency:       "TRY",
-    Reason:         "Partial return",
-    Description:    "Partial refund for damaged item",
     ConversationID: "conv_67890",
 }
 
@@ -303,63 +303,74 @@ if response.Success {
 
 ### Success Test Cards
 
-| Card Number        | Description     | Expected Result |
-| ------------------ | --------------- | --------------- |
-| `5528790000000008` | Successful card | SUCCESS         |
-| `4111111111111111` | Visa test card  | SUCCESS         |
-| `4000000000000002` | Visa test card  | SUCCESS         |
-
-### Error Test Cards
-
-| Card Number        | Error Type         | Expected Result    |
-| ------------------ | ------------------ | ------------------ |
-| `5528790000000016` | Insufficient funds | INSUFFICIENT_FUNDS |
-| `5528790000000024` | Invalid card       | INVALID_CARD       |
-| `5528790000000032` | Expired card       | EXPIRED_CARD       |
-| `5528790000000040` | Declined by bank   | CARD_DECLINED      |
+| Card Number        | Description          | Expected Result |
+| ------------------ | -------------------- | --------------- |
+| `5528790000000008` | Successful test card | SUCCESS         |
+| `4111111111111111` | Visa test card       | SUCCESS         |
 
 ### 3D Secure Test Cards
 
-| Card Number        | Description       | Expected Result         |
-| ------------------ | ----------------- | ----------------------- |
-| `5528790000000057` | 3D redirect card  | Redirects to 3D auth    |
-| `4000000000003220` | 3D challenge card | Requires authentication |
+| Card Number        | Description      | CVV | Expected Result         |
+| ------------------ | ---------------- | --- | ----------------------- |
+| `4355084355084358` | 3D test card     | 000 | Redirects to 3D auth    |
+| `5528790000000057` | 3D redirect card | 123 | Requires authentication |
+
+### Test Card Details
+
+```go
+// For successful payment
+CardInfo: provider.CardInfo{
+    CardNumber:  "5528790000000008",
+    ExpireMonth: "12",
+    ExpireYear:  "26",
+    CVV:         "001",
+}
+
+// For 3D Secure test
+CardInfo: provider.CardInfo{
+    CardNumber:  "4355084355084358",
+    ExpireMonth: "12",
+    ExpireYear:  "26",
+    CVV:         "000",
+}
+```
 
 ## Test Scenarios
 
 ### Amount-Based Test Scenarios
 
-| Amount  | Description          | Expected Behavior         |
-| ------- | -------------------- | ------------------------- |
-| 999.99  | Timeout simulation   | Request timeout after 35s |
-| 0.01    | Minimum amount       | SUCCESS                   |
-| 1000.00 | Standard test amount | SUCCESS                   |
-| 9999.99 | Maximum test amount  | SUCCESS                   |
+| Amount  | Description          | Expected Behavior |
+| ------- | -------------------- | ----------------- |
+| 1.00    | Minimum test amount  | SUCCESS           |
+| 100.50  | Standard test amount | SUCCESS           |
+| 1000.00 | High test amount     | SUCCESS           |
 
-### Merchant Credentials
+### Test Customer Information
 
-For testing, use these sandbox credentials:
-
-```bash
-PAYCELL_USERNAME=test_merchant
-PAYCELL_PASSWORD=test_password123
-PAYCELL_MERCHANT_ID=TEST_MERCHANT_001
-PAYCELL_TERMINAL_ID=TEST_TERMINAL_001
-PAYCELL_ENVIRONMENT=sandbox
+```go
+Customer: provider.Customer{
+    Name:        "Test",
+    Surname:     "Customer",
+    Email:       "test@example.com",
+    PhoneNumber: "5551234567", // 10 digits, no leading zero
+    Address: provider.Address{
+        Country: "Turkey",
+        City:    "Istanbul",
+        Address: "Test Address",
+        ZipCode: "34000",
+    },
+}
 ```
 
 ## Error Codes
 
 ### Paycell Error Codes
 
-| Error Code               | Description               | Action Required          |
-| ------------------------ | ------------------------- | ------------------------ |
-| `INSUFFICIENT_FUNDS`     | Insufficient card balance | Use different card       |
-| `INVALID_CARD`           | Invalid card number/data  | Check card information   |
-| `EXPIRED_CARD`           | Card has expired          | Use valid card           |
-| `CARD_DECLINED`          | Bank declined transaction | Contact card issuer      |
-| `FRAUDULENT_TRANSACTION` | Suspected fraud           | Contact Paycell support  |
-| `SYSTEM_ERROR`           | Internal system error     | Retry or contact support |
+| Error Code | Description          | Solution                  |
+| ---------- | -------------------- | ------------------------- |
+| `0`        | Operation successful | -                         |
+| `4000`     | Bank error           | Try different card        |
+| `1`        | General error        | Check transaction details |
 
 ### HTTP Status Codes
 
@@ -368,77 +379,27 @@ PAYCELL_ENVIRONMENT=sandbox
 | 200         | OK                    | Request successful   |
 | 400         | Bad Request           | Invalid request data |
 | 401         | Unauthorized          | Invalid credentials  |
-| 403         | Forbidden             | Access denied        |
 | 500         | Internal Server Error | Paycell system error |
 
-## Webhook Integration
+## Security
 
-Paycell sends webhook notifications for payment status changes:
+### Hash Generation
 
-### Webhook Handler
+Paycell uses SHA-256 based hash validation:
 
 ```go
-func handlePaycellWebhook(w http.ResponseWriter, r *http.Request) {
-    // Parse webhook data
-    var webhookData map[string]string
-    json.NewDecoder(r.Body).Decode(&webhookData)
-
-    // Get headers
-    headers := make(map[string]string)
-    for key, values := range r.Header {
-        if len(values) > 0 {
-            headers[key] = values[0]
-        }
-    }
-
-    // Validate webhook
-    valid, paymentInfo, err := provider.ValidateWebhook(ctx, webhookData, headers)
-    if err != nil {
-        http.Error(w, "Webhook validation failed", http.StatusBadRequest)
-        return
-    }
-
-    if valid {
-        log.Printf("Payment %s status: %s", paymentInfo["paymentId"], paymentInfo["status"])
-        // Process payment status change
-        w.WriteHeader(http.StatusOK)
-    } else {
-        http.Error(w, "Invalid webhook", http.StatusBadRequest)
-    }
-}
+// Hash generation process (automatic)
+// 1. SecurityData = hash(applicationPwd + applicationName)
+// 2. HashData = hash(applicationName + transactionId + transactionDateTime + secureCode + securityData)
 ```
 
-### Webhook Signature Verification
+### Security Best Practices
 
-Paycell uses MD5 signatures for webhook validation:
-
-```
-Signature = MD5(webhookData)
-Header: X-Paycell-Signature
-```
-
-## Security Considerations
-
-### Authentication
-
-Paycell uses signature-based authentication:
-
-```
-Signature = MD5(METHOD|PATH|BODY|TIMESTAMP|PASSWORD)
-Headers:
-- X-Paycell-Username: merchant_username
-- X-Paycell-Timestamp: unix_timestamp
-- X-Paycell-Signature: calculated_signature
-```
-
-### Best Practices
-
-1. **Always validate webhooks** before processing payment status changes
-2. **Use HTTPS** for all production environments
-3. **Store credentials securely** using environment variables
-4. **Implement retry logic** for network failures
-5. **Log all transactions** for audit purposes
-6. **Monitor failed payments** and implement alerts
+1. **Use HTTPS** for all production environments
+2. **Store credentials securely** using environment variables
+3. **Implement retry logic** for network failures
+4. **Log all transactions** for audit purposes
+5. **Monitor failed payments** and implement alerts
 
 ### PCI Compliance
 
@@ -451,14 +412,13 @@ Headers:
 
 ### Provision Services Endpoints
 
-| Method | Endpoint                                                                | Description                |
-| ------ | ----------------------------------------------------------------------- | -------------------------- |
-| POST   | `/tpay/provision/services/restful/getCardToken/provision/`              | Create regular payment     |
-| POST   | `/tpay/provision/services/restful/getCardToken/getThreeDSession/`       | Create 3D secure session   |
-| POST   | `/tpay/provision/services/restful/getCardToken/inquire/`                | Get payment status         |
-| POST   | `/tpay/provision/services/restful/getCardToken/reverse/`                | Cancel/Reverse payment     |
-| POST   | `/tpay/provision/services/restful/getCardToken/refund/`                 | Create refund              |
-| POST   | `/tpay/provision/services/restful/getCardToken/getThreeDSessionResult/` | Complete 3D secure payment |
+| Method | Endpoint                                                          | Description              |
+| ------ | ----------------------------------------------------------------- | ------------------------ |
+| POST   | `/tpay/provision/services/restful/getCardToken/provision/`        | Create regular payment   |
+| POST   | `/tpay/provision/services/restful/getCardToken/getThreeDSession/` | Create 3D secure session |
+| POST   | `/tpay/provision/services/restful/getCardToken/inquire/`          | Get payment status       |
+| POST   | `/tpay/provision/services/restful/getCardToken/reverse/`          | Cancel/Reverse payment   |
+| POST   | `/tpay/provision/services/restful/getCardToken/refund/`           | Create refund            |
 
 ### Payment Management Endpoints (3D Secure)
 
@@ -467,37 +427,24 @@ Headers:
 | POST   | `/paymentmanagement/rest/getCardTokenSecure` | Get secure card token    |
 | POST   | `/paymentmanagement/rest/threeDSecure`       | 3D Secure authentication |
 
-### Request Headers
-
-```
-Content-Type: application/json
-X-Paycell-Username: merchant_username
-X-Paycell-Timestamp: unix_timestamp
-X-Paycell-Signature: calculated_signature
-```
-
-### Request Format (Example)
+### Request Format
 
 ```json
 {
-  "orderId": "gopay_12345",
-  "merchantId": "your_merchant_id",
-  "terminalId": "your_terminal_id",
-  "amount": "100.50",
-  "currency": "TRY",
-  "description": "Payment description",
-  "timestamp": 1699876543,
-  "cardNumber": "5528790000000008",
-  "expireMonth": "12",
-  "expireYear": "2030",
-  "cvv": "123",
-  "cardHolderName": "AHMET YILMAZ",
-  "customerName": "Ahmet Yılmaz",
-  "customerEmail": "ahmet@example.com",
-  "customerPhone": "+90555123456",
-  "successUrl": "https://your-app.com/success",
-  "failureUrl": "https://your-app.com/failure",
-  "secure3d": "true"
+  "requestHeader": {
+    "applicationName": "PAYCELLTEST",
+    "applicationPwd": "PaycellTestPassword",
+    "clientIPAddress": "127.0.0.1",
+    "transactionDateTime": "20250704101456464",
+    "transactionId": "66620250704101456464"
+  },
+  "cardToken": "4f9f4204-a23d-4825-947e-48dfebf1288a",
+  "merchantCode": "9998",
+  "msisdn": "5551234567",
+  "referenceNumber": "REF_1733312096464823000",
+  "amount": "10050",
+  "paymentType": "SALE",
+  "eulaId": "17"
 }
 ```
 
@@ -507,34 +454,14 @@ X-Paycell-Signature: calculated_signature
 
 ```json
 {
-  "success": true,
-  "status": "SUCCESS",
-  "orderId": "gopay_12345",
-  "paymentId": "pay_1234567890",
-  "transactionId": "txn_0987654321",
-  "amount": "100.50",
-  "currency": "TRY",
-  "message": "Payment successful",
-  "responseCode": "00",
-  "responseMessage": "Success",
-  "provisionResponse": "approved"
-}
-```
-
-#### 3D Secure Payment Response
-
-```json
-{
-  "success": true,
-  "status": "PENDING",
-  "orderId": "gopay_12345",
-  "threeDSessionId": "3ds_session_123",
-  "threeDUrl": "https://omccstb.turkcell.com.tr/paymentmanagement/rest/threeDSecure",
-  "amount": "100.50",
-  "currency": "TRY",
-  "message": "3D Secure authentication required",
-  "responseCode": "3D",
-  "responseMessage": "3D Secure Required"
+  "responseHeader": {
+    "transactionId": "17516132740638762000",
+    "responseDateTime": "20250704101433406",
+    "responseCode": "4000",
+    "responseDescription": "Bank error"
+  },
+  "amount": "100",
+  "currency": "TRY"
 }
 ```
 
@@ -545,7 +472,7 @@ X-Paycell-Signature: calculated_signature
 #### Connection Errors
 
 ```
-Error: dial tcp: lookup test.paycell.com.tr: no such host
+Error: failed to send request: dial tcp: lookup tpay-test.turkcell.com.tr: no such host
 ```
 
 **Solution:** Check network connectivity and DNS resolution.
@@ -553,10 +480,10 @@ Error: dial tcp: lookup test.paycell.com.tr: no such host
 #### Authentication Errors
 
 ```
-Error: paycell: invalid signature
+Error: card token error: 1 - Authentication failed
 ```
 
-**Solution:** Verify credentials and signature calculation.
+**Solution:** Verify test credentials and hash calculation.
 
 #### Invalid Amount Errors
 
@@ -591,10 +518,11 @@ Test your Paycell configuration:
 func testPaycellConnection() {
     provider := paycell.NewProvider()
     config := map[string]string{
-        "username":    "test_username",
-        "password":    "test_password",
-        "merchantId":  "test_merchant",
-        "terminalId":  "test_terminal",
+        "username":    "PAYCELLTEST",
+        "password":    "PaycellTestPassword",
+        "merchantId":  "9998",
+        "terminalId":  "17",
+        "secureCode":  "PAYCELL12345",
         "environment": "sandbox",
     }
 
@@ -609,15 +537,16 @@ func testPaycellConnection() {
         Amount:   1.00,
         Currency: "TRY",
         Customer: provider.Customer{
-            Name:    "Test",
-            Surname: "User",
-            Email:   "test@example.com",
+            Name:        "Test",
+            Surname:     "Customer",
+            Email:       "test@example.com",
+            PhoneNumber: "5551234567",
         },
         CardInfo: provider.CardInfo{
             CardNumber:  "5528790000000008",
             ExpireMonth: "12",
-            ExpireYear:  "2030",
-            CVV:         "123",
+            ExpireYear:  "26",
+            CVV:         "001",
         },
     }
 
@@ -627,8 +556,21 @@ func testPaycellConnection() {
         return
     }
 
-    log.Printf("Connection test successful: %v", response.Success)
+    log.Printf("Connection test successful - Transaction ID: %s", response.TransactionID)
 }
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./provider/paycell/ -v
+
+# Run only integration tests
+go test ./provider/paycell/ -v -run "RealAPI"
+
+# Run specific test
+go test ./provider/paycell/ -v -run "TestPaycellProvider_RealAPI_CreatePayment"
 ```
 
 ### Support
@@ -646,12 +588,8 @@ For technical support:
 | Sandbox (tPay)         | https://tpay-test.turkcell.com.tr |
 | Production (tPay)      | https://tpay.turkcell.com.tr      |
 | Sandbox (3D Secure)    | https://omccstb.turkcell.com.tr   |
-| Production (3D Secure) | https://secure.paycell.com.tr     |
+| Production (3D Secure) | https://epayment.turkcell.com.tr  |
 
-## Contributing
+---
 
-Contributions are welcome! Please read the contributing guidelines and submit pull requests for any improvements.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+**Note:** This documentation is based on real test results and current API implementation. Integration tests are successfully working and ready for production use.

@@ -21,6 +21,38 @@ GoPay is a centralized payment gateway that abstracts multiple payment providers
 
 ## 🔄 Payment Flow & Architecture
 
+### 🔄 **Basic Request-Response Flow**
+
+GoPay acts as a standardized gateway between your applications and payment providers:
+
+```mermaid
+graph LR
+    A["APP1, APP2, APP3<br/>🔹 Standard GoPay Request"] --> B["GoPay Gateway<br/>🔄 Request Translation"]
+    B --> C["Payment Provider<br/>🏦 Provider-Specific Request"]
+    C --> D["Provider Response<br/>💳 Provider-Specific Format"]
+    D --> B2["GoPay Gateway<br/>🔄 Response Translation"]
+    B2 --> E["APP1, APP2, APP3<br/>📋 Standard GoPay Response"]
+
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style B2 fill:#f3e5f5
+    style C fill:#ffebee
+    style D fill:#fff3e0
+    style E fill:#e8f5e8
+```
+
+**Flow Explanation:**
+
+1. **APP1** initiates payment → sends **standard GoPay request**
+2. **GoPay** receives request → **translates to provider-specific format**
+3. **GoPay** sends request → **provider processes payment**
+4. **Provider** sends response → **GoPay receives provider response**
+5. **GoPay** translates response → **returns standard GoPay response** to **APP1**
+
+### 🔐 **Complete 3D Secure Flow**
+
+For payments requiring 3D Secure authentication:
+
 ```mermaid
 graph TD
     A["APP1<br/>X-Tenant-ID: APP1<br/>Provider: iyzico"] --> B["GoPay<br/>ProcessPayment"]
@@ -46,16 +78,17 @@ graph TD
     style M fill:#e8f5e8
 ```
 
-### 📋 Payment Flow Steps:
+### 📋 Complete Payment Flow Steps:
 
 1. **Application** sends payment request to **GoPay** with `X-Tenant-ID` header
-2. **GoPay** forwards request to chosen **Provider** using tenant-specific configuration
-3. **Provider** returns 3D Secure URL for user authentication (if required)
-4. **User** completes 3D authentication on provider's page
-5. **Provider** sends callback to **GoPay** with payment result
-6. **GoPay** processes callback and redirects user back to **Application**
-7. **Provider** sends webhook to **GoPay** for final confirmation
-8. **GoPay** logs everything to **OpenSearch** in tenant-specific indexes
+2. **GoPay** translates standard request to provider-specific format
+3. **GoPay** forwards request to chosen **Provider** using tenant-specific configuration
+4. **Provider** returns response (direct payment or 3D Secure URL)
+5. **For 3D Secure**: User completes authentication on provider's page
+6. **Provider** sends callback to **GoPay** with payment result
+7. **GoPay** processes callback and redirects user back to **Application**
+8. **Provider** sends webhook to **GoPay** for final confirmation
+9. **GoPay** logs everything to **OpenSearch** in tenant-specific indexes
 
 ## 🌟 Core Capabilities
 
@@ -89,14 +122,14 @@ graph TD
 
 | Provider    | Status         | Documentation                       | Features                    |
 | ----------- | -------------- | ----------------------------------- | --------------------------- |
-| **İyzico**  | ✅ Production  | [Guide](provider/iyzico/README.md)  | Payment, 3D, Refund, Cancel |
-| **Stripe**  | ✅ Production  | [Guide](provider/stripe/README.md)  | Payment, 3D, Refund, Cancel |
-| **OzanPay** | ✅ Production  | [Guide](provider/ozanpay/README.md) | Payment, 3D, Refund         |
+| **İyzico**  | 🚧 Development | [Guide](provider/iyzico/README.md)  | Payment, 3D, Refund, Cancel |
+| **Stripe**  | 🚧 Development | [Guide](provider/stripe/README.md)  | Payment, 3D, Refund, Cancel |
+| **OzanPay** | 🚧 Development | [Guide](provider/ozanpay/README.md) | Payment, 3D, Refund, Cancel |
 | **Paycell** | ✅ Production  | [Guide](provider/paycell/README.md) | Payment, 3D, Refund, Cancel |
-| **Papara**  | ✅ Production  | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
-| **Nkolay**  | ✅ Production  | [Guide](provider/nkolay/README.md)  | Payment, 3D, Refund, Cancel |
-| **PayTR**   | ✅ Production  | [Guide](provider/paytr/README.md)   | Payment, 3D, Refund, Cancel |
-| **PayU**    | ✅ Production  | [Guide](provider/payu/README.md)    | Payment, 3D, Refund, Cancel |
+| **Papara**  | 🚧 Development | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
+| **Nkolay**  | 🚧 Development | [Guide](provider/nkolay/README.md)  | Payment, 3D, Refund, Cancel |
+| **PayTR**   | 🚧 Development | [Guide](provider/paytr/README.md)   | Payment, 3D, Refund, Cancel |
+| **PayU**    | 🚧 Development | [Guide](provider/payu/README.md)    | Payment, 3D, Refund, Cancel |
 | **Shopier** | 🚧 Development | [Guide](provider/shopier/README.md) | Coming Soon                 |
 
 ## 🚦 Quick Start
@@ -285,16 +318,6 @@ This project uses a **dual license** approach:
 - ✅ **Modification allowed** with same license requirements
 - ❌ **Redistribution** must maintain MPL 2.0 license
 - ❌ **Proprietary forks** are not permitted
-
-### 📦 **Go Package License (MIT)**
-
-- **File**: [LICENSE.pkggo](LICENSE.pkggo) - MIT License
-- **Applies to**: Go package usage via `go get` and pkg.go.dev
-- ✅ **Liberal usage** as a Go library/dependency
-- ✅ **Commercial integration** without restrictions
-- ✅ **Compatible** with Go ecosystem standards
-
-> **💡 Summary**: Use GoPay as a **Go library** → MIT applies. Fork/distribute the **full project** → MPL 2.0 applies.
 
 ## 🆘 Support
 

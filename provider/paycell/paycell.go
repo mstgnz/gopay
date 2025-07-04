@@ -367,26 +367,13 @@ func (p *PaycellProvider) processPayment(ctx context.Context, request provider.P
 	return p.provisionWithToken(ctx, request, cardToken)
 }
 
-// getCardTokenSecure handles the getThreeDSession request according to Paycell docs
+// getCardTokenSecure handles card tokenization according to Paycell docs
 func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provider.PaymentRequest) (string, error) {
 	// Generate transaction details using docs-compliant format
 	transactionDateTime := p.generateTransactionDateTime()
 	transactionID := testPrefix + transactionDateTime
 
-	// Format phone number according to docs: "5380521479" (10 digits, no country code)
-	msisdn := request.Customer.PhoneNumber
-	if strings.HasPrefix(msisdn, "+90") {
-		msisdn = msisdn[3:]
-	} else if strings.HasPrefix(msisdn, "90") {
-		msisdn = msisdn[2:]
-	}
-	// Keep last 10 digits
-	if len(msisdn) > 10 {
-		msisdn = msisdn[len(msisdn)-10:]
-	}
-
-	// First, we need to get a card token from card details
-	// This is the getCardTokenSecure call for card tokenization
+	// Get a card token from card details (card tokenization only)
 	cardTokenRequest := PaycellGetCardTokenSecureRequest{
 		Header: struct {
 			ApplicationName     string `json:"applicationName"`
@@ -404,8 +391,8 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		HashData:        p.generateHashData(transactionID, transactionDateTime),
 	}
 
-	// Call getCardTokenSecure to get card token
-	cardTokenEndpoint := "https://omccstb.turkcell.com.tr/paymentmanagement/rest/getCardTokenSecure"
+	// Call getCardTokenSecure to get card token - use provider's payment management URL
+	cardTokenEndpoint := p.paymentManagementURL + endpointGetCardTokenSecure
 
 	jsonData, err := json.Marshal(cardTokenRequest)
 	if err != nil {
@@ -445,67 +432,8 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("card token error: %s - %s", cardTokenResp.Header.ResponseCode, cardTokenResp.Header.ResponseDescription)
 	}
 
-	// Now use the card token to get 3D session
-	threeDSessionRequest := PaycellGetThreeDSessionRequest{
-		RequestHeader: PaycellRequestHeader{
-			ApplicationName:     testApplicationName,
-			ApplicationPwd:      testApplicationPwd,
-			ClientIPAddress:     "127.0.0.1",
-			TransactionDateTime: transactionDateTime,
-			TransactionID:       transactionID,
-		},
-		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş as string
-		CardToken:        cardTokenResp.CardToken,
-		InstallmentCount: 1,
-		MerchantCode:     testMerchantCode,
-		Msisdn:           msisdn,
-		ReferenceNumber:  request.ConversationID,
-		Target:           "MERCHANT",
-		TransactionType:  "AUTH",
-	}
-
-	// Use the correct endpoint from docs
-	threeDEndpoint := "https://tpay-test.turkcell.com.tr/tpay/provision/services/restful/getCardToken/getThreeDSession/"
-
-	jsonData, err = json.Marshal(threeDSessionRequest)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal 3D session request: %v", err)
-	}
-
-	fmt.Printf("getThreeDSession Request: %s\n", string(jsonData))
-
-	req, err = http.NewRequestWithContext(ctx, "POST", threeDEndpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create 3D session request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err = client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send 3D session request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read 3D session response: %v", err)
-	}
-
-	fmt.Printf("getThreeDSession Response: %s\n", string(body))
-
-	var threeDSessionResp PaycellGetThreeDSessionResponse
-	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal 3D session response: %v", err)
-	}
-
-	// Check for success
-	if threeDSessionResp.ResponseHeader.ResponseCode != "0" {
-		return "", fmt.Errorf("3D session error: %s - %s", threeDSessionResp.ResponseHeader.ResponseCode, threeDSessionResp.ResponseHeader.ResponseDescription)
-	}
-
-	// Return the 3D session ID
-	return threeDSessionResp.ThreeDSessionId, nil
+	// Return the card token
+	return cardTokenResp.CardToken, nil
 }
 
 // generateHashData generates hash data for requests using test constants
@@ -692,42 +620,6 @@ func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint str
 	}
 
 	return p.mapProvisionToPaymentResponse(paycellResp), nil
-}
-
-// sendCardTokenRequest sends request to Paycell card token API
-func (p *PaycellProvider) sendCardTokenRequest(ctx context.Context, endpoint string, data interface{}) (*PaycellGetCardTokenSecureResponse, error) {
-	url := p.paymentManagementURL + endpoint
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var paycellResp PaycellGetCardTokenSecureResponse
-	if err := json.Unmarshal(respBody, &paycellResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	return &paycellResp, nil
 }
 
 // mapProvisionToPaymentResponse maps Paycell provision response to standard payment response
@@ -974,7 +866,7 @@ type PaycellResponse struct {
 }
 
 // mapToPaycellRequest converts a standard payment request to Paycell format (for backward compatibility)
-func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, is3D bool) map[string]any {
+func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _ bool) map[string]any {
 	// Create transaction datetime in Paycell format (YmdHisu - 17 chars)
 	transactionDateTime := p.generateTransactionDateTime()
 	transactionID := p.generateTransactionID()

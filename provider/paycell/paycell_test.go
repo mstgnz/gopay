@@ -174,9 +174,10 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 		Amount:   100.50,
 		Currency: "TRY",
 		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
+			Name:        "John",
+			Surname:     "Doe",
+			Email:       "john@example.com",
+			PhoneNumber: "5551234567",
 		},
 		CardInfo: provider.CardInfo{
 			CardNumber:  "5528790000000008",
@@ -232,37 +233,26 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 			errorMsg:    "currency is required",
 		},
 		{
-			name: "missing customer email",
+			name: "missing customer phone number",
 			request: func() provider.PaymentRequest {
 				req := validRequest
-				req.Customer.Email = ""
+				req.Customer.PhoneNumber = ""
 				return req
 			}(),
 			is3D:        false,
 			expectError: true,
-			errorMsg:    "customer email is required",
+			errorMsg:    "customer phone number is required",
 		},
 		{
-			name: "missing customer name",
+			name: "invalid phone number format",
 			request: func() provider.PaymentRequest {
 				req := validRequest
-				req.Customer.Name = ""
+				req.Customer.PhoneNumber = "123456789"
 				return req
 			}(),
 			is3D:        false,
 			expectError: true,
-			errorMsg:    "customer name is required",
-		},
-		{
-			name: "missing customer surname",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Customer.Surname = ""
-				return req
-			}(),
-			is3D:        false,
-			expectError: true,
-			errorMsg:    "customer surname is required",
+			errorMsg:    "phone number must be 10 digits",
 		},
 		{
 			name: "missing card number",
@@ -284,7 +274,7 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 			}(),
 			is3D:        false,
 			expectError: true,
-			errorMsg:    "CVV is required",
+			errorMsg:    "card CVV is required",
 		},
 		{
 			name: "missing expire month",
@@ -295,7 +285,7 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 			}(),
 			is3D:        false,
 			expectError: true,
-			errorMsg:    "expire month is required",
+			errorMsg:    "card expiry date is required",
 		},
 		{
 			name: "missing expire year",
@@ -306,7 +296,7 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 			}(),
 			is3D:        false,
 			expectError: true,
-			errorMsg:    "expire year is required",
+			errorMsg:    "card expiry date is required",
 		},
 		{
 			name: "3D payment missing callback URL",
@@ -412,21 +402,18 @@ func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := p.mapToPaycellRequest(tt.request, tt.is3D)
 
-			// Verify basic fields
-			if result["merchantId"] != p.merchantID {
-				t.Errorf("Expected merchantId '%s', got '%s'", p.merchantID, result["merchantId"])
-			}
-			if result["terminalId"] != p.terminalID {
-				t.Errorf("Expected terminalId '%s', got '%s'", p.terminalID, result["terminalId"])
+			// Verify basic fields from real Paycell API format
+			if result["merchantCode"] != p.merchantID {
+				t.Errorf("Expected merchantCode '%s', got '%v'", p.merchantID, result["merchantCode"])
 			}
 
-			// Verify orderId is present
-			if _, exists := result["orderId"]; !exists {
-				t.Error("Expected orderId to be present")
+			// Verify referenceNumber is present
+			if _, exists := result["referenceNumber"]; !exists {
+				t.Error("Expected referenceNumber to be present")
 			}
 
-			// Amount should be string format
-			expectedAmount := fmt.Sprintf("%.2f", tt.request.Amount)
+			// Amount should be in cents (multiply by 100)
+			expectedAmount := fmt.Sprintf("%.0f", tt.request.Amount*100)
 			if result["amount"] != expectedAmount {
 				t.Errorf("Expected amount '%s', got '%v'", expectedAmount, result["amount"])
 			}
@@ -434,61 +421,43 @@ func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 				t.Errorf("Expected currency '%s', got '%s'", tt.request.Currency, result["currency"])
 			}
 
-			// Verify customer data (flat structure)
-			expectedCustomerName := tt.request.Customer.Name + " " + tt.request.Customer.Surname
-			if result["customerName"] != expectedCustomerName {
-				t.Errorf("Expected customerName '%s', got '%s'", expectedCustomerName, result["customerName"])
-			}
-			if result["customerEmail"] != tt.request.Customer.Email {
-				t.Errorf("Expected customerEmail '%s', got '%s'", tt.request.Customer.Email, result["customerEmail"])
+			// Verify MSISDN (phone number processing)
+			if _, exists := result["msisdn"]; !exists {
+				t.Error("Expected msisdn to be present")
 			}
 
-			// Verify card data (flat structure)
-			if result["cardNumber"] != tt.request.CardInfo.CardNumber {
-				t.Errorf("Expected cardNumber '%s', got '%s'", tt.request.CardInfo.CardNumber, result["cardNumber"])
+			// Verify paymentType is set
+			if result["paymentType"] != "SALE" {
+				t.Errorf("Expected paymentType 'SALE', got '%v'", result["paymentType"])
 			}
 
-			// Verify 3D specific fields
-			if tt.is3D {
-				if result["secure3d"] != "true" {
-					t.Error("Expected secure3d to be 'true' string for 3D payments")
-				}
-
-				successURL := result["successUrl"].(string)
-				failureURL := result["failureUrl"].(string)
-
-				if tt.request.CallbackURL != "" {
-					// Expect GoPay callback URL format with originalCallbackUrl parameter
-					expectedPattern := "/v1/callback/paycell?originalCallbackUrl=" + tt.request.CallbackURL
-					if !strings.Contains(successURL, expectedPattern) {
-						t.Errorf("Expected successUrl to contain '%s', got '%s'", expectedPattern, successURL)
+			// Verify requestHeader structure
+			if requestHeader, exists := result["requestHeader"]; exists {
+				if header, ok := requestHeader.(map[string]any); ok {
+					if header["applicationName"] != p.username {
+						t.Errorf("Expected applicationName '%s', got '%v'", p.username, header["applicationName"])
 					}
-					if !strings.Contains(failureURL, expectedPattern) {
-						t.Errorf("Expected failureUrl to contain '%s', got '%s'", expectedPattern, failureURL)
+					if header["applicationPwd"] != p.password {
+						t.Errorf("Expected applicationPwd '%s', got '%v'", p.password, header["applicationPwd"])
+					}
+					if _, exists := header["transactionId"]; !exists {
+						t.Error("Expected transactionId in requestHeader")
+					}
+					if _, exists := header["transactionDateTime"]; !exists {
+						t.Error("Expected transactionDateTime in requestHeader")
 					}
 				} else {
-					// Expect direct GoPay callback URL
-					expectedPattern := "/v1/callback/paycell"
-					if !strings.Contains(successURL, expectedPattern) {
-						t.Errorf("Expected successUrl to contain '%s', got '%s'", expectedPattern, successURL)
-					}
-					if !strings.Contains(failureURL, expectedPattern) {
-						t.Errorf("Expected failureUrl to contain '%s', got '%s'", expectedPattern, failureURL)
-					}
+					t.Error("Expected requestHeader to be a map[string]any")
 				}
 			} else {
-				if _, exists := result["secure3d"]; exists {
-					t.Error("secure3d should not be set for non-3D payments")
-				}
-				if _, exists := result["successUrl"]; exists {
-					t.Error("successUrl should not be set for non-3D payments")
-				}
-				if _, exists := result["failureUrl"]; exists {
-					t.Error("failureUrl should not be set for non-3D payments")
-				}
+				t.Error("Expected requestHeader to be present")
 			}
 
-			// Note: Items are no longer included in the new Paycell API format
+			// The new Paycell API format doesn't use 3D flags in the request mapping
+			// 3D secure handling is done at the API level, not in the request structure
+
+			// Note: The new format doesn't include customer details, card details, or URLs
+			// These are handled separately through the card token system
 		})
 	}
 }
@@ -708,9 +677,10 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 		Amount:   100.50,
 		Currency: "TRY",
 		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
+			Name:        "John",
+			Surname:     "Doe",
+			Email:       "john@example.com",
+			PhoneNumber: "5551234567",
 		},
 		CardInfo: provider.CardInfo{
 			CardNumber:  "5528790000000008",
