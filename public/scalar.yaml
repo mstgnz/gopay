@@ -18,8 +18,13 @@ info:
 
     ## Supported Payment Providers
     - ✅ **İyzico** (Turkey) - Full integration with 3D Secure support
-    - 🚧 **OzanPay** (Turkey) - In development
-    - 🚧 **Stripe** (Global) - Coming soon
+    - ✅ **OzanPay** (Turkey) - Production ready
+    - ✅ **Stripe** (Global) - Production ready
+    - ✅ **Paycell** (Turkey) - Production ready
+    - ✅ **Papara** (Turkey) - Production ready
+    - ✅ **Nkolay** (Turkey) - Production ready
+    - ✅ **PayTR** (Turkey) - Production ready
+    - ✅ **PayU** (Global) - Production ready
 
     ## Authentication
     All API endpoints require a Bearer token for authentication. Include the token in the Authorization header:
@@ -488,6 +493,22 @@ components:
           example: "sandbox"
           description: OzanPay environment
 
+        # Stripe Configuration
+        STRIPE_SECRET_KEY:
+          type: string
+          example: "sk_test_123..."
+          description: Stripe secret key
+        STRIPE_PUBLIC_KEY:
+          type: string
+          example: "pk_test_123..."
+          description: Stripe public key
+        STRIPE_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: Stripe environment
+
         # Paycell Configuration
         PAYCELL_USERNAME:
           type: string
@@ -511,6 +532,86 @@ components:
           default: sandbox
           example: "sandbox"
           description: Paycell environment
+
+        # Papara Configuration
+        PAPARA_API_KEY:
+          type: string
+          example: "papara-api-key"
+          description: Papara API key
+        PAPARA_SECRET_KEY:
+          type: string
+          example: "papara-secret-key"
+          description: Papara secret key
+        PAPARA_MERCHANT_ID:
+          type: string
+          example: "papara-merchant-123"
+          description: Papara merchant ID
+        PAPARA_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: Papara environment
+
+        # Nkolay Configuration
+        NKOLAY_API_KEY:
+          type: string
+          example: "nkolay-api-key"
+          description: Nkolay API key
+        NKOLAY_SECRET_KEY:
+          type: string
+          example: "nkolay-secret-key"
+          description: Nkolay secret key
+        NKOLAY_MERCHANT_ID:
+          type: string
+          example: "nkolay-merchant-123"
+          description: Nkolay merchant ID
+        NKOLAY_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: Nkolay environment
+
+        # PayTR Configuration
+        PAYTR_MERCHANT_ID:
+          type: string
+          example: "paytr-merchant-123"
+          description: PayTR merchant ID
+        PAYTR_MERCHANT_KEY:
+          type: string
+          example: "paytr-merchant-key"
+          description: PayTR merchant key
+        PAYTR_MERCHANT_SALT:
+          type: string
+          example: "paytr-merchant-salt"
+          description: PayTR merchant salt
+        PAYTR_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: PayTR environment
+
+        # PayU Configuration
+        PAYU_MERCHANT_ID:
+          type: string
+          example: "payu-merchant-123"
+          description: PayU merchant ID
+        PAYU_SECRET_KEY:
+          type: string
+          example: "payu-secret-key"
+          description: PayU secret key
+        PAYU_API_KEY:
+          type: string
+          example: "payu-api-key"
+          description: PayU API key
+        PAYU_ENVIRONMENT:
+          type: string
+          enum: [sandbox, production]
+          default: sandbox
+          example: "sandbox"
+          description: PayU environment
 
     SetEnvResponse:
       type: object
@@ -784,9 +885,14 @@ paths:
         3. GoPay automatically uses tenant-specific provider configuration
         
         **Supported Providers:**
-        - **İyzico**: Requires `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`
-        - **OzanPay**: Requires `OZANPAY_API_KEY`, `OZANPAY_SECRET_KEY`, `OZANPAY_MERCHANT_ID`
-        - **Paycell**: Requires `PAYCELL_USERNAME`, `PAYCELL_PASSWORD`, `PAYCELL_MERCHANT_ID`, `PAYCELL_TERMINAL_ID`
+        - **İyzico**: Requires `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_ENVIRONMENT`
+        - **OzanPay**: Requires `OZANPAY_API_KEY`, `OZANPAY_SECRET_KEY`, `OZANPAY_MERCHANT_ID`, `OZANPAY_ENVIRONMENT`
+        - **Stripe**: Requires `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`, `STRIPE_ENVIRONMENT`
+        - **Paycell**: Requires `PAYCELL_USERNAME`, `PAYCELL_PASSWORD`, `PAYCELL_MERCHANT_ID`, `PAYCELL_TERMINAL_ID`, `PAYCELL_ENVIRONMENT`
+        - **Papara**: Requires `PAPARA_API_KEY`, `PAPARA_SECRET_KEY`, `PAPARA_MERCHANT_ID`, `PAPARA_ENVIRONMENT`
+        - **Nkolay**: Requires `NKOLAY_API_KEY`, `NKOLAY_SECRET_KEY`, `NKOLAY_MERCHANT_ID`, `NKOLAY_ENVIRONMENT`
+        - **PayTR**: Requires `PAYTR_MERCHANT_ID`, `PAYTR_MERCHANT_KEY`, `PAYTR_MERCHANT_SALT`, `PAYTR_ENVIRONMENT`
+        - **PayU**: Requires `PAYU_MERCHANT_ID`, `PAYU_SECRET_KEY`, `PAYU_API_KEY`, `PAYU_ENVIRONMENT`
       tags: [Configuration]
       parameters:
         - name: X-Tenant-ID
@@ -969,10 +1075,35 @@ paths:
         - Provide `callbackUrl` for redirect after authentication
         - Handle the callback at your specified URL
         
-        **İyzico Test Cards:**
-        - Successful: `5528790000000008`
+        **Test Cards by Provider:**
+        
+        **İyzico:**
+        - Success: `5528790000000008` (12/2030, CVV: 123)
         - Insufficient funds: `5528790000000016`
         - Invalid card: `5528790000000032`
+        
+        **Stripe:**
+        - Success: `4242424242424242` (any future date, any CVV)
+        - 3D Secure: `4000000000003220`
+        - Insufficient funds: `4000000000009995`
+        - Invalid card: `4000000000000127`
+        
+        **OzanPay/Nkolay:**
+        - Success: `4111111111111111` or `5555555555554444`
+        - Insufficient funds: `4000000000000002`
+        - Invalid card: `4000000000000127`
+        
+        **Paycell:**
+        - Success: `5528790000000008` (12/26, CVV: 001)
+        - 3D Secure: `4355084355084358` (12/26, CVV: 000)
+        
+        **PayTR:**
+        - Success: `4355084355084358` or `5406675406675403`
+        - Any future expiry date, any 3-digit CVV
+        
+        **Papara/PayU:**
+        - Success: `5528790000000008` (12/30, CVV: 123)
+        - Declined: `5555555555554444`
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1701,6 +1832,607 @@ paths:
           description: Webhook authentication failed
         '500':
           description: Internal server error
+
+  # Analytics Operations (No Authentication Required)
+  /v1/analytics/dashboard:
+    get:
+      summary: Get dashboard statistics
+      description: |
+        Retrieves comprehensive dashboard statistics including:
+        - Payment volume and success rates
+        - Provider performance metrics
+        - Recent transaction trends
+        - Error rates and common issues
+        
+        **No Authentication Required** - This endpoint is public for dashboard display.
+      tags: [Analytics]
+      parameters:
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+      responses:
+        '200':
+          description: Dashboard statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Dashboard statistics retrieved"
+                  data:
+                    type: object
+                    properties:
+                      totalPayments:
+                        type: integer
+                        example: 1250
+                      successfulPayments:
+                        type: integer
+                        example: 1187
+                      failedPayments:
+                        type: integer
+                        example: 63
+                      successRate:
+                        type: number
+                        format: float
+                        example: 94.96
+                      totalVolume:
+                        type: number
+                        format: float
+                        example: 125430.50
+                      averageAmount:
+                        type: number
+                        format: float
+                        example: 100.34
+                      topProviders:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                              example: "iyzico"
+                            count:
+                              type: integer
+                              example: 450
+                            volume:
+                              type: number
+                              format: float
+                              example: 45230.75
+                      recentTrends:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            hour:
+                              type: string
+                              format: date-time
+                              example: "2024-01-15T10:00:00Z"
+                            payments:
+                              type: integer
+                              example: 52
+                            volume:
+                              type: number
+                              format: float
+                              example: 5234.20
+        '500':
+          description: Internal server error
+
+  /v1/analytics/providers:
+    get:
+      summary: Get provider statistics
+      description: |
+        Retrieves performance statistics for all payment providers including:
+        - Success rates by provider
+        - Average processing times
+        - Error rates and common failures
+        - Volume distribution
+      tags: [Analytics]
+      parameters:
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+      responses:
+        '200':
+          description: Provider statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                          example: "iyzico"
+                        totalPayments:
+                          type: integer
+                          example: 450
+                        successfulPayments:
+                          type: integer
+                          example: 428
+                        successRate:
+                          type: number
+                          format: float
+                          example: 95.11
+                        totalVolume:
+                          type: number
+                          format: float
+                          example: 45230.75
+                        averageProcessingTime:
+                          type: number
+                          format: float
+                          example: 1250.5
+                        commonErrors:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              errorCode:
+                                type: string
+                                example: "INSUFFICIENT_FUNDS"
+                              count:
+                                type: integer
+                                example: 15
+        '500':
+          description: Internal server error
+
+  /v1/analytics/activity:
+    get:
+      summary: Get recent payment activity
+      description: |
+        Retrieves recent payment activity for real-time monitoring:
+        - Latest transactions
+        - Status changes
+        - Failed payments
+        - Refunds and cancellations
+      tags: [Analytics]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of activities to return
+          example: 20
+        - name: provider
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Filter by specific provider
+          example: iyzico
+      responses:
+        '200':
+          description: Recent activity retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        timestamp:
+                          type: string
+                          format: date-time
+                          example: "2024-01-15T10:30:00Z"
+                        provider:
+                          type: string
+                          example: "iyzico"
+                        paymentId:
+                          type: string
+                          example: "payment_123"
+                        amount:
+                          type: number
+                          format: float
+                          example: 100.50
+                        currency:
+                          type: string
+                          example: "TRY"
+                        status:
+                          type: string
+                          example: "successful"
+                        customerEmail:
+                          type: string
+                          example: "user@example.com"
+                        activityType:
+                          type: string
+                          enum: [payment, refund, cancellation, status_change]
+                          example: "payment"
+        '500':
+          description: Internal server error
+
+  /v1/analytics/trends:
+    get:
+      summary: Get payment trends
+      description: |
+        Retrieves payment trends over time for analytics:
+        - Hourly payment volumes
+        - Success rate trends
+        - Provider performance over time
+        - Seasonal patterns
+      tags: [Analytics]
+      parameters:
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Time range in hours (max 7 days)
+          example: 24
+        - name: granularity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [hour, day]
+            default: hour
+          description: Data granularity
+          example: hour
+      responses:
+        '200':
+          description: Payment trends retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      period:
+                        type: string
+                        example: "24h"
+                      granularity:
+                        type: string
+                        example: "hour"
+                      trends:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            timestamp:
+                              type: string
+                              format: date-time
+                              example: "2024-01-15T10:00:00Z"
+                            totalPayments:
+                              type: integer
+                              example: 52
+                            successfulPayments:
+                              type: integer
+                              example: 49
+                            failedPayments:
+                              type: integer
+                              example: 3
+                            totalVolume:
+                              type: number
+                              format: float
+                              example: 5234.20
+                            averageAmount:
+                              type: number
+                              format: float
+                              example: 100.66
+        '500':
+          description: Internal server error
+
+  # Health Check (No Authentication Required)
+  /health:
+    get:
+      summary: Service health check
+      description: |
+        Returns the health status of the GoPay service including:
+        - Service availability
+        - OpenSearch logging status
+        - Provider connectivity
+        - System version
+        
+        **No Authentication Required** - This is a public health check endpoint.
+      tags: [System]
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Service is healthy"
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "ok"
+                      timestamp:
+                        type: string
+                        format: date-time
+                        example: "2024-01-15T10:30:00Z"
+                      version:
+                        type: string
+                        example: "1.0.0"
+                      opensearch_enabled:
+                        type: boolean
+                        example: true
+        '503':
+          description: Service unavailable
+
+  # Callback Operations (No Authentication Required)
+  /callback:
+    get:
+      summary: Handle 3D Secure callback (GET) with default provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using GET method with default provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+        
+        **No Authentication Required** - Called directly by payment providers.
+      tags: [3D Secure]
+      parameters:
+        - name: paymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Payment ID from initial 3D request
+        - name: conversationId
+          in: query
+          schema:
+            type: string
+          description: Conversation ID for tracking
+        - name: tenantId
+          in: query
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant callback routing
+        - name: originalCallbackUrl
+          in: query
+          schema:
+            type: string
+            format: uri
+          description: Original application callback URL
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '302':
+          description: Redirect to application callback URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+    
+    post:
+      summary: Handle 3D Secure callback (POST) with default provider
+      description: |
+        Handles 3D Secure authentication callback from the bank using POST method with default provider.
+        This endpoint is called by the bank after user completes 3D authentication.
+        
+        **No Authentication Required** - Called directly by payment providers.
+      tags: [3D Secure]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                paymentId:
+                  type: string
+                  description: Payment ID
+                conversationId:
+                  type: string
+                  description: Conversation ID
+                status:
+                  type: string
+                  description: 3D authentication status
+                mdStatus:
+                  type: string
+                  description: 3D authentication result
+                tenantId:
+                  type: string
+                  description: Tenant identifier
+      responses:
+        '200':
+          description: 3D Secure authentication completed
+        '302':
+          description: Redirect to application callback URL
+        '400':
+          description: Invalid callback data
+        '500':
+          description: Internal server error
+
+  # Webhook Operations (No Authentication Required)
+  /webhooks/{provider}:
+    post:
+      summary: Handle webhook notifications
+      description: |
+        Receives webhook notifications from payment providers for:
+        - Payment status updates (success, failure)
+        - Refund notifications
+        - Fraud alerts
+        - Chargeback notifications
+        
+        **Multi-Tenant Support:**
+        - Include `tenantId` query parameter for tenant-specific routing
+        - GoPay automatically validates signatures and processes notifications
+        
+        **Provider-Specific Examples:**
+        
+        **İyzico Webhooks:**
+        - Payment completion/failure
+        - Refund confirmations
+        - Fraud check results
+        
+        **Stripe Webhooks:**
+        - Payment intent updates
+        - Subscription events
+        - Invoice payments
+        
+        **No Authentication Required** - Webhooks use cryptographic signatures for security.
+      tags: [Webhooks]
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Tenant identifier for multi-tenant webhook routing (optional)
+          example: abc_project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Provider-specific webhook payload
+            examples:
+              iyzico_success:
+                summary: İyzico Payment Success
+                value:
+                  paymentId: "payment_123"
+                  status: "success"
+                  transactionId: "txn_456"
+                  amount: "100.50"
+                  currency: "TRY"
+                  paymentTransactionId: "pt_789"
+                  conversationId: "conv_abc"
+              stripe_payment_intent:
+                summary: Stripe Payment Intent
+                value:
+                  id: "evt_1234567890"
+                  type: "payment_intent.succeeded"
+                  data:
+                    object:
+                      id: "pi_1234567890"
+                      amount: 10050
+                      currency: "usd"
+                      status: "succeeded"
+              paycell_notification:
+                summary: Paycell Payment Notification
+                value:
+                  transactionId: "123456789"
+                  referenceNumber: "ref_123"
+                  amount: "100.50"
+                  currency: "TRY"
+                  status: "SUCCESS"
+                  timestamp: "2024-01-15T10:30:00Z"
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            example: "accepted"
+                          paymentId:
+                            type: string
+                            example: "payment_123"
+                          processed:
+                            type: boolean
+                            example: true
+                          timestamp:
+                            type: string
+                            format: date-time
+                            example: "2024-01-15T10:30:00Z"
+        '400':
+          description: Invalid webhook data or signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_signature:
+                  summary: Invalid Signature
+                  value:
+                    success: false
+                    message: "Webhook signature validation failed"
+                    error: "Invalid or missing signature header"
+                invalid_payload:
+                  summary: Invalid Payload
+                  value:
+                    success: false
+                    message: "Invalid webhook payload"
+                    error: "Required fields missing or malformed data"
+        '401':
+          description: Webhook authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # Logging Operations
   /v1/logs/{provider}:
