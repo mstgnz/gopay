@@ -2,6 +2,8 @@
 
 This documentation explains GoPay's İyzico payment provider integration.
 
+[Iyzico API Documentation](https://docs.iyzico.com/)
+
 ## Features
 
 - ✅ **Standard Card Payments**: Regular card payments
