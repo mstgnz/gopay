@@ -157,13 +157,14 @@ func (p *OzanPayProvider) CancelPayment(ctx context.Context, paymentID string, r
 		return nil, err
 	}
 
+	now := time.Now()
 	// Convert response to payment response
 	paymentResp := &provider.PaymentResponse{
 		Success:          response["status"] == statusApproved,
 		Status:           provider.StatusCancelled,
 		PaymentID:        paymentID,
 		ProviderResponse: response,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 	}
 
 	if response["status"] == statusApproved {
@@ -185,6 +186,7 @@ func (p *OzanPayProvider) CancelPayment(ctx context.Context, paymentID string, r
 
 // RefundPayment issues a refund for a payment
 func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.RefundRequest) (*provider.RefundResponse, error) {
+	now := time.Now()
 	if request.PaymentID == "" {
 		return nil, errors.New("ozanpay: paymentID is required for refund")
 	}
@@ -209,7 +211,7 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 		Success:      response["status"] == statusApproved,
 		PaymentID:    request.PaymentID,
 		RefundAmount: request.RefundAmount,
-		SystemTime:   time.Now(),
+		SystemTime:   &now,
 		RawResponse:  response,
 	}
 
@@ -488,9 +490,10 @@ func getItemCategory(item provider.Item) string {
 
 // Helper method to map OzanPay response to our common format
 func (p *OzanPayProvider) mapToPaymentResponse(response map[string]any) (*provider.PaymentResponse, error) {
+	now := time.Now()
 	paymentResp := &provider.PaymentResponse{
 		ProviderResponse: response,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 	}
 
 	// Extract payment ID

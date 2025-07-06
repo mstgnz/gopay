@@ -437,6 +437,7 @@ func (p *NkolayProvider) mapToPaymentResponse(nkolayResp NkolayResponse) *provid
 		status = provider.StatusProcessing
 	}
 
+	now := time.Now()
 	return &provider.PaymentResponse{
 		Success:          nkolayResp.Success,
 		Status:           status,
@@ -448,7 +449,7 @@ func (p *NkolayProvider) mapToPaymentResponse(nkolayResp NkolayResponse) *provid
 		Currency:         nkolayResp.Currency,
 		RedirectURL:      nkolayResp.RedirectURL,
 		HTML:             nkolayResp.HTML,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		FraudStatus:      nkolayResp.FraudStatus,
 		ProviderResponse: nkolayResp,
 	}

@@ -155,6 +155,7 @@ func (p *StripeProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, fmt.Errorf("stripe: failed to create refund: %w", err)
 	}
 
+	now := time.Now()
 	return &provider.RefundResponse{
 		Success:      true,
 		RefundID:     ref.ID,
@@ -162,7 +163,7 @@ func (p *StripeProvider) RefundPayment(ctx context.Context, request provider.Ref
 		RefundAmount: float64(ref.Amount) / 100, // Convert back from cents
 		Status:       "succeeded",
 		Message:      "Refund successful",
-		SystemTime:   time.Now(),
+		SystemTime:   &now,
 		RawResponse:  ref,
 	}, nil
 }
@@ -333,11 +334,12 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 
 // Helper method to map Stripe PaymentIntent to our PaymentResponse
 func (p *StripeProvider) mapPaymentIntentToResponse(pi *stripe.PaymentIntent) *provider.PaymentResponse {
+	now := time.Now()
 	response := &provider.PaymentResponse{
 		PaymentID:        pi.ID,
 		Amount:           float64(pi.Amount) / 100, // Convert from cents
 		Currency:         strings.ToUpper(string(pi.Currency)),
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: pi,
 	}
 

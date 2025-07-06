@@ -28,13 +28,13 @@ type Address struct {
 
 // Customer represents the buyer information
 type Customer struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Surname     string  `json:"surname"`
-	Email       string  `json:"email"`
-	PhoneNumber string  `json:"phoneNumber,omitempty"`
-	IPAddress   string  `json:"ipAddress,omitempty"`
-	Address     Address `json:"address,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Surname     string   `json:"surname"`
+	Email       string   `json:"email"`
+	PhoneNumber string   `json:"phoneNumber,omitempty"`
+	IPAddress   string   `json:"ipAddress,omitempty"`
+	Address     *Address `json:"address,omitempty"`
 }
 
 // CardInfo represents credit card information
@@ -92,7 +92,7 @@ type PaymentResponse struct {
 	Currency         string        `json:"currency"`
 	RedirectURL      string        `json:"redirectUrl,omitempty"`
 	HTML             string        `json:"html,omitempty"`
-	SystemTime       time.Time     `json:"systemTime,omitempty"`
+	SystemTime       *time.Time    `json:"systemTime,omitempty"`
 	FraudStatus      int           `json:"fraudStatus,omitempty"`
 	ProviderResponse any           `json:"providerResponse,omitempty"`
 }
@@ -109,15 +109,15 @@ type RefundRequest struct {
 
 // RefundResponse contains the result of a refund request
 type RefundResponse struct {
-	Success      bool      `json:"success"`
-	RefundID     string    `json:"refundId,omitempty"`
-	PaymentID    string    `json:"paymentId,omitempty"`
-	Status       string    `json:"status,omitempty"`
-	RefundAmount float64   `json:"refundAmount,omitempty"`
-	Message      string    `json:"message,omitempty"`
-	ErrorCode    string    `json:"errorCode,omitempty"`
-	SystemTime   time.Time `json:"systemTime,omitempty"`
-	RawResponse  any       `json:"rawResponse,omitempty"`
+	Success      bool       `json:"success"`
+	RefundID     string     `json:"refundId,omitempty"`
+	PaymentID    string     `json:"paymentId,omitempty"`
+	Status       string     `json:"status,omitempty"`
+	RefundAmount float64    `json:"refundAmount,omitempty"`
+	Message      string     `json:"message,omitempty"`
+	ErrorCode    string     `json:"errorCode,omitempty"`
+	SystemTime   *time.Time `json:"systemTime,omitempty"`
+	RawResponse  any        `json:"rawResponse,omitempty"`
 }
 
 // PaymentProvider defines the interface that all payment gateways must implement

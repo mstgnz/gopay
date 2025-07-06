@@ -42,7 +42,7 @@ func TestPaparaProvider_Integration(t *testing.T) {
 				Name:    "John",
 				Surname: "Doe",
 				Email:   "john.doe@example.com",
-				Address: provider.Address{
+				Address: &provider.Address{
 					City:    "Istanbul",
 					Country: "Turkey",
 					Address: "Test Address 123",
@@ -113,7 +113,7 @@ func TestPaparaProvider_Integration(t *testing.T) {
 				Name:    "Jane",
 				Surname: "Smith",
 				Email:   "jane.smith@example.com",
-				Address: provider.Address{
+				Address: &provider.Address{
 					City:    "Ankara",
 					Country: "Turkey",
 					Address: "Test Address 456",

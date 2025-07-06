@@ -55,7 +55,7 @@ func TestStripeIntegration_DirectPayment(t *testing.T) {
 			Name:    "Test",
 			Surname: "User",
 			Email:   "test@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Address: "123 Test St",
 				City:    "New York",
 				Country: "US",

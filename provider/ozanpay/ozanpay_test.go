@@ -332,7 +332,7 @@ func TestOzanPayProvider_MapToOzanPayRequest(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				City:    "New York",
 				Country: "USA",
 				Address: "Test Address",

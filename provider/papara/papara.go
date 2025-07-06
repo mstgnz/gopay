@@ -36,11 +36,6 @@ const (
 	statusFailed    = "FAILED"
 	statusCancelled = "CANCELLED"
 
-	// Papara Payment Methods
-	paymentMethodPaparaAccount = 0
-	paymentMethodCard          = 1
-	paymentMethodMobile        = 2
-
 	// Default Values
 	defaultCurrency = "TRY"
 	defaultTimeout  = 30 * time.Second
@@ -335,7 +330,7 @@ func (p *PaparaProvider) processPayment(ctx context.Context, request provider.Pa
 }
 
 // mapToPaparaRequest maps a generic payment request to Papara-specific format
-func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, is3D bool) map[string]any {
+func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, _ bool) map[string]any {
 	paparaReq := map[string]any{
 		"amount":           request.Amount,
 		"referenceId":      request.ReferenceID,
@@ -366,13 +361,14 @@ func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, is3
 
 // mapToPaymentResponse maps Papara response to generic payment response
 func (p *PaparaProvider) mapToPaymentResponse(paparaResp PaparaResponse) *provider.PaymentResponse {
+	now := time.Now()
 	resp := &provider.PaymentResponse{
 		Success:          paparaResp.Succeeded,
 		TransactionID:    paparaResp.Data.ID,
 		PaymentID:        paparaResp.Data.ID,
 		Amount:           paparaResp.Data.Amount,
 		Currency:         paparaResp.Data.Currency,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: paparaResp,
 	}
 
@@ -410,11 +406,12 @@ func (p *PaparaProvider) mapToPaymentResponse(paparaResp PaparaResponse) *provid
 
 // mapToRefundResponse maps Papara response to generic refund response
 func (p *PaparaProvider) mapToRefundResponse(paparaResp PaparaResponse) *provider.RefundResponse {
+	now := time.Now()
 	resp := &provider.RefundResponse{
 		Success:     paparaResp.Succeeded,
 		RefundID:    paparaResp.Data.ID,
 		PaymentID:   paparaResp.Data.PaymentID,
-		SystemTime:  time.Now(),
+		SystemTime:  &now,
 		RawResponse: paparaResp,
 	}
 

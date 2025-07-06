@@ -430,9 +430,10 @@ func (p *PayTRProvider) generateMD5Hash(data string) string {
 // Response mapping methods
 
 func (p *PayTRProvider) mapToIFrameResponse(response map[string]any, merchantOid string) *provider.PaymentResponse {
+	now := time.Now()
 	paymentResp := &provider.PaymentResponse{
 		PaymentID:        merchantOid,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: response,
 	}
 
@@ -458,9 +459,10 @@ func (p *PayTRProvider) mapToIFrameResponse(response map[string]any, merchantOid
 }
 
 func (p *PayTRProvider) mapToPaymentResponse(response map[string]any, paymentID string) *provider.PaymentResponse {
+	now := time.Now()
 	paymentResp := &provider.PaymentResponse{
 		PaymentID:        paymentID,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: response,
 	}
 
@@ -505,9 +507,10 @@ func (p *PayTRProvider) mapToPaymentResponse(response map[string]any, paymentID 
 }
 
 func (p *PayTRProvider) mapToRefundResponse(response map[string]any, request provider.RefundRequest) *provider.RefundResponse {
+	now := time.Now()
 	refundResp := &provider.RefundResponse{
 		PaymentID:   request.PaymentID,
-		SystemTime:  time.Now(),
+		SystemTime:  &now,
 		RawResponse: response,
 	}
 

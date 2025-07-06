@@ -70,7 +70,7 @@ func TestOzanPayProvider_Integration_CreatePayment_Success(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "TR",
 				City:    "Istanbul",
 				Address: "Test Address 123",
@@ -135,7 +135,7 @@ func TestOzanPayProvider_Integration_Create3DPayment(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "TR",
 				City:    "Istanbul",
 				Address: "Test Address 123",
@@ -195,7 +195,7 @@ func TestOzanPayProvider_Integration_GetPaymentStatus(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "TR",
 				City:    "Istanbul",
 				Address: "Test Address 123",
@@ -264,7 +264,7 @@ func TestOzanPayProvider_Integration_RefundPayment(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john.doe@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "TR",
 				City:    "Istanbul",
 				Address: "Test Address 123",

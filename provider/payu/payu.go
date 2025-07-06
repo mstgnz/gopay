@@ -523,6 +523,7 @@ func (p *PayUProvider) mapToPaymentResponse(resp PayUResponse) *provider.Payment
 	// Determine success: either status is success, or it's pending with redirect URL (3D Secure)
 	isSuccess := resp.Status == statusSuccess || (resp.Status == statusPending && resp.RedirectURL != "")
 
+	now := time.Now()
 	paymentResp := &provider.PaymentResponse{
 		Success:          isSuccess,
 		PaymentID:        resp.PaymentID,
@@ -531,7 +532,7 @@ func (p *PayUProvider) mapToPaymentResponse(resp PayUResponse) *provider.Payment
 		Currency:         resp.Currency,
 		Status:           p.mapPayUStatus(resp.Status),
 		Message:          resp.Message,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: resp,
 	}
 
@@ -553,6 +554,7 @@ func (p *PayUProvider) mapToPaymentResponse(resp PayUResponse) *provider.Payment
 
 // mapToRefundResponse maps PayU refund response to generic refund response
 func (p *PayUProvider) mapToRefundResponse(resp PayURefundResponse) *provider.RefundResponse {
+	now := time.Now()
 	refundResp := &provider.RefundResponse{
 		Success:      resp.Status == statusSuccess,
 		RefundID:     resp.RefundID,
@@ -560,7 +562,7 @@ func (p *PayUProvider) mapToRefundResponse(resp PayURefundResponse) *provider.Re
 		RefundAmount: resp.Amount,
 		Status:       string(p.mapPayUStatus(resp.Status)),
 		Message:      resp.Message,
-		SystemTime:   time.Now(),
+		SystemTime:   &now,
 		RawResponse:  resp,
 	}
 

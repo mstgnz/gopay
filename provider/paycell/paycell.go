@@ -292,6 +292,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		return nil, err
 	}
 
+	now := time.Now()
 	return &provider.RefundResponse{
 		Success:      response.Success,
 		RefundID:     response.TransactionID,
@@ -300,7 +301,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		Status:       string(response.Status),
 		Message:      response.Message,
 		ErrorCode:    response.ErrorCode,
-		SystemTime:   time.Now(),
+		SystemTime:   &now,
 	}, nil
 }
 
@@ -500,6 +501,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		return nil, fmt.Errorf("failed to get 3D session: %w", err)
 	}
 
+	now := time.Now()
 	// Return 3D redirect information
 	return &provider.PaymentResponse{
 		Success:       true,
@@ -511,7 +513,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		RedirectURL:   p.paymentManagementURL + endpointThreeDSecure,
 		HTML:          p.generate3DForm(threeDSession.ThreeDSessionId, request.CallbackURL),
 		Message:       "3D secure authentication required",
-		SystemTime:    time.Now(),
+		SystemTime:    &now,
 	}, nil
 }
 
@@ -587,7 +589,7 @@ func (p *PaycellProvider) generate3DForm(threeDSessionID, callbackURL string) st
 }
 
 // sendProvisionRequest sends request to Paycell provision API
-func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint string, data interface{}) (*provider.PaymentResponse, error) {
+func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint string, data any) (*provider.PaymentResponse, error) {
 	url := p.baseURL + endpoint
 
 	body, err := json.Marshal(data)
@@ -638,6 +640,7 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 		}
 	}
 
+	now := time.Now()
 	return &provider.PaymentResponse{
 		Success:       success,
 		Status:        status,
@@ -647,7 +650,7 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 		Currency:      defaultCurrency,
 		Message:       paycellResp.ResponseHeader.ResponseDescription,
 		ErrorCode:     paycellResp.ResponseHeader.ResponseCode,
-		SystemTime:    time.Now(),
+		SystemTime:    &now,
 	}
 }
 
@@ -754,12 +757,12 @@ type PaycellProvisionResponse struct {
 		ResponseCode        string `json:"responseCode"`
 		ResponseDescription string `json:"responseDescription"`
 	} `json:"responseHeader"`
-	ExtraParameters    map[string]interface{} `json:"extraParameters"`
-	AcquirerBankCode   string                 `json:"acquirerBankCode"`
-	IssuerBankCode     string                 `json:"issuerBankCode"`
-	ApprovalCode       string                 `json:"approvalCode"`
-	ReconciliationDate string                 `json:"reconciliationDate"`
-	Amount             string                 `json:"amount"`
+	ExtraParameters    map[string]any `json:"extraParameters"`
+	AcquirerBankCode   string         `json:"acquirerBankCode"`
+	IssuerBankCode     string         `json:"issuerBankCode"`
+	ApprovalCode       string         `json:"approvalCode"`
+	ReconciliationDate string         `json:"reconciliationDate"`
+	Amount             string         `json:"amount"`
 }
 
 // PaycellGetThreeDSessionRequest represents getThreeDSession request matching docs format
@@ -783,8 +786,8 @@ type PaycellGetThreeDSessionResponse struct {
 		ResponseCode        string `json:"responseCode"`
 		ResponseDescription string `json:"responseDescription"`
 	} `json:"responseHeader"`
-	ExtraParameters map[string]interface{} `json:"extraParameters"`
-	ThreeDSessionId string                 `json:"threeDSessionId"`
+	ExtraParameters map[string]any `json:"extraParameters"`
+	ThreeDSessionId string         `json:"threeDSessionId"`
 }
 
 // PaycellGetThreeDSessionResultRequest represents getThreeDSessionResult request
@@ -856,13 +859,13 @@ type PaycellResponse struct {
 		ResponseDescription string `json:"responseDescription"`
 	} `json:"header,omitempty"`
 
-	ExtraParameters         map[string]interface{} `json:"extraParameters,omitempty"`
-	AcquirerBankCode        string                 `json:"acquirerBankCode,omitempty"`
-	IssuerBankCode          string                 `json:"issuerBankCode,omitempty"`
-	ApprovalCode            string                 `json:"approvalCode,omitempty"`
-	ReconciliationDate      string                 `json:"reconciliationDate,omitempty"`
-	IyzPaymentID            string                 `json:"iyzPaymentId,omitempty"`
-	IyzPaymentTransactionID string                 `json:"iyzPaymentTransactionId,omitempty"`
+	ExtraParameters         map[string]any `json:"extraParameters,omitempty"`
+	AcquirerBankCode        string         `json:"acquirerBankCode,omitempty"`
+	IssuerBankCode          string         `json:"issuerBankCode,omitempty"`
+	ApprovalCode            string         `json:"approvalCode,omitempty"`
+	ReconciliationDate      string         `json:"reconciliationDate,omitempty"`
+	IyzPaymentID            string         `json:"iyzPaymentId,omitempty"`
+	IyzPaymentTransactionID string         `json:"iyzPaymentTransactionId,omitempty"`
 }
 
 // mapToPaycellRequest converts a standard payment request to Paycell format (for backward compatibility)
@@ -961,6 +964,7 @@ func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *pro
 		errorCode = paycellResp.Header.ResponseCode
 	}
 
+	now := time.Now()
 	response := &provider.PaymentResponse{
 		Success:          paycellResp.Success,
 		PaymentID:        paymentID,
@@ -969,7 +973,7 @@ func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *pro
 		Currency:         paycellResp.Currency,
 		Message:          message,
 		ErrorCode:        errorCode,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: paycellResp,
 	}
 

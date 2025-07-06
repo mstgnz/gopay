@@ -73,7 +73,7 @@ func getValidPaymentRequest() provider.PaymentRequest {
 			Surname:     "User",
 			Email:       "test@example.com",
 			PhoneNumber: "+905555555555",
-			Address: provider.Address{
+			Address: &provider.Address{
 				City:    "Istanbul",
 				Country: "Turkey",
 				Address: "Test Address 123",

@@ -93,7 +93,7 @@ func testCreatePaymentSuccess(t *testing.T, p provider.PaymentProvider) {
 			Surname:     "User",
 			Email:       "test.user@payu-integration.test",
 			PhoneNumber: "+905551234567",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Address: "Test Address 123",
 				City:    "Istanbul",
 				Country: "TR",

@@ -213,12 +213,13 @@ func (p *IyzicoProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, err
 	}
 
+	now := time.Now()
 	// Parse the Iyzico response into RefundResponse
 	refundResp := &provider.RefundResponse{
 		Success:      resp["status"] == statusSuccess,
 		PaymentID:    request.PaymentID,
 		RefundAmount: request.RefundAmount,
-		SystemTime:   time.Now(),
+		SystemTime:   &now,
 		RawResponse:  resp,
 	}
 
@@ -431,6 +432,7 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 
 // sendPaymentRequest sends payment requests to Iyzico and maps the response
 func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string, requestData map[string]any) (*provider.PaymentResponse, error) {
+	now := time.Now()
 	resp, err := p.sendRequest(ctx, endpoint, requestData)
 	if err != nil {
 		return nil, err
@@ -439,7 +441,7 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 	// Map Iyzico response to our common PaymentResponse
 	paymentResp := &provider.PaymentResponse{
 		Success:          resp["status"] == statusSuccess,
-		SystemTime:       time.Now(),
+		SystemTime:       &now,
 		ProviderResponse: resp,
 	}
 

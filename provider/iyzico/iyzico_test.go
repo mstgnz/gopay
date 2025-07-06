@@ -327,7 +327,7 @@ func TestIyzicoProvider_MapToIyzicoPaymentRequest(t *testing.T) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				City:    "Istanbul",
 				Country: "Turkey",
 				Address: "Test Address",

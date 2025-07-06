@@ -113,7 +113,7 @@ func TestPaycellProvider_RealAPI_Create3DPayment(t *testing.T) {
 			Surname:     "User",
 			Email:       "test@paycell.example.com",
 			PhoneNumber: "5551234567", // 10 digit format
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "Turkey",
 				City:    "Istanbul",
 				Address: "Test Address",

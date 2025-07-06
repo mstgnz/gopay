@@ -348,7 +348,7 @@ func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 			Surname:     "Doe",
 			Email:       "john@example.com",
 			PhoneNumber: "+90555123456",
-			Address: provider.Address{
+			Address: &provider.Address{
 				Country: "Turkey",
 				City:    "Istanbul",
 				Address: "Test address",
