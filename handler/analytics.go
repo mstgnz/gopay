@@ -454,7 +454,7 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 }
 
 // getRealPaymentTrends fetches real payment trends from OpenSearch
-func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, tenantID string, hours int) (map[string]any, error) {
+func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, _ string, hours int) (map[string]any, error) {
 	// This would require more complex time-based aggregations
 	// For now, return generated data with a note about real implementation
 	return h.generatePaymentTrends(ctx, hours), nil
@@ -462,7 +462,7 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, tenantID st
 
 // Helper methods to generate realistic data (FALLBACK when OpenSearch is empty or unavailable)
 
-func (h *AnalyticsHandler) generateDashboardStats(ctx context.Context, hours int) DashboardStats {
+func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, hours int) DashboardStats {
 	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
 	basePayments := 5000 + rand.Intn(5000)
 	successRate := 95.0 + rand.Float64()*5.0
@@ -486,7 +486,7 @@ func (h *AnalyticsHandler) generateDashboardStats(ctx context.Context, hours int
 	}
 }
 
-func (h *AnalyticsHandler) generateProviderStats(ctx context.Context) []ProviderStats {
+func (h *AnalyticsHandler) generateProviderStats(_ context.Context) []ProviderStats {
 	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
 	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
 	stats := make([]ProviderStats, len(providers))
@@ -513,7 +513,7 @@ func (h *AnalyticsHandler) generateProviderStats(ctx context.Context) []Provider
 	return stats
 }
 
-func (h *AnalyticsHandler) generateRecentActivity(ctx context.Context, limit int) []RecentActivity {
+func (h *AnalyticsHandler) generateRecentActivity(_ context.Context, limit int) []RecentActivity {
 	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
 	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara"}
 	types := []string{"payment", "refund"}
@@ -546,7 +546,7 @@ func (h *AnalyticsHandler) generateRecentActivity(ctx context.Context, limit int
 	return activities
 }
 
-func (h *AnalyticsHandler) generatePaymentTrends(ctx context.Context, hours int) map[string]any {
+func (h *AnalyticsHandler) generatePaymentTrends(_ context.Context, hours int) map[string]any {
 	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
 	labels := make([]string, hours)
 	successData := make([]int, hours)
@@ -578,7 +578,7 @@ func (h *AnalyticsHandler) generatePaymentTrends(ctx context.Context, hours int)
 }
 
 // calculatePaymentChange calculates the percentage change in payment count from previous period
-func (h *AnalyticsHandler) calculatePaymentChange(hours int) string {
+func (h *AnalyticsHandler) calculatePaymentChange(_ int) string {
 	if h.logger == nil {
 		return "+12.5% from yesterday"
 	}
@@ -596,7 +596,7 @@ func (h *AnalyticsHandler) calculatePaymentChange(hours int) string {
 }
 
 // calculateSuccessRateChange calculates the percentage change in success rate from previous period
-func (h *AnalyticsHandler) calculateSuccessRateChange(hours int) string {
+func (h *AnalyticsHandler) calculateSuccessRateChange(_ int) string {
 	if h.logger == nil {
 		return "+0.8% from yesterday"
 	}
@@ -613,7 +613,7 @@ func (h *AnalyticsHandler) calculateSuccessRateChange(hours int) string {
 }
 
 // calculateVolumeChange calculates the percentage change in payment volume from previous period
-func (h *AnalyticsHandler) calculateVolumeChange(hours int) string {
+func (h *AnalyticsHandler) calculateVolumeChange(_ int) string {
 	if h.logger == nil {
 		return "+18.2% from yesterday"
 	}
@@ -630,7 +630,7 @@ func (h *AnalyticsHandler) calculateVolumeChange(hours int) string {
 }
 
 // calculateResponseTimeChange calculates the change in average response time from previous period
-func (h *AnalyticsHandler) calculateResponseTimeChange(hours int) string {
+func (h *AnalyticsHandler) calculateResponseTimeChange(_ int) string {
 	if h.logger == nil {
 		return "-15ms from yesterday"
 	}

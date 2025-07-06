@@ -67,43 +67,61 @@ func Cleanup() {
 	}
 }
 
-// Routes registers all API routes
-func Routes(r chi.Router, logger *opensearch.Logger) {
-	// Initialize handlers with the global services
+// Routes defines all v1 API routes
+func Routes(r chi.Router, openSearchLogger *opensearch.Logger) {
+	// Initialize services
+	paymentService := provider.NewPaymentService()
+	providerConfig := config.NewProviderConfig()
+	providerConfig.LoadFromEnv()
+
+	// Initialize handlers
 	validator := validator.New()
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
-	logsHandler := handler.NewLogsHandler(logger)
-
-	// Configuration routes for tenant-based provider setup
-	r.Post("/set-env", configHandler.SetEnv)                            // POST /v1/set-env
-	r.Get("/config/tenant-config", configHandler.GetTenantConfig)       // GET /v1/config/tenant-config?provider=iyzico
-	r.Delete("/config/tenant-config", configHandler.DeleteTenantConfig) // DELETE /v1/config/tenant-config?provider=iyzico
-	r.Get("/stats", configHandler.GetStats)                             // GET /v1/stats
+	analyticsHandler := handler.NewAnalyticsHandler(openSearchLogger)
+	logsHandler := handler.NewLogsHandler(openSearchLogger, openSearchLogger)
 
 	// Payment routes
 	r.Route("/payments", func(r chi.Router) {
-		// General payment routes (uses default provider)
-		r.Post("/", paymentHandler.ProcessPayment)
-		r.Get("/{paymentID}", paymentHandler.GetPaymentStatus)
-		r.Delete("/{paymentID}", paymentHandler.CancelPayment)
-		r.Post("/refund", paymentHandler.RefundPayment)
-
-		// Provider-specific payment routes
 		r.Post("/{provider}", paymentHandler.ProcessPayment)
 		r.Get("/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
 		r.Delete("/{provider}/{paymentID}", paymentHandler.CancelPayment)
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)
 	})
 
-	// Logs routes (tenant and provider specific)
-	r.Route("/logs", func(r chi.Router) {
-		r.Get("/{provider}", logsHandler.ListLogs)                           // GET /v1/logs/{provider}?paymentId=123&status=success&errorsOnly=true&hours=24
-		r.Get("/{provider}/payment/{paymentID}", logsHandler.GetPaymentLogs) // GET /v1/logs/{provider}/payment/{paymentID}
-		r.Get("/{provider}/errors", logsHandler.GetErrorLogs)                // GET /v1/logs/{provider}/errors?hours=24
-		r.Get("/{provider}/stats", logsHandler.GetLogStats)                  // GET /v1/logs/{provider}/stats?hours=24
+	// Configuration routes
+	r.Route("/config", func(r chi.Router) {
+		r.Post("/tenant-config", configHandler.SetEnv)
+		r.Get("/tenant-config", configHandler.GetTenantConfig)
+		r.Delete("/tenant-config", configHandler.DeleteTenantConfig)
 	})
 
-	// Stats endpoint for logging statistics (handled by middleware)
-	// GET /v1/stats?provider=iyzico&hours=24
+	// Analytics routes
+	r.Route("/analytics", func(r chi.Router) {
+		r.Get("/dashboard", analyticsHandler.GetDashboardStats)
+		r.Get("/providers", analyticsHandler.GetProviderStats)
+		r.Get("/activity", analyticsHandler.GetRecentActivity)
+		r.Get("/trends", analyticsHandler.GetPaymentTrends)
+	})
+
+	// Logs routes
+	r.Route("/logs", func(r chi.Router) {
+		// Payment logs
+		r.Get("/payments", logsHandler.GetPaymentLogs) // GET /v1/logs/payments?provider=iyzico&hours=24&payment_id=123
+
+		// System logs
+		r.Get("/system", logsHandler.GetSystemLogs) // GET /v1/logs/system?level=error&component=provider&hours=24&limit=100
+
+		// Log statistics
+		r.Get("/stats", logsHandler.GetLogStats) // GET /v1/logs/stats?hours=24
+	})
+
+	// Legacy routes for backward compatibility
+	r.Route("/set-env", func(r chi.Router) {
+		r.Post("/", configHandler.SetEnv)
+	})
+
+	r.Route("/stats", func(r chi.Router) {
+		r.Get("/", analyticsHandler.GetDashboardStats)
+	})
 }

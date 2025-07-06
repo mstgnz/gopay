@@ -137,6 +137,10 @@ graph TD
 ### 1. **Installation**
 
 ```bash
+wget https://github.com/mstgnz/gopay/archive/refs/tags/v1.3.0.zip
+
+or
+
 git clone https://github.com/mstgnz/gopay.git
 cd gopay
 

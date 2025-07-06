@@ -37,7 +37,7 @@ func (s *SQLiteStorage) retryOperation(operation func() error, maxRetries int) e
 			if attempt < maxRetries {
 				// Exponential backoff: 10ms, 20ms, 40ms, 80ms
 				backoff := time.Duration(10*(1<<attempt)) * time.Millisecond
-				log.Printf("SQLite busy, retrying in %v (attempt %d/%d)", backoff, attempt+1, maxRetries+1)
+				log.Printf("SQLite busy, retrying (attempt %d/%d, backoff %dms)", attempt+1, maxRetries+1, backoff.Milliseconds())
 				time.Sleep(backoff)
 				continue
 			}
@@ -53,42 +53,40 @@ func (s *SQLiteStorage) retryOperation(operation func() error, maxRetries int) e
 // NewSQLiteStorage creates a new SQLite storage instance optimized for multiple processes
 func NewSQLiteStorage(dbPath string) (*SQLiteStorage, error) {
 	// Ensure directory exists
-	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
-	// SQLite connection string with multi-process optimizations
-	connStr := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=1000&_timeout=20000&_txlock=immediate", dbPath)
-
-	// Open database connection
-	db, err := sql.Open("sqlite3", connStr)
+	// Open database with SQLite-specific connection parameters for better concurrency
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_cache_size=1000&_foreign_keys=1")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool for multi-replica environment
-	db.SetMaxOpenConns(10)   // Max 10 concurrent connections
-	db.SetMaxIdleConns(5)    // Keep 5 idle connections
-	db.SetConnMaxLifetime(0) // No connection lifetime limit
+	// Test connection
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
 
 	storage := &SQLiteStorage{
 		db:   db,
 		path: dbPath,
 	}
 
-	// Initialize database schema and optimizations
+	// Initialize schema
 	if err := storage.initSchema(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	// Apply additional performance optimizations
+	// Apply optimizations for multi-process access
 	if err := storage.optimizeForMultiProcess(); err != nil {
-		log.Printf("Warning: Failed to apply optimizations: %v", err)
+		log.Printf("Warning: Failed to apply SQLite optimizations: %v", err)
 	}
 
 	log.Printf("SQLite storage initialized at: %s (multi-process optimized)", dbPath)
+
 	return storage, nil
 }
 
@@ -204,6 +202,7 @@ func (s *SQLiteStorage) LoadTenantConfig(tenantID, providerName string) (map[str
 
 		// Deserialize JSON to config map
 		if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+			log.Printf("Warning: failed to unmarshal config for tenant %s, provider %s: %v", tenantID, providerName, err)
 			return fmt.Errorf("failed to unmarshal config: %w", err)
 		}
 

@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/provider"
 )
@@ -453,44 +453,82 @@ func (h *PaymentHandler) processWebhookAsync(providerName string, paymentData, r
 
 // Process successful payment webhooks
 func (h *PaymentHandler) processSuccessfulPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
-	log.Printf("Webhook: Payment %s (%s) completed successfully", paymentID, providerName)
+	// Log successful payment completion
+	logger.Info("Payment completed successfully via webhook", logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"payment_id": paymentID,
+			"status":     "successful",
+		},
+	})
 
-	// Update payment status in database if needed
-	// Send notifications to external systems
-	// Update analytics/metrics
-
-	h.logWebhookInfo(providerName, paymentID, "payment_success", webhookData)
+	// Here you could:
+	// 1. Update local payment status
+	// 2. Send confirmation emails
+	// 3. Trigger fulfillment processes
+	// 4. Update analytics
 }
 
 // Process failed payment webhooks
 func (h *PaymentHandler) processFailedPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
-	log.Printf("Webhook: Payment %s (%s) failed - %s", paymentID, providerName, webhookData["error"])
+	// Log failed payment
+	errorMessage := webhookData["error"]
+	if errorMessage == "" {
+		errorMessage = "Unknown error"
+	}
 
-	// Update payment status
-	// Send failure notifications
-	// Update fraud detection systems
+	logger.Warn("Payment failed via webhook", logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"payment_id": paymentID,
+			"error":      errorMessage,
+			"status":     "failed",
+		},
+	})
 
-	h.logWebhookInfo(providerName, paymentID, "payment_failed", webhookData)
+	// Here you could:
+	// 1. Update payment status to failed
+	// 2. Send failure notifications
+	// 3. Trigger retry mechanisms
+	// 4. Update fraud detection systems
 }
 
 // Process refund webhooks
 func (h *PaymentHandler) processRefundedPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
-	log.Printf("Webhook: Payment %s (%s) refunded", paymentID, providerName)
+	// Log refunded payment
+	logger.Info("Payment refunded via webhook", logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"payment_id": paymentID,
+			"status":     "refunded",
+		},
+	})
 
-	// Update refund status
-	// Send refund notifications
-	// Update accounting systems
-
-	h.logWebhookInfo(providerName, paymentID, "payment_refunded", webhookData)
+	// Here you could:
+	// 1. Update payment status to refunded
+	// 2. Process refund in accounting system
+	// 3. Send refund confirmation
+	// 4. Update customer balance
 }
 
 // Helper functions for webhook logging
 func (h *PaymentHandler) logWebhookError(providerName, errorType string, err error, webhookData map[string]string) {
-	log.Printf("Webhook Error [%s]: %s - %v", providerName, errorType, err)
-	// Additional structured logging can be added here
+	logger.Error("Webhook processing error", err, logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"error_type":   errorType,
+			"webhook_data": webhookData,
+		},
+	})
 }
 
 func (h *PaymentHandler) logWebhookInfo(providerName, paymentID, eventType string, webhookData map[string]string) {
-	log.Printf("Webhook Info [%s]: %s - PaymentID: %s", providerName, eventType, paymentID)
-	// Additional structured logging can be added here
+	logger.Info("Webhook event processed", logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"payment_id":   paymentID,
+			"event_type":   eventType,
+			"webhook_data": webhookData,
+		},
+	})
 }

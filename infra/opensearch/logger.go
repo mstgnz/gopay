@@ -322,3 +322,37 @@ func SanitizeForLog(data string) string {
 
 	return result
 }
+
+// LogSystemEvent logs a system event to OpenSearch
+func (l *Logger) LogSystemEvent(ctx context.Context, log any) error {
+	if !l.client.IsEnabled() {
+		return nil // Logging disabled
+	}
+
+	// Use system logs index
+	indexName := "gopay-system-logs"
+
+	// Convert log to JSON
+	logJSON, err := json.Marshal(log)
+	if err != nil {
+		return fmt.Errorf("failed to marshal system log: %w", err)
+	}
+
+	// Index the document
+	req := opensearchapi.IndexRequest{
+		Index: indexName,
+		Body:  bytes.NewReader(logJSON),
+	}
+
+	res, err := req.Do(ctx, l.client.GetClient())
+	if err != nil {
+		return fmt.Errorf("failed to index system log: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return fmt.Errorf("opensearch system log error: %s", res.String())
+	}
+
+	return nil
+}

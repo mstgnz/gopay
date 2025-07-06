@@ -1,11 +1,12 @@
 package opensearch
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/mstgnz/gopay/infra/config"
@@ -17,6 +18,7 @@ import (
 type Client struct {
 	client *opensearch.Client
 	config *config.AppConfig
+	ctx    context.Context
 }
 
 // NewClient creates a new OpenSearch client
@@ -51,6 +53,7 @@ func NewClient(cfg *config.AppConfig) (*Client, error) {
 	osClient := &Client{
 		client: client,
 		config: cfg,
+		ctx:    context.Background(),
 	}
 
 	// Test connection and create default indices
@@ -66,170 +69,51 @@ func (c *Client) GetClient() *opensearch.Client {
 	return c.client
 }
 
-// setupIndices creates the necessary indices for payment logging
+// setupIndices creates the necessary indices if they don't exist
 func (c *Client) setupIndices() error {
-	// List of payment providers to create indices for
-	providers := []string{"iyzico", "ozanpay", "stripe", "paytr", "paycell", "papara", "nkolay", "shopier"}
+	indices := []string{
+		"gopay-payment-logs",
+		"gopay-system-logs",
+		"gopay-analytics",
+	}
 
-	for _, provider := range providers {
-		indexName := c.GetLogIndexName("", provider)
-
-		// Check if index exists
-		exists, err := c.indexExists(indexName)
-		if err != nil {
-			log.Printf("Error checking index %s: %v", indexName, err)
-			continue
-		}
-
-		if !exists {
-			if err := c.createLogIndex(indexName); err != nil {
-				log.Printf("Error creating index %s: %v", indexName, err)
-				continue
-			}
-			log.Printf("Created OpenSearch index: %s", indexName)
+	for _, indexName := range indices {
+		if err := c.createIndexIfNotExists(indexName); err != nil {
+			log.Printf("Warning: Failed to setup OpenSearch index %s: %v", indexName, err)
 		}
 	}
 
 	return nil
 }
 
-// indexExists checks if an index exists
-func (c *Client) indexExists(indexName string) (bool, error) {
+// createIndexIfNotExists creates an index if it doesn't already exist
+func (c *Client) createIndexIfNotExists(indexName string) error {
+	// Check if index exists
 	req := opensearchapi.IndicesExistsRequest{
 		Index: []string{indexName},
 	}
 
-	res, err := req.Do(nil, c.client)
+	res, err := req.Do(c.ctx, c.client)
 	if err != nil {
-		return false, err
-	}
-	defer res.Body.Close()
-
-	return res.StatusCode == 200, nil
-}
-
-// createLogIndex creates a new index for payment logs with proper mapping
-func (c *Client) createLogIndex(indexName string) error {
-	mapping := `{
-		"mappings": {
-			"properties": {
-				"timestamp": {
-					"type": "date",
-					"format": "strict_date_optional_time||epoch_millis"
-				},
-				"tenant_id": {
-					"type": "keyword"
-				},
-				"provider": {
-					"type": "keyword"
-				},
-				"method": {
-					"type": "keyword"
-				},
-				"endpoint": {
-					"type": "keyword"
-				},
-				"request_id": {
-					"type": "keyword"
-				},
-				"user_agent": {
-					"type": "text"
-				},
-				"client_ip": {
-					"type": "ip"
-				},
-				"request": {
-					"type": "object",
-					"properties": {
-						"headers": {
-							"type": "object"
-						},
-						"body": {
-							"type": "text"
-						},
-						"params": {
-							"type": "object"
-						}
-					}
-				},
-				"response": {
-					"type": "object",
-					"properties": {
-						"status_code": {
-							"type": "integer"
-						},
-						"headers": {
-							"type": "object"
-						},
-						"body": {
-							"type": "text"
-						},
-						"processing_time_ms": {
-							"type": "integer"
-						}
-					}
-				},
-				"payment_info": {
-					"type": "object",
-					"properties": {
-						"payment_id": {
-							"type": "keyword"
-						},
-						"amount": {
-							"type": "double"
-						},
-						"currency": {
-							"type": "keyword"
-						},
-						"customer_email": {
-							"type": "keyword"
-						},
-						"status": {
-							"type": "keyword"
-						},
-						"use_3d": {
-							"type": "boolean"
-						}
-					}
-				},
-				"error": {
-					"type": "object",
-					"properties": {
-						"code": {
-							"type": "keyword"
-						},
-						"message": {
-							"type": "text"
-						}
-					}
-				}
-			}
-		},
-		"settings": {
-			"number_of_shards": 1,
-			"number_of_replicas": 0,
-			"index": {
-				"lifecycle": {
-					"name": "payment_logs_policy",
-					"rollover_alias": "` + indexName + `"
-				}
-			}
-		}
-	}`
-
-	req := opensearchapi.IndicesCreateRequest{
-		Index: indexName,
-		Body:  strings.NewReader(mapping),
-	}
-
-	res, err := req.Do(nil, c.client)
-	if err != nil {
+		log.Printf("Error checking index %s: %v", indexName, err)
 		return err
 	}
 	defer res.Body.Close()
 
-	if res.IsError() {
-		return fmt.Errorf("index creation error: %s", res.String())
+	// If index doesn't exist (404), create it
+	if res.StatusCode == 404 {
+		createReq := opensearchapi.IndicesCreateRequest{
+			Index: indexName,
+		}
+
+		createRes, err := createReq.Do(c.ctx, c.client)
+		if err != nil {
+			log.Printf("Error creating index %s: %v", indexName, err)
+			return err
+		}
+		defer createRes.Body.Close()
+
+		log.Printf("Created OpenSearch index: %s", indexName)
 	}
 
 	return nil
@@ -246,4 +130,54 @@ func (c *Client) GetLogIndexName(tenantID, provider string) string {
 // IsEnabled returns whether OpenSearch logging is enabled
 func (c *Client) IsEnabled() bool {
 	return c.config.EnableLogging
+}
+
+// Index indexes a document in OpenSearch
+func (c *Client) Index(ctx context.Context, indexName string, body io.Reader) ([]byte, error) {
+	req := opensearchapi.IndexRequest{
+		Index: indexName,
+		Body:  body,
+	}
+
+	res, err := req.Do(ctx, c.client)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	responseBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.IsError() {
+		return nil, fmt.Errorf("index error: %s", string(responseBody))
+	}
+
+	return responseBody, nil
+}
+
+// Search performs a search query in OpenSearch
+func (c *Client) Search(ctx context.Context, indexName string, body io.Reader) ([]byte, error) {
+	req := opensearchapi.SearchRequest{
+		Index: []string{indexName},
+		Body:  body,
+	}
+
+	res, err := req.Do(ctx, c.client)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	responseBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.IsError() {
+		return nil, fmt.Errorf("search error: %s", string(responseBody))
+	}
+
+	return responseBody, nil
 }

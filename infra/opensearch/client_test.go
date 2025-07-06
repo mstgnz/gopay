@@ -219,7 +219,7 @@ func TestClient_setupIndices(t *testing.T) {
 	}
 }
 
-func TestClient_indexExists(t *testing.T) {
+func TestClient_createIndexIfNotExists(t *testing.T) {
 	cfg := &config.AppConfig{
 		OpenSearchURL: "http://localhost:9200",
 		EnableLogging: true,
@@ -232,31 +232,8 @@ func TestClient_indexExists(t *testing.T) {
 
 	require.NotNil(t, client)
 
-	// Test with a non-existent index
-	exists, err := client.indexExists("non-existent-index")
-	// This will likely fail in test environment due to no real OpenSearch
-	if err != nil {
-		t.Logf("Expected error in test environment: %v", err)
-	} else {
-		assert.False(t, exists)
-	}
-}
-
-func TestClient_createLogIndex(t *testing.T) {
-	cfg := &config.AppConfig{
-		OpenSearchURL: "http://localhost:9200",
-		EnableLogging: true,
-	}
-
-	client, err := NewClient(cfg)
-	if err != nil {
-		t.Skipf("Skipping test due to OpenSearch connection error: %v", err)
-	}
-
-	require.NotNil(t, client)
-
-	// Test creating an index
-	err = client.createLogIndex("test-index")
+	// Test creating an index (this method is not exported, so we test it indirectly through setupIndices)
+	err = client.setupIndices()
 	// This will likely fail in test environment due to no real OpenSearch
 	if err != nil {
 		t.Logf("Expected error in test environment: %v", err)
