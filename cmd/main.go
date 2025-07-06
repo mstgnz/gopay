@@ -19,6 +19,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/handler"
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/opensearch"
 	"github.com/mstgnz/gopay/infra/response"
@@ -58,9 +59,20 @@ func init() {
 	} else {
 		log.Println("OpenSearch logging is disabled")
 	}
+
+	// Initialize global system logger
+	logger.InitGlobalLogger(openSearchLogger)
 }
 
 func main() {
+	// Use structured logging from now on
+	logger.Info("Starting GoPay application", logger.LogContext{
+		Fields: map[string]any{
+			"port":               PORT,
+			"opensearch_enabled": openSearchLogger != nil,
+		},
+	})
+
 	// Initialize global services for callback handlers
 	paymentService := provider.NewPaymentService()
 	providerConfig := config.NewProviderConfig()
@@ -70,12 +82,16 @@ func main() {
 	for _, providerName := range providerConfig.GetAvailableProviders() {
 		providerCfg, err := providerConfig.GetConfig(providerName)
 		if err != nil {
-			log.Printf("Failed to get configuration for provider %s: %v", providerName, err)
+			logger.Error("Failed to get configuration for provider", err, logger.LogContext{
+				Provider: providerName,
+			})
 			continue
 		}
 		providerCfg["gopayBaseURL"] = providerConfig.GetBaseURL()
 		if err := paymentService.AddProvider(providerName, providerCfg); err != nil {
-			log.Printf("Failed to register provider %s: %v", providerName, err)
+			logger.Error("Failed to register provider", err, logger.LogContext{
+				Provider: providerName,
+			})
 			continue
 		}
 	}
@@ -111,7 +127,7 @@ func main() {
 	if openSearchLogger != nil {
 		r.Use(middle.PaymentLoggingMiddleware(openSearchLogger))
 		r.Use(middle.LoggingStatsMiddleware(openSearchLogger))
-		log.Println("Payment logging middleware enabled")
+		logger.Info("Payment logging middleware enabled")
 	}
 
 	// CORS
@@ -225,18 +241,24 @@ func main() {
 		}
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatal(err.Error())
+			logger.Fatal("Server failed to start", err)
 		}
 	}()
 
-	log.Println("API is running on", PORT)
+	logger.Info("API is running", logger.LogContext{
+		Fields: map[string]any{
+			"port": PORT,
+		},
+	})
 
 	// Block until a signal is received
 	<-ctx.Done()
 
-	log.Println("API is shutting on", PORT)
-	log.Println("Shutting down gracefully...")
-
+	logger.Info("Shutting down gracefully", logger.LogContext{
+		Fields: map[string]any{
+			"port": PORT,
+		},
+	})
 }
 
 func fileServer(r chi.Router, path string, root http.FileSystem) {
