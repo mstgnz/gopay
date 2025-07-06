@@ -307,8 +307,7 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## 📄 License
 
-This project is licensed under the Business Source License 1.1 (BUSL-1.1).  
-See the [LICENSE](./LICENSE) file for full license text.
+This project is licensed under the [Business Source License 1.1 (BUSL-1.1)](./LICENSE).
 
 ## 🆘 Support
 
