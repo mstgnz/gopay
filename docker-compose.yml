@@ -27,59 +27,40 @@ services:
       - "${APP_PORT}"
     env_file:
       - .env
-    environment:
-      - SQLITE_DB_PATH=/app/data/gopay.db
-    volumes:
-      - ./data:/app/data
     networks:
       - gopay
     depends_on:
-      - "opensearch"
+      - postgres
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  # Search Engine
-  opensearch:
-    image: opensearchproject/opensearch:2.11.0
-    container_name: ${APP_NAME}-opensearch
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17.5
+    container_name: ${APP_NAME}-postgres
     restart: always
     ports:
-      - "9200:9200"
-      - "9600:9600"
-    environment:
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - "DISABLE_INSTALL_DEMO_CONFIG=true"
-      - "DISABLE_SECURITY_PLUGIN=true"
-      - "cluster.name=gopay-cluster"
-      - "node.name=gopay-node"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
+      - "${DB_PORT}:5432"
     networks:
       - gopay
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+      TZ: ${DB_ZONE}
+    volumes:
+      - db:/var/lib/postgresql/data
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    healthcheck:
-      test:
-        ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
 volumes:
-  opensearch_data:
-    driver: local
+  db:
 
 networks:
   gopay:
