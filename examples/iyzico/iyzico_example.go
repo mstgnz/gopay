@@ -59,7 +59,7 @@ func regularPaymentExample(paymentService *provider.PaymentService) {
 			Name:    "John",
 			Surname: "Doe",
 			Email:   "john@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				City:    "Istanbul",
 				Country: "Turkey",
 				Address: "Test Address 123",
@@ -118,7 +118,7 @@ func threeDPaymentExample(paymentService *provider.PaymentService) {
 			Name:    "Jane",
 			Surname: "Smith",
 			Email:   "jane@example.com",
-			Address: provider.Address{
+			Address: &provider.Address{
 				City:    "Ankara",
 				Country: "Turkey",
 				Address: "Test Address 456",
