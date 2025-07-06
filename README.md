@@ -307,17 +307,8 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## 📄 License
 
-This project uses a **dual license** approach:
-
-### 🏗️ **Full Project License (MPL 2.0)**
-
-- **File**: [LICENSE](LICENSE) - Mozilla Public License 2.0
-- **Applies to**: Complete project, forks, distributions
-- ✅ **Free to use** in personal and commercial projects
-- ✅ **Contributions welcome** via pull requests
-- ✅ **Modification allowed** with same license requirements
-- ❌ **Redistribution** must maintain MPL 2.0 license
-- ❌ **Proprietary forks** are not permitted
+This project is licensed under the Business Source License 1.1 (BUSL-1.1).  
+See the [LICENSE](./LICENSE) file for full license text.
 
 ## 🆘 Support
 
