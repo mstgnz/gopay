@@ -156,20 +156,11 @@ func main() {
 	workDir, _ := os.Getwd()
 	fileServer(r, "/public", http.Dir(filepath.Join(workDir, "public")))
 
+	// Initialize health handler
+	healthHandler := handler.NewHealthHandler(config.App().DB.DB, postgresLogger, paymentService, providerConfig)
+
 	// Health check endpoint (no auth required)
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		health := map[string]any{
-			"status":           "ok",
-			"timestamp":        time.Now().UTC(),
-			"version":          "1.0.0",
-			"postgres_enabled": postgresLogger != nil,
-		}
-		_ = response.WriteJSON(w, http.StatusOK, response.Response{
-			Success: true,
-			Message: "Service is healthy",
-			Data:    health,
-		})
-	})
+	r.Get("/health", healthHandler.CheckHealth)
 
 	// scalar
 	r.Get("/scalar.yaml", func(w http.ResponseWriter, r *http.Request) {
