@@ -17,6 +17,8 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
 	authHandler := handler.NewAuthHandler(tenantService, jwtService, validator)
+	analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
+	logsHandler := handler.NewLogsHandler(nil, postgresLogger)
 
 	// Protected auth endpoints (JWT authentication already applied in main.go)
 	r.Post("/auth/logout", authHandler.Logout)
@@ -24,7 +26,7 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	r.Get("/auth/profile", authHandler.GetProfile)
 	r.Post("/auth/create-tenant", authHandler.CreateTenant) // Admin-only tenant creation
 
-	// Payment routes
+	// Payment routes (JWT protected)
 	r.Route("/payments", func(r chi.Router) {
 		r.Post("/{provider}", paymentHandler.ProcessPayment)
 		r.Get("/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
@@ -32,15 +34,31 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)
 	})
 
-	// Configuration routes
+	// Configuration routes (JWT protected)
 	r.Route("/config", func(r chi.Router) {
 		r.Post("/tenant-config", configHandler.SetEnv)
 		r.Get("/tenant-config", configHandler.GetTenantConfig)
 		r.Delete("/tenant-config", configHandler.DeleteTenantConfig)
 	})
 
-	// Legacy routes for backward compatibility
+	// Legacy routes for backward compatibility (JWT protected)
 	r.Route("/set-env", func(r chi.Router) {
 		r.Post("/", configHandler.SetEnv)
+	})
+
+	// Analytics routes (JWT protected)
+	r.Route("/analytics", func(r chi.Router) {
+		r.Get("/dashboard", analyticsHandler.GetDashboardStats) // GET /v1/analytics/dashboard?hours=24
+		r.Get("/providers", analyticsHandler.GetProviderStats)  // GET /v1/analytics/providers
+		r.Get("/activity", analyticsHandler.GetRecentActivity)  // GET /v1/analytics/activity?limit=10
+		r.Get("/trends", analyticsHandler.GetPaymentTrends)     // GET /v1/analytics/trends?hours=24
+	})
+
+	// Logs routes (JWT protected)
+	r.Route("/logs", func(r chi.Router) {
+		r.Get("/{provider}", logsHandler.ListLogs)                           // GET /v1/logs/{provider}?status=success&hours=24
+		r.Get("/{provider}/payment/{paymentID}", logsHandler.GetPaymentLogs) // GET /v1/logs/{provider}/payment/{paymentID}
+		r.Get("/{provider}/errors", logsHandler.GetErrorLogs)                // GET /v1/logs/{provider}/errors?hours=24
+		r.Get("/{provider}/stats", logsHandler.GetLogStats)                  // GET /v1/logs/{provider}/stats?hours=24
 	})
 }

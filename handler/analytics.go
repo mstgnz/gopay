@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mstgnz/gopay/infra/logger"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -61,7 +62,7 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	hoursStr := r.URL.Query().Get("hours")
 	hours := 24
 	if hoursStr != "" {
@@ -193,7 +194,7 @@ func (h *AnalyticsHandler) GetProviderStats(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 
 	var providers []ProviderStats
 	var err error
@@ -292,7 +293,7 @@ func (h *AnalyticsHandler) GetRecentActivity(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 
 	var activities []RecentActivity
 	var err error
@@ -412,7 +413,7 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 
 	var trends map[string]any
 	var err error
@@ -551,7 +552,7 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, tenantID st
 
 // generateDashboardStats generates fallback dashboard statistics
 // FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-func (h *AnalyticsHandler) generateDashboardStats(ctx context.Context, hours int) DashboardStats {
+func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, hours int) DashboardStats {
 	basePayments := 5000 + rand.Intn(5000)
 	successRate := 95.0 + rand.Float64()*5.0
 	totalVolume := 500000.0 + rand.Float64()*1000000.0

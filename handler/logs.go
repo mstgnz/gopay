@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -39,10 +40,10 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Get tenant ID from header (required)
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT token context (automatically set by auth middleware)
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
-		response.Error(w, http.StatusBadRequest, "X-Tenant-ID header is required", nil)
+		response.Error(w, http.StatusUnauthorized, "Invalid or missing authentication", nil)
 		return
 	}
 
@@ -179,7 +180,7 @@ func (h *LogsHandler) GetPaymentLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get parameters
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	provider := r.URL.Query().Get("provider")
 	hours := r.URL.Query().Get("hours")
 	paymentID := r.URL.Query().Get("payment_id")
@@ -260,10 +261,10 @@ func (h *LogsHandler) GetErrorLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Get tenant ID from header (required)
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT token context (automatically set by auth middleware)
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
-		response.Error(w, http.StatusBadRequest, "X-Tenant-ID header is required", nil)
+		response.Error(w, http.StatusUnauthorized, "Invalid or missing authentication", nil)
 		return
 	}
 
@@ -310,7 +311,7 @@ func (h *LogsHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get parameters
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	level := r.URL.Query().Get("level")
 	component := r.URL.Query().Get("component")
 	hours := r.URL.Query().Get("hours")
@@ -382,7 +383,7 @@ func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get parameters
-	tenantID := r.Header.Get("X-Tenant-ID")
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	hours := r.URL.Query().Get("hours")
 
 	hoursInt := 24 // Default to 24 hours

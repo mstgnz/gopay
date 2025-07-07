@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: GoPay API Documentation
-  version: 1.5.0
+  version: 1.4.0
   description: |
     **GoPay** is a unified payment integration service developed in Go. It abstracts different payment providers behind a single, standardized API, allowing developers to switch payment systems seamlessly without changing their codebase.
 
