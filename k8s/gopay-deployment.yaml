@@ -31,7 +31,7 @@ type: Opaque
 data:
   # Base64 encoded secrets - replace with actual values
   API_KEY: eW91cl9zdXBlcl9zZWNyZXRfYXBpX2tleQ== # your_super_secret_api_key
-  JWT_SECRET: eW91cl9qd3Rfc2VjcmV0X2tleQ== # your_jwt_secret_key
+  # JWT_SECRET: Not needed - GoPay auto-generates JWT secret on each restart for enhanced security
   DB_PASS: cGFzc3dvcmQ= # password
 ---
 apiVersion: v1

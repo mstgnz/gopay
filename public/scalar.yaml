@@ -29,11 +29,11 @@ info:
     - ✅ **PayU** (Global) - Production ready
 
     ## Authentication System
-    GoPay uses JWT (JSON Web Token) based authentication for secure API access.
+    GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys for maximum security.
 
     ### Getting Started
     1. **First Setup**: Register first admin user with `POST /v1/auth/register`
-            2. **Subsequent Users**: Use `POST /v1/auth/create-tenant` (admin only)
+    2. **Subsequent Users**: Use `POST /v1/auth/create-tenant` (admin only)
     3. **Login**: Get JWT token with `POST /v1/auth/login`
     4. **API Access**: Include token in Authorization header: `Bearer <token>`
 
@@ -41,10 +41,24 @@ info:
     - ✅ **First User**: Automatic admin privileges, no restrictions
     - ❌ **Additional Users**: Only admin can create via create-tenant endpoint
 
-    ### Token Management
+    ### 🔐 Enhanced Security Model
+    **Auto-Rotating JWT Secret Keys:**
+    - JWT secret key regenerates on every service restart
+    - All existing tokens become invalid after restart
+    - Users must re-authenticate after service restart
+    - No persistent secret storage (UUID-generated keys)
+    
+    **Token Management:**
     - **Expiry**: 24 hours default
     - **Refresh**: Use `/v1/auth/refresh` to extend validity
     - **Validation**: Use `/v1/auth/validate` to check token status
+    - **Security**: Each API request validates token against current secret
+    
+    **Benefits:**
+    - ✅ Maximum security through key rotation
+    - ✅ No risk of leaked persistent secrets
+    - ✅ Automatic token invalidation on restart
+    - ✅ Forces regular re-authentication
 
     ## Database & Logging
     GoPay uses **PostgreSQL 17.5** for:

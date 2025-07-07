@@ -219,12 +219,28 @@ kubectl apply -f k8s/
 
 ## 🔒 Security Features
 
-- **🔐 API Key Authentication** with Bearer tokens
-- **🛡️ Rate Limiting** (configurable per endpoint)
+- **🔐 JWT Authentication** with auto-rotating secret keys
+- **🛡️ Tenant-Based Rate Limiting** (configurable per endpoint)
 - **🚨 IP Whitelisting** support
 - **🔍 Request Validation** and size limits
 - **📊 Audit Logging** for all operations
 - **🔐 Webhook Signature Validation**
+
+### 🔐 JWT Security Model
+
+**Auto-Rotating Secret Keys:**
+
+- JWT secret key regenerates on every service restart
+- Enhanced security through key rotation
+- Tokens become invalid after restart, requiring re-authentication
+- No persistent secret key storage required
+
+**Token Validation Flow:**
+
+1. User authenticates → Receives JWT token (24h expiry)
+2. Each API request → Token validated against current secret
+3. Service restart → All tokens invalidated, users re-authenticate
+4. No token persistence → Maximum security
 
 ## 📊 Monitoring & Analytics
 
