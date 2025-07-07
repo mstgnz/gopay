@@ -17,15 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     
     services:
-      opensearch:
-        image: opensearchproject/opensearch:2.11.0
+      postgres:
+        image: postgres:17.5
         env:
-          discovery.type: single-node
-          DISABLE_SECURITY_PLUGIN: true
+          POSTGRES_DB: gopay_test
+          POSTGRES_USER: gopay
+          POSTGRES_PASSWORD: testpassword
         ports:
-          - 9200:9200
+          - 5432:5432
         options: >-
-          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-cmd "pg_isready -U gopay -d gopay_test"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 5
@@ -67,7 +68,7 @@ jobs:
         IYZICO_TEST_ENABLED: true
         IYZICO_TEST_API_KEY: ${{ secrets.IYZICO_TEST_API_KEY }}
         IYZICO_TEST_SECRET_KEY: ${{ secrets.IYZICO_TEST_SECRET_KEY }}
-        OPENSEARCH_URL: http://localhost:9200
+        DATABASE_URL: postgresql://gopay:testpassword@localhost:5432/gopay_test
       run: |
         if [ -n "$IYZICO_TEST_API_KEY" ]; then
           echo "Running integration tests..."
@@ -201,13 +202,19 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     services:
-      opensearch:
-        image: opensearchproject/opensearch:2.11.0
+      postgres:
+        image: postgres:17.5
         env:
-          discovery.type: single-node
-          DISABLE_SECURITY_PLUGIN: true
+          POSTGRES_DB: gopay_test
+          POSTGRES_USER: gopay
+          POSTGRES_PASSWORD: testpassword
         ports:
-          - 9200:9200
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gopay -d gopay_test"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
 
     steps:
     - name: Checkout code
@@ -225,7 +232,7 @@ jobs:
     - name: Start GoPay server
       run: |
         export API_KEY="test-api-key"
-        export OPENSEARCH_URL="http://localhost:9200"
+        export DATABASE_URL="postgresql://gopay:testpassword@localhost:5432/gopay_test"
         ./bin/gopay &
         sleep 5
       env:
