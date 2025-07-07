@@ -361,6 +361,16 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 	}
 
 	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// Address fields with nil check
+	var regAddress, city, country, zipCode string
+	if request.Customer.Address != nil {
+		regAddress = request.Customer.Address.Address
+		city = request.Customer.Address.City
+		country = request.Customer.Address.Country
+		zipCode = request.Customer.Address.ZipCode
+	}
+
 	req["buyer"] = map[string]any{
 		"id":                  buyerID,
 		"name":                request.Customer.Name,
@@ -370,30 +380,44 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 		"identityNumber":      defaultIdentityNumber, // Test identity number
 		"lastLoginDate":       now,
 		"registrationDate":    now,
-		"registrationAddress": request.Customer.Address.Address,
+		"registrationAddress": regAddress,
 		"ip":                  buyerIP,
-		"city":                request.Customer.Address.City,
-		"country":             request.Customer.Address.Country,
-		"zipCode":             request.Customer.Address.ZipCode,
+		"city":                city,
+		"country":             country,
+		"zipCode":             zipCode,
 	}
 
 	// Add shipping address
-	req["shippingAddress"] = map[string]any{
+	shippingAddress := map[string]any{
 		"contactName": request.Customer.Name + " " + request.Customer.Surname,
-		"city":        request.Customer.Address.City,
-		"country":     request.Customer.Address.Country,
-		"address":     request.Customer.Address.Address,
-		"zipCode":     request.Customer.Address.ZipCode,
+		"address":     regAddress,
+		"city":        city,
+		"country":     country,
+		"zipCode":     zipCode,
 	}
+	if request.Customer.Address != nil {
+		shippingAddress["address"] = request.Customer.Address.Address
+		shippingAddress["city"] = request.Customer.Address.City
+		shippingAddress["country"] = request.Customer.Address.Country
+		shippingAddress["zipCode"] = request.Customer.Address.ZipCode
+	}
+	req["shippingAddress"] = shippingAddress
 
 	// Add billing address
-	req["billingAddress"] = map[string]any{
+	billingAddress := map[string]any{
 		"contactName": request.Customer.Name + " " + request.Customer.Surname,
-		"city":        request.Customer.Address.City,
-		"country":     request.Customer.Address.Country,
-		"address":     request.Customer.Address.Address,
-		"zipCode":     request.Customer.Address.ZipCode,
+		"address":     regAddress,
+		"city":        city,
+		"country":     country,
+		"zipCode":     zipCode,
 	}
+	if request.Customer.Address != nil {
+		billingAddress["address"] = request.Customer.Address.Address
+		billingAddress["city"] = request.Customer.Address.City
+		billingAddress["country"] = request.Customer.Address.Country
+		billingAddress["zipCode"] = request.Customer.Address.ZipCode
+	}
+	req["billingAddress"] = billingAddress
 
 	// Add payment card information
 	req["paymentCard"] = map[string]any{
