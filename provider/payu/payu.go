@@ -455,7 +455,7 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 	}
 
 	// Add billing address if provided
-	if request.Customer.Address.Country != "" {
+	if request.Customer.Address != nil && request.Customer.Address.Country != "" {
 		billing := map[string]any{
 			"firstName": request.Customer.Name,
 			"lastName":  request.Customer.Surname,

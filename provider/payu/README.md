@@ -2,7 +2,7 @@
 
 This document provides comprehensive information about integrating PayU Turkey payments with GoPay.
 
-[PayU API Documentation](https://docs.payu.in/docs/introduction)
+[PayU API Documentation](https://docs.payu.in/reference)
 
 ## Overview
 
