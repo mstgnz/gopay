@@ -287,7 +287,7 @@ func (p *PayTRProvider) processIFramePayment(ctx context.Context, request provid
 	data["user_basket"] = userBasket
 
 	// Add user address if available
-	if request.Customer.Address.Address != "" {
+	if request.Customer.Address != nil && request.Customer.Address.Address != "" {
 		data["user_address"] = fmt.Sprintf("%s, %s, %s", request.Customer.Address.Address, request.Customer.Address.City, request.Customer.Address.Country)
 	}
 

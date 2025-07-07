@@ -4,6 +4,8 @@
 
 PayTR is one of Turkey's leading payment processing platforms, providing virtual POS and payment solutions for businesses. This provider implementation supports PayTR's iFrame and Direct API integration methods.
 
+[PayTR API Documentation](https://dev.paytr.com/)
+
 ## Features
 
 - ✅ **iFrame Payments**: Secure payment form within iframe

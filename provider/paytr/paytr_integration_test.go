@@ -40,6 +40,7 @@ func TestPayTRIntegration_IFramePayment(t *testing.T) {
 			Email:       "test@example.com",
 			PhoneNumber: "+905551234567",
 			IPAddress:   "192.168.1.1",
+			Address:     &provider.Address{},
 		},
 		Items: []provider.Item{
 			{
