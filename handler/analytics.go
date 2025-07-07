@@ -154,10 +154,10 @@ func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, tenantID s
 		SuccessRate:         successRate,
 		TotalVolume:         totalVolume,
 		AvgResponseTime:     avgResponseTime,
-		TotalPaymentsChange: h.calculatePaymentChange(hours),
-		SuccessRateChange:   h.calculateSuccessRateChange(hours),
-		TotalVolumeChange:   h.calculateVolumeChange(hours),
-		AvgResponseChange:   h.calculateResponseTimeChange(hours),
+		TotalPaymentsChange: h.calculatePaymentChange(tenantIDInt, hours),
+		SuccessRateChange:   h.calculateSuccessRateChange(tenantIDInt, hours),
+		TotalVolumeChange:   h.calculateVolumeChange(tenantIDInt, hours),
+		AvgResponseChange:   h.calculateResponseTimeChange(tenantIDInt, hours),
 	}, nil
 }
 
@@ -416,10 +416,114 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 }
 
 // getRealPaymentTrends fetches real payment trends from PostgreSQL
-func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, _ string, hours int) (map[string]any, error) {
-	// This would require more complex time-based aggregations
-	// For now, return generated data with a note about real implementation
-	return h.generatePaymentTrends(ctx, hours), nil
+func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, tenantID string, hours int) (map[string]any, error) {
+	// Convert tenantID to int for PostgreSQL
+	tenantIDInt := 0
+	if tenantID != "" && tenantID != "legacy" {
+		fmt.Sscanf(tenantID, "%d", &tenantIDInt)
+	}
+
+	// Get all providers and combine their trends
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+
+	combinedLabels := make([]string, 0)
+	combinedSuccessData := make([]int, 0)
+	combinedFailedData := make([]int, 0)
+	combinedVolumeData := make([]float64, 0)
+
+	// Track which hours we've seen
+	hourlyData := make(map[string]struct {
+		successful int
+		failed     int
+		volume     float64
+	})
+
+	for _, provider := range providers {
+		trends, err := h.logger.GetPaymentTrends(ctx, tenantIDInt, provider, hours)
+		if err != nil {
+			continue // Skip provider if error
+		}
+
+		// Extract data from trends
+		if labels, ok := trends["labels"].([]string); ok {
+			if datasets, ok := trends["datasets"].([]map[string]any); ok && len(datasets) >= 2 {
+				if successData, ok := datasets[0]["data"].([]int); ok {
+					if failedData, ok := datasets[1]["data"].([]int); ok {
+						if volumeData, ok := trends["volume"].([]float64); ok {
+							// Combine data by hour
+							for i, label := range labels {
+								if i < len(successData) && i < len(failedData) && i < len(volumeData) {
+									if existing, exists := hourlyData[label]; exists {
+										existing.successful += successData[i]
+										existing.failed += failedData[i]
+										existing.volume += volumeData[i]
+										hourlyData[label] = existing
+									} else {
+										hourlyData[label] = struct {
+											successful int
+											failed     int
+											volume     float64
+										}{
+											successful: successData[i],
+											failed:     failedData[i],
+											volume:     volumeData[i],
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// If no data found, return empty trends structure
+	if len(hourlyData) == 0 {
+		return h.generatePaymentTrends(ctx, hours), nil
+	}
+
+	// Convert map back to arrays, maintaining chronological order
+	for i := hours - 1; i >= 0; i-- {
+		var label string
+		if i == 0 {
+			label = "Now"
+		} else {
+			label = fmt.Sprintf("%dh ago", i)
+		}
+
+		if data, exists := hourlyData[label]; exists {
+			combinedLabels = append(combinedLabels, label)
+			combinedSuccessData = append(combinedSuccessData, data.successful)
+			combinedFailedData = append(combinedFailedData, data.failed)
+			combinedVolumeData = append(combinedVolumeData, data.volume)
+		} else {
+			// Fill gaps with zeros
+			combinedLabels = append(combinedLabels, label)
+			combinedSuccessData = append(combinedSuccessData, 0)
+			combinedFailedData = append(combinedFailedData, 0)
+			combinedVolumeData = append(combinedVolumeData, 0.0)
+		}
+	}
+
+	return map[string]any{
+		"labels": combinedLabels,
+		"datasets": []map[string]any{
+			{
+				"label":           "Successful Payments",
+				"data":            combinedSuccessData,
+				"borderColor":     "#10B981",
+				"backgroundColor": "rgba(16, 185, 129, 0.1)",
+			},
+			{
+				"label":           "Failed Payments",
+				"data":            combinedFailedData,
+				"borderColor":     "#EF4444",
+				"backgroundColor": "rgba(239, 68, 68, 0.1)",
+			},
+		},
+		"volume": combinedVolumeData,
+	}, nil
 }
 
 // Helper methods to generate realistic data (FALLBACK when OpenSearch is empty or unavailable)
@@ -441,10 +545,10 @@ func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, hours int) 
 		SuccessRate:         successRate,
 		TotalVolume:         totalVolume,
 		AvgResponseTime:     responseTime,
-		TotalPaymentsChange: h.calculatePaymentChange(hours),
-		SuccessRateChange:   h.calculateSuccessRateChange(hours),
-		TotalVolumeChange:   h.calculateVolumeChange(hours),
-		AvgResponseChange:   h.calculateResponseTimeChange(hours),
+		TotalPaymentsChange: h.calculatePaymentChange(0, hours),
+		SuccessRateChange:   h.calculateSuccessRateChange(0, hours),
+		TotalVolumeChange:   h.calculateVolumeChange(0, hours),
+		AvgResponseChange:   h.calculateResponseTimeChange(0, hours),
 	}
 }
 
@@ -540,70 +644,216 @@ func (h *AnalyticsHandler) generatePaymentTrends(_ context.Context, hours int) m
 }
 
 // calculatePaymentChange calculates the percentage change in payment count from previous period
-func (h *AnalyticsHandler) calculatePaymentChange(_ int) string {
+func (h *AnalyticsHandler) calculatePaymentChange(tenantID int, hours int) string {
 	if h.logger == nil {
 		return "+12.5% from yesterday"
 	}
 
-	// TODO: Implement real calculation from OpenSearch
-	// This would require comparing current period with previous period
-	// For now, return a simulated calculation
-	change := -5.0 + rand.Float64()*20.0 // Random change between -5% and +15%
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Get all providers
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+
+	var currentTotal, previousTotal int
+
+	for _, provider := range providers {
+		stats, err := h.logger.GetPaymentStatsComparison(ctx, tenantID, provider, hours, hours)
+		if err != nil {
+			continue // Skip provider if error
+		}
+
+		if currentCount, ok := stats["current_total"].(int); ok {
+			currentTotal += currentCount
+		}
+		if previousCount, ok := stats["previous_total"].(int); ok {
+			previousTotal += previousCount
+		}
+	}
+
+	// Calculate percentage change
+	if previousTotal == 0 {
+		if currentTotal > 0 {
+			return fmt.Sprintf("+∞%% from previous %dh", hours)
+		}
+		return "No previous data"
+	}
+
+	change := ((float64(currentTotal) - float64(previousTotal)) / float64(previousTotal)) * 100
 
 	if change > 0 {
-		return fmt.Sprintf("+%.1f%% from yesterday", change)
+		return fmt.Sprintf("+%.1f%% from previous %dh", change, hours)
+	} else if change < 0 {
+		return fmt.Sprintf("%.1f%% from previous %dh", change, hours)
 	} else {
-		return fmt.Sprintf("%.1f%% from yesterday", change)
+		return fmt.Sprintf("No change from previous %dh", hours)
 	}
 }
 
 // calculateSuccessRateChange calculates the percentage change in success rate from previous period
-func (h *AnalyticsHandler) calculateSuccessRateChange(_ int) string {
+func (h *AnalyticsHandler) calculateSuccessRateChange(tenantID int, hours int) string {
 	if h.logger == nil {
 		return "+0.8% from yesterday"
 	}
 
-	// TODO: Implement real calculation from OpenSearch
-	// This would require comparing current period success rate with previous period
-	change := -2.0 + rand.Float64()*4.0 // Random change between -2% and +2%
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Get all providers
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+
+	var currentTotal, currentSuccess, previousTotal, previousSuccess int
+
+	for _, provider := range providers {
+		stats, err := h.logger.GetPaymentStatsComparison(ctx, tenantID, provider, hours, hours)
+		if err != nil {
+			continue // Skip provider if error
+		}
+
+		if currentCount, ok := stats["current_total"].(int); ok {
+			currentTotal += currentCount
+		}
+		if currentSuccessCount, ok := stats["current_success"].(int); ok {
+			currentSuccess += currentSuccessCount
+		}
+		if previousCount, ok := stats["previous_total"].(int); ok {
+			previousTotal += previousCount
+		}
+		if previousSuccessCount, ok := stats["previous_success"].(int); ok {
+			previousSuccess += previousSuccessCount
+		}
+	}
+
+	// Calculate success rates
+	var currentRate, previousRate float64
+
+	if currentTotal > 0 {
+		currentRate = (float64(currentSuccess) / float64(currentTotal)) * 100
+	}
+
+	if previousTotal > 0 {
+		previousRate = (float64(previousSuccess) / float64(previousTotal)) * 100
+	} else {
+		if currentTotal > 0 {
+			return fmt.Sprintf("+%.1f%% (no previous data)", currentRate)
+		}
+		return "No data available"
+	}
+
+	// Calculate percentage point change (not percentage change)
+	change := currentRate - previousRate
 
 	if change > 0 {
-		return fmt.Sprintf("+%.1f%% from yesterday", change)
+		return fmt.Sprintf("+%.1f%% from previous %dh", change, hours)
+	} else if change < 0 {
+		return fmt.Sprintf("%.1f%% from previous %dh", change, hours)
 	} else {
-		return fmt.Sprintf("%.1f%% from yesterday", change)
+		return fmt.Sprintf("No change from previous %dh", hours)
 	}
 }
 
 // calculateVolumeChange calculates the percentage change in payment volume from previous period
-func (h *AnalyticsHandler) calculateVolumeChange(_ int) string {
+func (h *AnalyticsHandler) calculateVolumeChange(tenantID int, hours int) string {
 	if h.logger == nil {
 		return "+18.2% from yesterday"
 	}
 
-	// TODO: Implement real calculation from OpenSearch
-	// This would require comparing current period volume with previous period
-	change := -10.0 + rand.Float64()*30.0 // Random change between -10% and +20%
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Get all providers
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+
+	var currentVolume, previousVolume float64
+
+	for _, provider := range providers {
+		stats, err := h.logger.GetPaymentStatsComparison(ctx, tenantID, provider, hours, hours)
+		if err != nil {
+			continue // Skip provider if error
+		}
+
+		if currentVol, ok := stats["current_volume"].(float64); ok {
+			currentVolume += currentVol
+		}
+		if previousVol, ok := stats["previous_volume"].(float64); ok {
+			previousVolume += previousVol
+		}
+	}
+
+	// Calculate percentage change
+	if previousVolume == 0 {
+		if currentVolume > 0 {
+			return fmt.Sprintf("+∞%% from previous %dh", hours)
+		}
+		return "No previous data"
+	}
+
+	change := ((currentVolume - previousVolume) / previousVolume) * 100
 
 	if change > 0 {
-		return fmt.Sprintf("+%.1f%% from yesterday", change)
+		return fmt.Sprintf("+%.1f%% from previous %dh", change, hours)
+	} else if change < 0 {
+		return fmt.Sprintf("%.1f%% from previous %dh", change, hours)
 	} else {
-		return fmt.Sprintf("%.1f%% from yesterday", change)
+		return fmt.Sprintf("No change from previous %dh", hours)
 	}
 }
 
 // calculateResponseTimeChange calculates the change in average response time from previous period
-func (h *AnalyticsHandler) calculateResponseTimeChange(_ int) string {
+func (h *AnalyticsHandler) calculateResponseTimeChange(tenantID int, hours int) string {
 	if h.logger == nil {
 		return "-15ms from yesterday"
 	}
 
-	// TODO: Implement real calculation from OpenSearch
-	// This would require comparing current period response time with previous period
-	change := -30 + rand.Intn(60) // Random change between -30ms and +30ms
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Get all providers
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+
+	var currentSum, previousSum float64
+	var currentCount, previousCount int
+
+	for _, provider := range providers {
+		stats, err := h.logger.GetPaymentStatsComparison(ctx, tenantID, provider, hours, hours)
+		if err != nil {
+			continue // Skip provider if error
+		}
+
+		if currentProcessingMs, ok := stats["current_processing_ms"].(float64); ok && currentProcessingMs > 0 {
+			currentSum += currentProcessingMs
+			currentCount++
+		}
+		if previousProcessingMs, ok := stats["previous_processing_ms"].(float64); ok && previousProcessingMs > 0 {
+			previousSum += previousProcessingMs
+			previousCount++
+		}
+	}
+
+	// Calculate average response times
+	var currentAvg, previousAvg float64
+
+	if currentCount > 0 {
+		currentAvg = currentSum / float64(currentCount)
+	}
+
+	if previousCount > 0 {
+		previousAvg = previousSum / float64(previousCount)
+	} else {
+		if currentCount > 0 {
+			return fmt.Sprintf("%.0fms (no previous data)", currentAvg)
+		}
+		return "No data available"
+	}
+
+	// Calculate millisecond change
+	change := currentAvg - previousAvg
 
 	if change > 0 {
-		return fmt.Sprintf("+%dms from yesterday", change)
+		return fmt.Sprintf("+%.0fms from previous %dh", change, hours)
+	} else if change < 0 {
+		return fmt.Sprintf("%.0fms from previous %dh", change, hours)
 	} else {
-		return fmt.Sprintf("%dms from yesterday", change)
+		return fmt.Sprintf("No change from previous %dh", hours)
 	}
 }
