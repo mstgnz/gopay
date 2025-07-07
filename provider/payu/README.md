@@ -2,6 +2,8 @@
 
 This document provides comprehensive information about integrating PayU Turkey payments with GoPay.
 
+[PayU API Documentation](https://docs.payu.in/docs/introduction)
+
 ## Overview
 
 PayU Turkey is a leading payment processing platform in Turkey, offering secure and reliable payment solutions for businesses. This provider implementation supports:
