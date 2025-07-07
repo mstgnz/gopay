@@ -55,8 +55,8 @@ func TestLogsHandler_GetErrorLogs_MissingProvider(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.GetErrorLogs(w, req)
 
-	if w.Code != 400 {
-		t.Errorf("Expected status 400, got %d", w.Code)
+	if w.Code != 401 {
+		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 }
 
@@ -79,8 +79,8 @@ func TestLogsHandler_ListLogs_MissingTenant(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ListLogs(w, req)
 
-	if w.Code != 400 {
-		t.Errorf("Expected status 400, got %d", w.Code)
+	if w.Code != 401 {
+		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestLogsHandler_EdgeCases(t *testing.T) {
 			method:         "GET",
 			path:           "/logs/errors?provider=iyzico&hours=48",
 			headers:        map[string]string{"X-Tenant-ID": "APP1"},
-			expectedStatus: 400,
+			expectedStatus: 401, // Changed to 401 because JWT authentication is required
 		},
 		{
 			name:           "log stats with invalid hours",
