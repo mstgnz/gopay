@@ -153,7 +153,7 @@
 //
 // # Logging and Analytics
 //
-// GoPay integrates with OpenSearch for comprehensive logging and analytics:
+// GoPay integrates with PostgreSQL for comprehensive logging and analytics:
 //
 //   - Real-time payment tracking
 //   - Provider-specific performance metrics

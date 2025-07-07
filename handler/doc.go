@@ -215,7 +215,7 @@
 //   - Payment success rates
 //   - Provider performance metrics
 //
-// Logs are structured and can be sent to OpenSearch for analysis.
+// Logs are structured and can be sent to PostgreSQL for analysis.
 //
 // # Testing
 //

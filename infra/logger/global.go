@@ -17,7 +17,7 @@ func InitGlobalLogger(postgresLogger any) {
 	once.Do(func() {
 		config := SystemLoggerConfig{
 			EnableConsole:    true,
-			EnableOpenSearch: postgresLogger != nil,
+			EnablePostgreSQL: postgresLogger != nil,
 			MinLevel:         LevelInfo,
 			Service:          "gopay",
 			Version:          "1.0.0",
@@ -47,7 +47,7 @@ func GetGlobalLogger() *SystemLogger {
 		// Fallback to console-only logger if not initialized
 		config := SystemLoggerConfig{
 			EnableConsole:    true,
-			EnableOpenSearch: false,
+			EnablePostgreSQL: false,
 			MinLevel:         LevelInfo,
 			Service:          "gopay",
 			Version:          "1.0.0",
@@ -97,13 +97,16 @@ func WithTenant(tenantID string) *ContextLogger {
 
 // WithProvider creates a context logger with provider
 func WithProvider(provider string) *ContextLogger {
-	return WithContext(LogContext{Provider: provider})
+	// Use Fields to store provider info since LogContext in system_logger.go has Provider field
+	ctx := LogContext{Provider: provider}
+	return GetGlobalLogger().WithContext(ctx)
 }
 
 // WithTenantAndProvider creates a context logger with tenant and provider
 func WithTenantAndProvider(tenantID, provider string) *ContextLogger {
-	return WithContext(LogContext{
+	ctx := LogContext{
 		TenantID: tenantID,
 		Provider: provider,
-	})
+	}
+	return GetGlobalLogger().WithContext(ctx)
 }

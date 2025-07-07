@@ -13,7 +13,7 @@ import (
 func TestNewSystemLogger(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    true,
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelInfo,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -24,7 +24,7 @@ func TestNewSystemLogger(t *testing.T) {
 
 	assert.NotNil(t, logger)
 	assert.Equal(t, config.EnableConsole, logger.enableConsole)
-	assert.Equal(t, config.EnableOpenSearch, logger.enableOpenSearch)
+	assert.Equal(t, config.EnablePostgreSQL, logger.enablePostgreSQL)
 	assert.Equal(t, config.MinLevel, logger.minLevel)
 	assert.Equal(t, config.Service, logger.service)
 	assert.Equal(t, config.Version, logger.version)
@@ -34,7 +34,7 @@ func TestNewSystemLogger(t *testing.T) {
 func TestSystemLogger_LogLevels(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    false, // Disable console to avoid output during tests
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -55,7 +55,7 @@ func TestSystemLogger_LogLevels(t *testing.T) {
 func TestSystemLogger_WithContext(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    false,
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -128,7 +128,7 @@ func TestSystemLogger_ShouldLog(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			config := SystemLoggerConfig{
 				EnableConsole:    false,
-				EnableOpenSearch: false,
+				EnablePostgreSQL: false,
 				MinLevel:         tt.minLevel,
 				Service:          "test-service",
 				Version:          "1.0.0",
@@ -145,7 +145,7 @@ func TestSystemLogger_ShouldLog(t *testing.T) {
 func TestSystemLogger_ExtractComponent(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    false,
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -192,7 +192,7 @@ func TestSystemLogger_ExtractComponent(t *testing.T) {
 func TestContextLogger(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    false,
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -238,7 +238,7 @@ func TestSystemLogger_LogToConsole(t *testing.T) {
 
 	config := SystemLoggerConfig{
 		EnableConsole:    true,
-		EnableOpenSearch: false,
+		EnablePostgreSQL: false,
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
@@ -264,24 +264,24 @@ func TestSystemLogger_LogToConsole(t *testing.T) {
 	assert.Contains(t, output, "INFO")
 }
 
-func TestSystemLogger_WithOpenSearch(t *testing.T) {
+func TestSystemLogger_WithPostgreSQL(t *testing.T) {
 	config := SystemLoggerConfig{
 		EnableConsole:    false,
-		EnableOpenSearch: false, // Disable to avoid nil pointer panic
+		EnablePostgreSQL: false, // Disable to avoid nil pointer panic
 		MinLevel:         LevelDebug,
 		Service:          "test-service",
 		Version:          "1.0.0",
 		Environment:      "test",
 	}
 
-	// Create a logger without OpenSearch
+	// Create a logger without PostgreSQL
 	logger := NewSystemLogger(nil, config)
 
 	// Test logging (should not panic)
-	logger.Info("Test OpenSearch message")
+	logger.Info("Test PostgreSQL message")
 
-	// Verify OpenSearch is disabled
-	assert.False(t, logger.enableOpenSearch)
+	// Verify PostgreSQL is disabled
+	assert.False(t, logger.enablePostgreSQL)
 }
 
 func TestLogContext_Fields(t *testing.T) {
@@ -349,7 +349,7 @@ func TestSystemLoggerConfig_Validation(t *testing.T) {
 			name: "valid_config",
 			config: SystemLoggerConfig{
 				EnableConsole:    true,
-				EnableOpenSearch: false,
+				EnablePostgreSQL: false,
 				MinLevel:         LevelInfo,
 				Service:          "test-service",
 				Version:          "1.0.0",
@@ -361,7 +361,7 @@ func TestSystemLoggerConfig_Validation(t *testing.T) {
 			name: "empty_service",
 			config: SystemLoggerConfig{
 				EnableConsole:    true,
-				EnableOpenSearch: false,
+				EnablePostgreSQL: false,
 				MinLevel:         LevelInfo,
 				Service:          "",
 				Version:          "1.0.0",
@@ -373,7 +373,7 @@ func TestSystemLoggerConfig_Validation(t *testing.T) {
 			name: "invalid_log_level",
 			config: SystemLoggerConfig{
 				EnableConsole:    true,
-				EnableOpenSearch: false,
+				EnablePostgreSQL: false,
 				MinLevel:         "invalid",
 				Service:          "test-service",
 				Version:          "1.0.0",

@@ -66,7 +66,7 @@ graph TD
 
     J["İyzico Webhook"] --> K["GoPay Webhook Handler<br/>/webhooks/iyzico?tenantId=APP1"]
     K --> L["Provider: APP1_iyzico<br/>ValidateWebhook"]
-    L --> M["OpenSearch<br/>gopay-app1-iyzico-logs"]
+    L --> M["PostgreSQL<br/>gopay-payment-logs"]
 
     style A fill:#e1f5fe
     style B fill:#f3e5f5
@@ -88,7 +88,7 @@ graph TD
 6. **Provider** sends callback to **GoPay** with payment result
 7. **GoPay** processes callback and redirects user back to **Application**
 8. **Provider** sends webhook to **GoPay** for final confirmation
-9. **GoPay** logs everything to **OpenSearch** in tenant-specific indexes
+9. **GoPay** logs everything to **PostgreSQL** with structured logging
 
 ## 🌟 Core Capabilities
 
@@ -109,11 +109,12 @@ graph TD
 - **API Authentication**: Bearer token security
 - **Rate Limiting**: Configurable limits per tenant/endpoint
 - **IP Whitelisting**: Additional security layer
-- **Webhook Validation**: Cryptographic verification of provider notifications
+- **Request Validation** and size limits
+- **Webhook Signature Validation**
 
 ### 📊 **Monitoring & Analytics**
 
-- **Real-time Logging**: OpenSearch integration for comprehensive tracking
+- **Real-time Logging**: PostgreSQL integration for comprehensive tracking
 - **Performance Metrics**: Provider-specific analytics
 - **Dashboard**: Web-based monitoring interface
 - **Audit Trails**: Complete request/response logging
@@ -145,26 +146,7 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
-### 2. **Configuration**
-
-Set your environment variables:
-
-```bash
-# Core settings
-API_KEY=your_super_secret_api_key
-APP_URL=https://your-gopay-domain.com
-
-# OpenSearch logging (optional)
-OPENSEARCH_URL=http://localhost:9200
-ENABLE_OPENSEARCH_LOGGING=true
-
-# Provider credentials (example for İyzico)
-IYZICO_API_KEY=your_iyzico_api_key
-IYZICO_SECRET_KEY=your_iyzico_secret_key
-IYZICO_ENVIRONMENT=sandbox
-```
-
-### 3. **Run Service**
+### 2. **Run Service**
 
 ```bash
 # Using Docker (Recommended)
@@ -174,43 +156,6 @@ docker-compose up -d
 go run ./cmd/main.go
 
 # Service will be available at http://localhost:9999
-```
-
-## 📡 API Endpoints
-
-### 🔐 **Authenticated Endpoints**
-
-```bash
-# Payment Operations
-POST   /v1/payments/{provider}              # Create payment
-GET    /v1/payments/{provider}/{paymentID}  # Check status
-DELETE /v1/payments/{provider}/{paymentID}  # Cancel payment
-POST   /v1/payments/{provider}/refund       # Process refund
-
-# Configuration Management
-POST   /v1/set-env                          # Set tenant config
-GET    /v1/config/tenant-config             # Get tenant config
-DELETE /v1/config/tenant-config             # Delete tenant config
-
-# Analytics & Monitoring
-GET    /v1/analytics/dashboard              # Dashboard stats
-GET    /v1/analytics/providers              # Provider stats
-GET    /v1/logs/{provider}                  # Payment logs
-GET    /v1/stats                           # General statistics
-```
-
-### 🌐 **Public Endpoints** (No Authentication)
-
-```bash
-# Callbacks & Webhooks
-POST   /callback/{provider}                 # 3D Secure callbacks
-GET    /callback/{provider}                 # 3D Secure callbacks
-POST   /webhooks/{provider}                 # Payment webhooks
-
-# System
-GET    /health                              # Health check
-GET    /                                    # Analytics dashboard
-GET    /docs                                # API documentation
 ```
 
 ## 💻 Usage Examples & Integration
@@ -284,7 +229,7 @@ kubectl apply -f k8s/
 ## 📊 Monitoring & Analytics
 
 - **📈 Real-time Dashboard** at http://localhost:9999
-- **🔍 OpenSearch Integration** for advanced analytics
+- **🔍 PostgreSQL Integration** for advanced analytics
 - **📋 Structured Logging** with tenant isolation
 - **⚡ Performance Metrics** per provider
 - **🎯 Success/Error Rate Tracking**

@@ -547,10 +547,11 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, tenantID st
 	}, nil
 }
 
-// Helper methods to generate realistic data (FALLBACK when OpenSearch is empty or unavailable)
+// Helper methods to generate realistic data (FALLBACK when PostgreSQL is empty or unavailable)
 
-func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, hours int) DashboardStats {
-	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
+// generateDashboardStats generates fallback dashboard statistics
+// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
+func (h *AnalyticsHandler) generateDashboardStats(ctx context.Context, hours int) DashboardStats {
 	basePayments := 5000 + rand.Intn(5000)
 	successRate := 95.0 + rand.Float64()*5.0
 	totalVolume := 500000.0 + rand.Float64()*1000000.0
@@ -574,7 +575,7 @@ func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, hours int) 
 }
 
 func (h *AnalyticsHandler) generateProviderStats(_ context.Context) []ProviderStats {
-	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
+	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
 	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
 	stats := make([]ProviderStats, len(providers))
 
@@ -601,7 +602,7 @@ func (h *AnalyticsHandler) generateProviderStats(_ context.Context) []ProviderSt
 }
 
 func (h *AnalyticsHandler) generateRecentActivity(_ context.Context, limit int) []RecentActivity {
-	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
+	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
 	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara"}
 	types := []string{"payment", "refund"}
 	statuses := []string{"success", "failed", "processed"}
@@ -634,7 +635,7 @@ func (h *AnalyticsHandler) generateRecentActivity(_ context.Context, limit int) 
 }
 
 func (h *AnalyticsHandler) generatePaymentTrends(_ context.Context, hours int) map[string]any {
-	// FALLBACK DATA - Used when OpenSearch has no data or is unavailable
+	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
 	labels := make([]string, hours)
 	successData := make([]int, hours)
 	failedData := make([]int, hours)

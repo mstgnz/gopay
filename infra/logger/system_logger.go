@@ -46,7 +46,7 @@ type SystemLog struct {
 type SystemLogger struct {
 	postgresLogger   *postgres.Logger
 	enableConsole    bool
-	enableOpenSearch bool
+	enablePostgreSQL bool
 	minLevel         LogLevel
 	service          string
 	version          string
@@ -58,7 +58,7 @@ func NewSystemLogger(postgresLogger *postgres.Logger, config SystemLoggerConfig)
 	return &SystemLogger{
 		postgresLogger:   postgresLogger,
 		enableConsole:    config.EnableConsole,
-		enableOpenSearch: config.EnableOpenSearch && postgresLogger != nil,
+		enablePostgreSQL: config.EnablePostgreSQL && postgresLogger != nil,
 		minLevel:         config.MinLevel,
 		service:          config.Service,
 		version:          config.Version,
@@ -69,7 +69,7 @@ func NewSystemLogger(postgresLogger *postgres.Logger, config SystemLoggerConfig)
 // SystemLoggerConfig represents configuration for system logger
 type SystemLoggerConfig struct {
 	EnableConsole    bool     `yaml:"enable_console"`
-	EnableOpenSearch bool     `yaml:"enable_opensearch"`
+	EnablePostgreSQL bool     `yaml:"enable_postgresql"`
 	MinLevel         LogLevel `yaml:"min_level"`
 	Service          string   `yaml:"service"`
 	Version          string   `yaml:"version"`
@@ -188,7 +188,7 @@ func (sl *SystemLogger) log(level LogLevel, message string, ctx ...LogContext) {
 	}
 
 	// Log to PostgreSQL if enabled
-	if sl.enableOpenSearch {
+	if sl.enablePostgreSQL {
 		go sl.logToPostgreSQL(logEntry)
 	}
 }
