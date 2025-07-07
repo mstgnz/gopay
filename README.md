@@ -270,6 +270,28 @@ We welcome contributions! Please see our contributing guidelines:
 
 This project is licensed under the [Business Source License 1.1 (BUSL-1.1)](./LICENSE).
 
+### 🎯 **License Terms Summary:**
+
+**✅ Allowed Uses:**
+
+- ✅ Download and use the code
+- ✅ Fork and develop improvements
+- ✅ Submit pull requests
+- ✅ Clone and install on VMs/servers
+- ✅ Use for internal/non-production systems
+- ✅ Modify and create derivative works
+
+**❌ Restricted Uses:**
+
+- ❌ Redistribute under a different name
+- ❌ Fork into a public project (without written permission)
+- ❌ Commercial redistribution/selling
+- ❌ Production use without commercial license
+
+**📅 Change Date:** January 1, 2030 - After this date, the license changes to Mozilla Public License 2.0
+
+For commercial licensing or special arrangements, please contact: https://github.com/mstgnz/gopay
+
 ## 🆘 Support
 
 - **📖 Documentation**: Check the docs links above
