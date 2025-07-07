@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"maps"
+	"log"
 	"strings"
 	"sync"
 )
@@ -17,32 +17,28 @@ type ProviderConfig struct {
 
 // NewProviderConfig creates a new provider configuration
 func NewProviderConfig() *ProviderConfig {
-	pass := GetEnv("DB_PASS", "password")
-	db := GetEnv("DB_NAME", "gopay")
-	host := GetEnv("DB_HOST", "localhost")
-	port := GetEnv("DB_PORT", "5432")
-	user := GetEnv("DB_USER", "postgres")
-	// Get database URL from environment variable
-	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, db)
-
-	// Initialize PostgreSQL storage
-	storage, err := NewPostgresStorage(dbURL)
-	if err != nil {
-		// Fallback to memory-only mode if PostgreSQL fails
-		fmt.Printf("Warning: Failed to initialize PostgreSQL storage (%v), falling back to memory-only mode\n", err)
-	}
-
 	config := &ProviderConfig{
 		configs: make(map[string]map[string]string),
 		baseURL: GetEnv("APP_URL", "http://localhost:9999"),
-		storage: storage,
 	}
 
-	// Load existing configurations from PostgreSQL if available
-	if storage != nil {
-		if err := config.loadFromPostgreSQL(); err != nil {
-			fmt.Printf("Warning: Failed to load configurations from PostgreSQL: %v\n", err)
+	// Initialize PostgreSQL storage using shared database connection
+	db := App().DB
+	if db != nil && db.DB != nil {
+		storage, err := NewPostgresStorage(db)
+		if err != nil {
+			// Fallback to memory-only mode if PostgreSQL fails
+			log.Printf("Warning: Failed to initialize PostgreSQL storage (%v), falling back to memory-only mode", err)
+		} else {
+			config.storage = storage
+
+			// Load existing configurations from PostgreSQL if available
+			if err := config.loadFromPostgreSQL(); err != nil {
+				log.Printf("Warning: Failed to load configurations from PostgreSQL: %v", err)
+			}
 		}
+	} else {
+		log.Printf("Warning: Database connection not available, using memory-only mode")
 	}
 
 	return config
@@ -108,7 +104,9 @@ func (c *ProviderConfig) loadFromPostgreSQL() error {
 	defer c.mu.Unlock()
 
 	// Merge PostgreSQL configs with in-memory configs
-	maps.Copy(c.configs, configs)
+	for k, v := range configs {
+		c.configs[k] = v
+	}
 
 	return nil
 }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mstgnz/gopay/infra/logger"
 )
 
 // PaymentService manages payment operations through various providers
@@ -127,7 +129,12 @@ func (s *PaymentService) CreatePayment(ctx context.Context, providerName string,
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, method, endpoint, request, request.ClientUserAgent, request.ClientIP)
 	if err != nil {
 		// Log error but continue with payment
-		fmt.Printf("Warning: Failed to log request: %v\n", err)
+		logger.Warn("Failed to log payment request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"error": err.Error(),
+			},
+		})
 	}
 
 	// Process payment
@@ -146,12 +153,24 @@ func (s *PaymentService) CreatePayment(ctx context.Context, providerName string,
 		if err != nil {
 			// Log error
 			if logErr := s.logger.LogError(ctx, logID, "PROVIDER_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log error: %v\n", logErr)
+				logger.Warn("Failed to log payment error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
 			}
 		} else {
 			// Log successful response
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log response: %v\n", logErr)
+				logger.Warn("Failed to log payment response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
 			}
 		}
 	}
@@ -174,7 +193,13 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, pa
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, "POST", "/payment/3d/complete", data, "", "")
 	if err != nil {
-		fmt.Printf("Warning: Failed to log 3D completion request: %v\n", err)
+		logger.Warn("Failed to log 3D completion request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"payment_id": paymentID,
+				"error":      err.Error(),
+			},
+		})
 	}
 
 	response, err := provider.Complete3DPayment(ctx, paymentID, conversationID, data)
@@ -184,11 +209,25 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, pa
 	if logID > 0 {
 		if err != nil {
 			if logErr := s.logger.LogError(ctx, logID, "3D_COMPLETION_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log 3D completion error: %v\n", logErr)
+				logger.Warn("Failed to log 3D completion error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log 3D completion response: %v\n", logErr)
+				logger.Warn("Failed to log 3D completion response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		}
 	}
@@ -209,7 +248,13 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, providerName, pay
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, "GET", "/payment/status", map[string]string{"paymentID": paymentID}, "", "")
 	if err != nil {
-		fmt.Printf("Warning: Failed to log status request: %v\n", err)
+		logger.Warn("Failed to log status request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"payment_id": paymentID,
+				"error":      err.Error(),
+			},
+		})
 	}
 
 	response, err := provider.GetPaymentStatus(ctx, paymentID)
@@ -219,11 +264,25 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, providerName, pay
 	if logID > 0 {
 		if err != nil {
 			if logErr := s.logger.LogError(ctx, logID, "STATUS_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log status error: %v\n", logErr)
+				logger.Warn("Failed to log status error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log status response: %v\n", logErr)
+				logger.Warn("Failed to log status response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		}
 	}
@@ -244,7 +303,14 @@ func (s *PaymentService) CancelPayment(ctx context.Context, providerName, paymen
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, "POST", "/payment/cancel", map[string]string{"paymentID": paymentID, "reason": reason}, "", "")
 	if err != nil {
-		fmt.Printf("Warning: Failed to log cancel request: %v\n", err)
+		logger.Warn("Failed to log cancel request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"payment_id": paymentID,
+				"reason":     reason,
+				"error":      err.Error(),
+			},
+		})
 	}
 
 	response, err := provider.CancelPayment(ctx, paymentID, reason)
@@ -254,11 +320,25 @@ func (s *PaymentService) CancelPayment(ctx context.Context, providerName, paymen
 	if logID > 0 {
 		if err != nil {
 			if logErr := s.logger.LogError(ctx, logID, "CANCEL_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log cancel error: %v\n", logErr)
+				logger.Warn("Failed to log cancel error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log cancel response: %v\n", logErr)
+				logger.Warn("Failed to log cancel response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": paymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		}
 	}
@@ -279,7 +359,13 @@ func (s *PaymentService) RefundPayment(ctx context.Context, providerName string,
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, "POST", "/payment/refund", request, "", "")
 	if err != nil {
-		fmt.Printf("Warning: Failed to log refund request: %v\n", err)
+		logger.Warn("Failed to log refund request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"payment_id": request.PaymentID,
+				"error":      err.Error(),
+			},
+		})
 	}
 
 	response, err := provider.RefundPayment(ctx, request)
@@ -289,11 +375,25 @@ func (s *PaymentService) RefundPayment(ctx context.Context, providerName string,
 	if logID > 0 {
 		if err != nil {
 			if logErr := s.logger.LogError(ctx, logID, "REFUND_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log refund error: %v\n", logErr)
+				logger.Warn("Failed to log refund error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": request.PaymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log refund response: %v\n", logErr)
+				logger.Warn("Failed to log refund response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id":     logID,
+						"payment_id": request.PaymentID,
+						"error":      logErr.Error(),
+					},
+				})
 			}
 		}
 	}
@@ -318,7 +418,12 @@ func (s *PaymentService) ValidateWebhook(ctx context.Context, providerName strin
 	}
 	logID, err := s.logger.LogRequest(ctx, tenantID, actualProviderName, "POST", "/webhook", webhookData, "", "")
 	if err != nil {
-		fmt.Printf("Warning: Failed to log webhook request: %v\n", err)
+		logger.Warn("Failed to log webhook request", logger.LogContext{
+			Provider: actualProviderName,
+			Fields: map[string]any{
+				"error": err.Error(),
+			},
+		})
 	}
 
 	valid, result, err := provider.ValidateWebhook(ctx, data, headers)
@@ -333,11 +438,23 @@ func (s *PaymentService) ValidateWebhook(ctx context.Context, providerName strin
 
 		if err != nil {
 			if logErr := s.logger.LogError(ctx, logID, "WEBHOOK_ERROR", err.Error(), processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log webhook error: %v\n", logErr)
+				logger.Warn("Failed to log webhook error", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
 			}
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, webhookResult, processingMs); logErr != nil {
-				fmt.Printf("Warning: Failed to log webhook response: %v\n", logErr)
+				logger.Warn("Failed to log webhook response", logger.LogContext{
+					Provider: actualProviderName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
 			}
 		}
 	}

@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/mstgnz/gopay/infra/conn"
+	"github.com/mstgnz/gopay/infra/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -87,7 +88,14 @@ func (s *TenantService) Login(req LoginRequest) (*LoginResponse, error) {
 	// Update last login
 	if err := s.UpdateLastLogin(tenant.ID); err != nil {
 		// Log error but don't fail login
-		fmt.Printf("Warning: Failed to update last login for tenant %d: %v\n", tenant.ID, err)
+		logger.Warn("Failed to update last login", logger.LogContext{
+			TenantID: fmt.Sprintf("%d", tenant.ID),
+			Fields: map[string]any{
+				"tenant_id": tenant.ID,
+				"username":  tenant.Username,
+				"error":     err.Error(),
+			},
+		})
 	}
 
 	// Generate JWT token

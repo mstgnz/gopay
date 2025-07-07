@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/mstgnz/gopay/infra/conn"
 )
 
 // PostgresStorage handles persistent storage of tenant configurations
@@ -19,36 +19,28 @@ type PostgresStorage struct {
 	providerIDs map[string]int // Cache for provider name to ID mapping
 }
 
-// NewPostgresStorage creates a new PostgreSQL storage instance
-func NewPostgresStorage(dbURL string) (*PostgresStorage, error) {
-	// Open database connection
-	db, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+// NewPostgresStorage creates a new PostgreSQL storage instance using shared DB connection
+func NewPostgresStorage(db *conn.DB) (*PostgresStorage, error) {
+	if db == nil || db.DB == nil {
+		return nil, fmt.Errorf("database connection is nil")
 	}
 
 	// Test connection
 	if err := db.Ping(); err != nil {
-		db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	storage := &PostgresStorage{
-		db:          db,
+		db:          db.DB,
 		providerIDs: make(map[string]int),
 	}
-
-	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
 
 	// Load provider IDs cache
 	if err := storage.loadProviderIDs(); err != nil {
 		log.Printf("Warning: failed to load provider IDs: %v", err)
 	}
 
-	log.Printf("PostgreSQL storage initialized")
+	log.Printf("PostgreSQL storage initialized with shared connection")
 
 	return storage, nil
 }
@@ -350,11 +342,14 @@ func (s *PostgresStorage) GetTenantsByProvider(providerName string) ([]string, e
 	return tenants, nil
 }
 
-// Close closes the database connection
+// Close cleanup method - does not close shared database connection
 func (s *PostgresStorage) Close() error {
-	if s.db != nil {
-		return s.db.Close()
-	}
+	// Clear provider IDs cache
+	s.mu.Lock()
+	s.providerIDs = make(map[string]int)
+	s.mu.Unlock()
+
+	log.Printf("PostgreSQL storage cleanup completed")
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -60,7 +61,7 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Parse hours parameter (default 24 hours)
+	tenantID := r.Header.Get("X-Tenant-ID")
 	hoursStr := r.URL.Query().Get("hours")
 	hours := 24
 	if hoursStr != "" {
@@ -69,9 +70,6 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Get tenant ID from header (optional)
-	tenantID := r.Header.Get("X-Tenant-ID")
-
 	var stats DashboardStats
 	var err error
 
@@ -79,7 +77,13 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 		stats, err = h.getRealDashboardStats(ctx, tenantID, hours)
 		if err != nil {
 			// Log error but fallback to demo data
-			fmt.Printf("Failed to get real dashboard stats: %v\n", err)
+			logger.Warn("Failed to get real dashboard stats", logger.LogContext{
+				TenantID: tenantID,
+				Fields: map[string]any{
+					"error": err.Error(),
+					"hours": hours,
+				},
+			})
 			stats = h.generateDashboardStats(ctx, hours)
 		}
 	} else {
@@ -197,7 +201,12 @@ func (h *AnalyticsHandler) GetProviderStats(w http.ResponseWriter, r *http.Reque
 	if h.logger != nil {
 		providers, err = h.getRealProviderStats(ctx, tenantID)
 		if err != nil {
-			fmt.Printf("Failed to get real provider stats: %v\n", err)
+			logger.Warn("Failed to get real provider stats", logger.LogContext{
+				TenantID: tenantID,
+				Fields: map[string]any{
+					"error": err.Error(),
+				},
+			})
 			providers = h.generateProviderStats(ctx)
 		}
 	} else {
@@ -291,7 +300,13 @@ func (h *AnalyticsHandler) GetRecentActivity(w http.ResponseWriter, r *http.Requ
 	if h.logger != nil {
 		activities, err = h.getRealRecentActivity(ctx, tenantID, limit)
 		if err != nil {
-			fmt.Printf("Failed to get real recent activity: %v\n", err)
+			logger.Warn("Failed to get real recent activity", logger.LogContext{
+				TenantID: tenantID,
+				Fields: map[string]any{
+					"error": err.Error(),
+					"limit": limit,
+				},
+			})
 			activities = h.generateRecentActivity(ctx, limit)
 		}
 	} else {
@@ -405,7 +420,13 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 	if h.logger != nil {
 		trends, err = h.getRealPaymentTrends(ctx, tenantID, hours)
 		if err != nil {
-			fmt.Printf("Failed to get real payment trends: %v\n", err)
+			logger.Warn("Failed to get real payment trends", logger.LogContext{
+				TenantID: tenantID,
+				Fields: map[string]any{
+					"error": err.Error(),
+					"hours": hours,
+				},
+			})
 			trends = h.generatePaymentTrends(ctx, hours)
 		}
 	} else {

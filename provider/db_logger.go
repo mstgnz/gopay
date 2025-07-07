@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
+	"sync"
 	"time"
+
+	"github.com/mstgnz/gopay/infra/logger"
 )
 
 // PaymentLogger handles database logging for payment operations
@@ -19,11 +21,17 @@ type PaymentLogger interface {
 // DBPaymentLogger implements PaymentLogger interface using SQL database
 type DBPaymentLogger struct {
 	db *sql.DB
+	// Track which provider table each log ID belongs to for efficient updates
+	logProviderMap map[int64]string
+	mapMutex       sync.RWMutex
 }
 
 // NewDBPaymentLogger creates a new database payment logger
 func NewDBPaymentLogger(db *sql.DB) PaymentLogger {
-	return &DBPaymentLogger{db: db}
+	return &DBPaymentLogger{
+		db:             db,
+		logProviderMap: make(map[int64]string),
+	}
 }
 
 // LogRequest logs the payment request to the appropriate provider table
@@ -43,7 +51,9 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 		transactionID = req.ConversationID
 	}
 
-	tableName := providerName
+	// Clean provider name to get actual table name (remove tenant prefix if present)
+	tableName := l.getActualProviderName(providerName)
+
 	query := fmt.Sprintf(`
 		INSERT INTO %s (tenant_id, request, request_at, method, endpoint, payment_id, transaction_id, user_agent, client_ip)
 		VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8)
@@ -56,7 +66,20 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 		return 0, fmt.Errorf("failed to log request to %s table: %w", tableName, err)
 	}
 
-	log.Printf("Request logged to %s table with ID: %d", tableName, logID)
+	// Store the mapping for efficient updates later
+	l.mapMutex.Lock()
+	l.logProviderMap[logID] = tableName
+	l.mapMutex.Unlock()
+
+	logger.Info("Request logged successfully", logger.LogContext{
+		Provider: tableName,
+		Fields: map[string]any{
+			"log_id":   logID,
+			"method":   method,
+			"endpoint": endpoint,
+		},
+	})
+
 	return logID, nil
 }
 
@@ -79,38 +102,49 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 		currency = resp.Currency
 	}
 
-	// We need to determine which table this log belongs to
-	// For now, we'll update all possible provider tables where this logID exists
-	providerTables := []string{"iyzico", "paycell", "papara", "paytr", "payu", "nkolay", "ozanpay", "stripe", "shopier"}
+	// Get the provider table name from our mapping
+	l.mapMutex.RLock()
+	tableName, exists := l.logProviderMap[logID]
+	l.mapMutex.RUnlock()
 
-	updated := false
-	for _, tableName := range providerTables {
-		query := fmt.Sprintf(`
-			UPDATE %s 
-			SET response = $1, response_at = NOW(), status = $2, error_code = $3, amount = $4, currency = $5, processing_ms = $6
-			WHERE id = $7
-		`, tableName)
-
-		result, err := l.db.ExecContext(ctx, query, string(responseJSON), status, errorCode, amount, currency, processingMs, logID)
-		if err != nil {
-			continue // Try next table
-		}
-
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			continue
-		}
-
-		if rowsAffected > 0 {
-			log.Printf("Response logged to %s table for ID: %d", tableName, logID)
-			updated = true
-			break
-		}
+	if !exists {
+		return fmt.Errorf("no provider table mapping found for log ID: %d", logID)
 	}
 
-	if !updated {
-		return fmt.Errorf("failed to update response for log ID: %d", logID)
+	// Update the specific table directly instead of trying all tables
+	query := fmt.Sprintf(`
+		UPDATE %s 
+		SET response = $1, response_at = NOW(), status = $2, error_code = $3, amount = $4, currency = $5, processing_ms = $6
+		WHERE id = $7
+	`, tableName)
+
+	result, err := l.db.ExecContext(ctx, query, string(responseJSON), status, errorCode, amount, currency, processingMs, logID)
+	if err != nil {
+		return fmt.Errorf("failed to update response in %s table for log ID %d: %w", tableName, logID, err)
 	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected for log ID %d: %w", logID, err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows updated for log ID: %d in table: %s", logID, tableName)
+	}
+
+	logger.Info("Response logged successfully", logger.LogContext{
+		Provider: tableName,
+		Fields: map[string]any{
+			"log_id":        logID,
+			"processing_ms": processingMs,
+			"status":        status,
+		},
+	})
+
+	// Clean up the mapping to prevent memory leaks
+	l.mapMutex.Lock()
+	delete(l.logProviderMap, logID)
+	l.mapMutex.Unlock()
 
 	return nil
 }
@@ -125,4 +159,35 @@ func (l *DBPaymentLogger) LogError(ctx context.Context, logID int64, errorCode, 
 	}
 
 	return l.LogResponse(ctx, logID, errorResponse, processingMs)
+}
+
+// getActualProviderName extracts the actual provider name from tenant-specific provider names
+func (l *DBPaymentLogger) getActualProviderName(providerName string) string {
+	// Handle tenant-specific provider names like "TENANT1_paycell"
+	if providerName == "" {
+		return "default"
+	}
+
+	// Split by underscore and take the last part (actual provider name)
+	parts := make([]string, 0)
+	temp := ""
+	for _, char := range providerName {
+		if char == '_' {
+			if temp != "" {
+				parts = append(parts, temp)
+				temp = ""
+			}
+		} else {
+			temp += string(char)
+		}
+	}
+	if temp != "" {
+		parts = append(parts, temp)
+	}
+
+	if len(parts) > 1 {
+		return parts[len(parts)-1] // Return the last part (actual provider name)
+	}
+
+	return providerName
 }
