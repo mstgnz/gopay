@@ -268,7 +268,7 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## 📄 License
 
-This project is licensed under the [Business Source License 1.1 (BUSL-1.1)](./LICENSE).
+This project is licensed under the [Business Source License 1.0 (BSL-1.0)](./LICENSE).
 
 ### 🎯 **License Terms Summary:**
 
@@ -288,7 +288,14 @@ This project is licensed under the [Business Source License 1.1 (BUSL-1.1)](./LI
 - ❌ Commercial redistribution/selling
 - ❌ Production use without commercial license
 
-**📅 Change Date:** January 1, 2030 - After this date, the license changes to Mozilla Public License 2.0
+**📅 Change Date:** January 1, 2030 - After this date, the license changes to Apache License 2.0
+
+**📋 BSL-1.0 Benefits:**
+
+- **Go pkg.dev Compatible**: Recognized by Go ecosystem
+- **Business Protection**: Prevents commercial exploitation
+- **Time-Limited**: Transitions to Apache 2.0 in 2030
+- **Open Source Friendly**: Allows development and contributions
 
 For commercial licensing or special arrangements, please contact: https://github.com/mstgnz/gopay
 
