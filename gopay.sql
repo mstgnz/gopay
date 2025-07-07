@@ -188,6 +188,7 @@ CREATE TABLE "public"."tenant_configs" (
     "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['test'::character varying, 'prod'::character varying])::text[])),
     "key" varchar NOT NULL,
     "value" varchar NOT NULL,
+    "created_at" timestamp DEFAULT now(),
     PRIMARY KEY ("id")
 );
 
