@@ -375,10 +375,20 @@ func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, f
 		"billingFirstName": request.Customer.Name,
 		"billingLastName":  request.Customer.Surname,
 		"email":            request.Customer.Email,
-		"billingAddress1":  request.Customer.Address.Address,
-		"billingCountry":   request.Customer.Address.Country,
-		"billingCity":      request.Customer.Address.City,
-		"billingPostcode":  request.Customer.Address.ZipCode,
+	}
+
+	// Add address fields if address is provided
+	if request.Customer.Address != nil {
+		paymentReq["billingAddress1"] = request.Customer.Address.Address
+		paymentReq["billingCountry"] = request.Customer.Address.Country
+		paymentReq["billingCity"] = request.Customer.Address.City
+		paymentReq["billingPostcode"] = request.Customer.Address.ZipCode
+	} else {
+		// Provide default address values if not provided
+		paymentReq["billingAddress1"] = "N/A"
+		paymentReq["billingCountry"] = "TR"
+		paymentReq["billingCity"] = "Istanbul"
+		paymentReq["billingPostcode"] = "34000"
 	}
 
 	// Add provider key if available
