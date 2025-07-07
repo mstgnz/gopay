@@ -6,19 +6,19 @@ import (
 	"time"
 
 	"github.com/mstgnz/gopay/infra/logger"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 func main() {
 	fmt.Println("🔧 GoPay System Logging Example")
 	fmt.Println("===============================")
 
-	// Initialize OpenSearch logger (optional)
-	var openSearchLogger *opensearch.Logger
-	// openSearchLogger = opensearch.NewLogger(openSearchClient) // If OpenSearch is available
+	// Initialize PostgreSQL logger (optional)
+	var postgresLogger *postgres.Logger
+	// postgresLogger = postgres.NewLogger(db) // If PostgreSQL is available
 
 	// Initialize global logger
-	logger.InitGlobalLogger(openSearchLogger)
+	logger.InitGlobalLogger(postgresLogger)
 
 	// Basic logging examples
 	basicLoggingExamples()
@@ -161,11 +161,11 @@ func errorLoggingExamples() {
 	providerLogger.Error("3D Secure authentication failed", errors.New("user cancelled authentication"))
 
 	// System-level error
-	logger.Error("OpenSearch connection lost", errors.New("connection refused"), logger.LogContext{
+	logger.Error("PostgreSQL connection lost", errors.New("connection refused"), logger.LogContext{
 		Fields: map[string]any{
-			"opensearch_url": "http://localhost:9200",
-			"retry_count":    3,
-			"last_attempt":   time.Now().Format(time.RFC3339),
+			"postgres_url": "postgresql://localhost:5432/gopay",
+			"retry_count":  3,
+			"last_attempt": time.Now().Format(time.RFC3339),
 		},
 	})
 }
