@@ -102,7 +102,7 @@ info:
     ## Contact
     - **Developer**: Mesut GENEZ
     - **GitHub**: [https://github.com/mstgnz/gopay](https://github.com/mstgnz/gopay)
-    - **License**: MIT
+    - **License**: Business Source License 1.1
 
 servers:
   - url: http://localhost:9999
