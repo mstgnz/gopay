@@ -226,7 +226,7 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	// Add address if available
-	if request.Customer.Address.Address != "" {
+	if request.Customer.Address != nil && request.Customer.Address.Address != "" {
 		pmParams.BillingDetails.Address = &stripe.AddressParams{
 			Line1:      stripe.String(request.Customer.Address.Address),
 			City:       stripe.String(request.Customer.Address.City),
