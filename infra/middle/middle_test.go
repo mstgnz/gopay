@@ -14,7 +14,7 @@ func TestAuthMiddleware(t *testing.T) {
 	os.Setenv("API_KEY", "test-api-key")
 	defer os.Unsetenv("API_KEY")
 
-	middleware := AuthMiddleware()
+	middleware := LegacyAPIKeyMiddleware()
 
 	// Test handler
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

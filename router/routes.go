@@ -2,7 +2,10 @@ package router
 
 import (
 	"github.com/go-chi/chi/v5"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/auth"
+	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/postgres"
+	"github.com/mstgnz/gopay/provider"
 	v1 "github.com/mstgnz/gopay/router/v1"
 
 	// Import for side-effect registration
@@ -14,6 +17,6 @@ import (
 	_ "github.com/mstgnz/gopay/provider/stripe"
 )
 
-func Routes(r chi.Router, logger *opensearch.Logger) {
-	v1.Routes(r, logger)
+func Routes(r chi.Router, logger *postgres.Logger, paymentService *provider.PaymentService, providerConfig *config.ProviderConfig, jwtService *auth.JWTService, tenantService *auth.TenantService) {
+	v1.Routes(r, logger, paymentService, providerConfig, jwtService, tenantService)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/logger"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/provider"
 )
@@ -61,8 +62,8 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	// Get provider name from URL path parameter (or empty for default)
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context and construct tenant-specific provider name if present
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
@@ -96,8 +97,8 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context and construct tenant-specific provider name if present
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
@@ -128,8 +129,8 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context and construct tenant-specific provider name if present
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
@@ -163,8 +164,8 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from header and construct tenant-specific provider name if present
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context and construct tenant-specific provider name if present
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
@@ -202,10 +203,10 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from query parameter first, then from header (for better callback handling)
+	// Get tenant ID from query parameter first, then from JWT context (for better callback handling)
 	tenantID := r.URL.Query().Get("tenantId")
 	if tenantID == "" {
-		tenantID = r.Header.Get("X-Tenant-ID")
+		tenantID = middle.GetTenantIDFromContext(r.Context())
 	}
 
 	// Construct tenant-specific provider name if tenant ID is present
@@ -350,10 +351,10 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from query parameter first, then from header (for webhook reliability)
+	// Get tenant ID from query parameter first, then from JWT context (for webhook reliability)
 	tenantID := r.URL.Query().Get("tenantId")
 	if tenantID == "" {
-		tenantID = r.Header.Get("X-Tenant-ID")
+		tenantID = middle.GetTenantIDFromContext(r.Context())
 	}
 
 	// Construct tenant-specific provider name if tenant ID is present

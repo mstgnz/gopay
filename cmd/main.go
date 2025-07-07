@@ -18,10 +18,11 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/handler"
+	"github.com/mstgnz/gopay/infra/auth"
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/middle"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/infra/validate"
 	"github.com/mstgnz/gopay/provider"
@@ -29,14 +30,17 @@ import (
 )
 
 var (
-	PORT             string
-	openSearchLogger *opensearch.Logger
-	paymentHandler   *handler.PaymentHandler
+	PORT           string
+	postgresLogger *postgres.Logger
+	jwtService     *auth.JWTService
+	tenantService  *auth.TenantService
+	paymentHandler *handler.PaymentHandler
 )
 
 func init() {
 	// Load Env
 	if err := godotenv.Load(".env"); err != nil {
+		logger.Warn(fmt.Sprintf("Load Env Error: %v", err))
 		log.Fatalf("Load Env Error: %v", err)
 	}
 	// init conf
@@ -45,31 +49,39 @@ func init() {
 
 	PORT = config.GetEnv("APP_PORT", "9999")
 
-	// Initialize OpenSearch client and logger
-	cfg := config.GetAppConfig()
-	if cfg.EnableLogging {
-		osClient, err := opensearch.NewClient(cfg)
-		if err != nil {
-			log.Printf("Failed to initialize OpenSearch client: %v", err)
-			log.Println("Continuing without OpenSearch logging...")
-		} else {
-			openSearchLogger = opensearch.NewLogger(osClient)
-			log.Println("OpenSearch logging initialized successfully")
-		}
-	} else {
-		log.Println("OpenSearch logging is disabled")
+	// Test connection
+	if err := config.App().DB.Ping(); err != nil {
+		log.Fatalf("Failed to ping PostgreSQL: %v", err)
 	}
 
+	// Initialize PostgreSQL logger
+	cfg := config.GetAppConfig()
+	if cfg.EnableLogging {
+		postgresLogger = postgres.NewLogger(config.App().DB)
+		log.Println("PostgreSQL logging initialized successfully")
+	} else {
+		log.Println("PostgreSQL logging is disabled")
+	}
+
+	// Initialize JWT service
+	jwtSecret := config.App().SecretKey
+	jwtIssuer := config.GetEnv("JWT_ISSUER", "gopay")
+	jwtExpiry := 24 * time.Hour // 24 hours
+	jwtService = auth.NewJWTService(jwtSecret, jwtIssuer, jwtExpiry)
+
+	// Initialize tenant service
+	tenantService = auth.NewTenantService(config.App().DB, jwtService)
+
 	// Initialize global system logger
-	logger.InitGlobalLogger(openSearchLogger)
+	logger.InitGlobalLogger(postgresLogger)
 }
 
 func main() {
 	// Use structured logging from now on
 	logger.Info("Starting GoPay application", logger.LogContext{
 		Fields: map[string]any{
-			"port":               PORT,
-			"opensearch_enabled": openSearchLogger != nil,
+			"port":             PORT,
+			"postgres_enabled": postgresLogger != nil,
 		},
 	})
 
@@ -103,8 +115,8 @@ func main() {
 	}
 
 	// Initialize payment handler
-	validator := validator.New()
-	paymentHandler = handler.NewPaymentHandler(paymentService, validator)
+	validatorInstance := validator.New()
+	paymentHandler = handler.NewPaymentHandler(paymentService, validatorInstance)
 
 	// Chi Define Routes
 	r := chi.NewRouter()
@@ -123,10 +135,10 @@ func main() {
 	r.Use(middle.RateLimitMiddleware(rateLimiter))
 	r.Use(middle.RequestValidationMiddleware())
 
-	// OpenSearch Logging Middleware (add before authentication to log all requests)
-	if openSearchLogger != nil {
-		r.Use(middle.PaymentLoggingMiddleware(openSearchLogger))
-		r.Use(middle.LoggingStatsMiddleware(openSearchLogger))
+	// PostgreSQL Logging Middleware (add before authentication to log all requests)
+	if postgresLogger != nil {
+		r.Use(middle.PaymentLoggingMiddleware(postgresLogger))
+		r.Use(middle.LoggingStatsMiddleware(postgresLogger))
 		logger.Info("Payment logging middleware enabled")
 	}
 
@@ -146,10 +158,10 @@ func main() {
 	// Health check endpoint (no auth required)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		health := map[string]any{
-			"status":             "ok",
-			"timestamp":          time.Now().UTC(),
-			"version":            "1.0.0",
-			"opensearch_enabled": openSearchLogger != nil,
+			"status":           "ok",
+			"timestamp":        time.Now().UTC(),
+			"version":          "1.0.0",
+			"postgres_enabled": postgresLogger != nil,
 		}
 		_ = response.WriteJSON(w, http.StatusOK, response.Response{
 			Success: true,
@@ -185,6 +197,8 @@ func main() {
 		http.ServeFile(w, r, filepath.Join(workDir, "public", "scalar.html"))
 	})
 
+	// Auth routes are now handled in v1.Routes()
+
 	// Callback routes for payment providers (no auth required)
 	r.Route("/callback", func(r chi.Router) {
 		// General callback route (uses default provider)
@@ -203,7 +217,7 @@ func main() {
 	// Public Analytics routes (no auth required for dashboard)
 	r.Route("/v1/analytics", func(r chi.Router) {
 		// Initialize analytics handler
-		analyticsHandler := handler.NewAnalyticsHandler(openSearchLogger)
+		analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
 
 		r.Get("/dashboard", analyticsHandler.GetDashboardStats) // GET /v1/analytics/dashboard?hours=24
 		r.Get("/providers", analyticsHandler.GetProviderStats)  // GET /v1/analytics/providers
@@ -213,11 +227,11 @@ func main() {
 
 	// API routes with authentication
 	r.Route("/v1", func(r chi.Router) {
-		// Add authentication middleware only to API routes
-		r.Use(middle.AuthMiddleware())
+		// Add JWT authentication middleware only to API routes
+		r.Use(middle.JWTAuthMiddleware(jwtService))
 
-		// Import v1 routes
-		v1.Routes(r, openSearchLogger)
+		// Import v1 routes with required services
+		v1.Routes(r, postgresLogger, paymentService, providerConfig, jwtService, tenantService)
 	})
 
 	// Not Found

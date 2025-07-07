@@ -8,30 +8,29 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/mstgnz/gopay/infra/logger"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
 // LoggerInterface defines the interface for logging operations
 type LoggerInterface interface {
-	SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]opensearch.PaymentLog, error)
-	GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]opensearch.PaymentLog, error)
-	GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]opensearch.PaymentLog, error)
+	SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]postgres.PaymentLog, error)
+	GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]postgres.PaymentLog, error)
+	GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]postgres.PaymentLog, error)
 	GetProviderStats(ctx context.Context, tenantID, provider string, hours int) (map[string]any, error)
 }
 
 // LogsHandler handles logs related HTTP requests
 type LogsHandler struct {
-	logger           LoggerInterface
-	openSearchLogger *opensearch.Logger
+	logger         LoggerInterface
+	postgresLogger *postgres.Logger
 }
 
 // NewLogsHandler creates a new logs handler
-func NewLogsHandler(logger LoggerInterface, openSearchLogger *opensearch.Logger) *LogsHandler {
+func NewLogsHandler(logger LoggerInterface, postgresLogger *postgres.Logger) *LogsHandler {
 	return &LogsHandler{
-		logger:           logger,
-		openSearchLogger: openSearchLogger,
+		logger:         logger,
+		postgresLogger: postgresLogger,
 	}
 }
 
@@ -174,7 +173,7 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 
 // GetPaymentLogs retrieves logs for a specific payment ID
 func (h *LogsHandler) GetPaymentLogs(w http.ResponseWriter, r *http.Request) {
-	if h.openSearchLogger == nil {
+	if h.postgresLogger == nil {
 		response.Error(w, http.StatusServiceUnavailable, "Logging service not available", nil)
 		return
 	}
@@ -200,41 +199,40 @@ func (h *LogsHandler) GetPaymentLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	var logs []opensearch.PaymentLog
+	var logs []postgres.PaymentLog
 	var err error
 
 	if paymentID != "" {
-		// Get logs for specific payment
-		logs, err = h.openSearchLogger.GetPaymentLogs(ctx, tenantID, provider, paymentID)
-	} else {
-		// Get recent logs
-		query := map[string]any{
-			"bool": map[string]any{
-				"must": []map[string]any{
-					{
-						"range": map[string]any{
-							"timestamp": map[string]any{
-								"gte": "now-" + strconv.Itoa(hoursInt) + "h",
-							},
-						},
-					},
-				},
-			},
+		// Get logs for specific payment using search with payment_id filter
+		filters := map[string]any{
+			"payment_id": paymentID,
 		}
-
-		// Add tenant filter if provided
 		if tenantID != "" {
-			query["bool"].(map[string]any)["must"] = append(
-				query["bool"].(map[string]any)["must"].([]map[string]any),
-				map[string]any{
-					"term": map[string]any{
-						"tenant_id": tenantID,
-					},
-				},
-			)
+			tenantIDInt, convErr := strconv.Atoi(tenantID)
+			if convErr != nil {
+				response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
+				return
+			}
+			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, tenantIDInt, provider, filters)
+		} else {
+			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, 0, provider, filters)
 		}
-
-		logs, err = h.openSearchLogger.SearchLogs(ctx, tenantID, provider, query)
+	} else {
+		// Get recent logs using time range filter
+		filters := map[string]any{
+			"start_date": time.Now().Add(-time.Duration(hoursInt) * time.Hour),
+			"end_date":   time.Now(),
+		}
+		if tenantID != "" {
+			tenantIDInt, convErr := strconv.Atoi(tenantID)
+			if convErr != nil {
+				response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
+				return
+			}
+			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, tenantIDInt, provider, filters)
+		} else {
+			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, 0, provider, filters)
+		}
 	}
 
 	if err != nil {
@@ -306,7 +304,7 @@ func (h *LogsHandler) GetErrorLogs(w http.ResponseWriter, r *http.Request) {
 
 // GetSystemLogs retrieves system logs with optional filtering
 func (h *LogsHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
-	if h.openSearchLogger == nil {
+	if h.postgresLogger == nil {
 		response.Error(w, http.StatusServiceUnavailable, "Logging service not available", nil)
 		return
 	}
@@ -335,75 +333,37 @@ func (h *LogsHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Build search query
-	query := map[string]any{
-		"bool": map[string]any{
-			"must": []map[string]any{
-				{
-					"range": map[string]any{
-						"timestamp": map[string]any{
-							"gte": "now-" + strconv.Itoa(hoursInt) + "h",
-						},
-					},
-				},
-			},
-		},
+	// Get system logs from PostgreSQL
+	filters := map[string]any{
+		"start_date": time.Now().Add(-time.Duration(hoursInt) * time.Hour),
+		"end_date":   time.Now(),
+		"limit":      limitInt,
 	}
 
-	// Add tenant filter if provided
-	if tenantID != "" {
-		query["bool"].(map[string]any)["must"] = append(
-			query["bool"].(map[string]any)["must"].([]map[string]any),
-			map[string]any{
-				"term": map[string]any{
-					"tenant_id": tenantID,
-				},
-			},
-		)
-	}
-
-	// Add level filter if provided
 	if level != "" {
-		query["bool"].(map[string]any)["must"] = append(
-			query["bool"].(map[string]any)["must"].([]map[string]any),
-			map[string]any{
-				"term": map[string]any{
-					"level": level,
-				},
-			},
-		)
+		filters["level"] = level
 	}
 
-	// Add component filter if provided
 	if component != "" {
-		query["bool"].(map[string]any)["must"] = append(
-			query["bool"].(map[string]any)["must"].([]map[string]any),
-			map[string]any{
-				"term": map[string]any{
-					"component": component,
-				},
-			},
-		)
+		filters["component"] = component
 	}
 
-	// Search system logs
-	searchQuery := map[string]any{
-		"query": query,
-		"sort": []map[string]any{
-			{"timestamp": map[string]string{"order": "desc"}},
-		},
-		"size": limitInt,
+	if tenantID != "" {
+		tenantIDInt, convErr := strconv.Atoi(tenantID)
+		if convErr == nil {
+			filters["tenant_id"] = tenantIDInt
+		}
 	}
 
-	logs, err := h.searchSystemLogs(ctx, searchQuery)
+	systemLogs, err := h.postgresLogger.SearchSystemLogs(ctx, filters)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to retrieve system logs", err)
 		return
 	}
 
 	responseData := map[string]any{
-		"logs":      logs,
-		"count":     len(logs),
+		"logs":      systemLogs,
+		"count":     len(systemLogs),
 		"tenant_id": tenantID,
 		"level":     level,
 		"component": component,
@@ -414,23 +374,14 @@ func (h *LogsHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, "System logs retrieved successfully", responseData)
 }
 
-// searchSystemLogs performs the actual search in OpenSearch
-func (h *LogsHandler) searchSystemLogs(ctx context.Context, searchQuery map[string]any) ([]logger.SystemLog, error) {
-	// This is a simplified implementation
-	// In a real implementation, you would use the OpenSearch client to search the system logs index
-
-	// For now, return empty array
-	// TODO: Implement actual OpenSearch query for system logs
-	return []logger.SystemLog{}, nil
-}
-
-// GetLogStats retrieves logging statistics
+// GetLogStats retrieves log statistics
 func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
-	if h.openSearchLogger == nil {
+	if h.postgresLogger == nil {
 		response.Error(w, http.StatusServiceUnavailable, "Logging service not available", nil)
 		return
 	}
 
+	// Get parameters
 	tenantID := r.Header.Get("X-Tenant-ID")
 	hours := r.URL.Query().Get("hours")
 
@@ -441,70 +392,29 @@ func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build aggregation query for statistics
-	statsQuery := map[string]any{
-		"query": map[string]any{
-			"bool": map[string]any{
-				"must": []map[string]any{
-					{
-						"range": map[string]any{
-							"timestamp": map[string]any{
-								"gte": "now-" + strconv.Itoa(hoursInt) + "h",
-							},
-						},
-					},
-				},
-			},
-		},
-		"aggs": map[string]any{
-			"by_level": map[string]any{
-				"terms": map[string]any{
-					"field": "level",
-				},
-			},
-			"by_component": map[string]any{
-				"terms": map[string]any{
-					"field": "component",
-				},
-			},
-			"by_provider": map[string]any{
-				"terms": map[string]any{
-					"field": "provider",
-				},
-			},
-		},
-		"size": 0, // Only aggregations, no documents
-	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 
-	// Add tenant filter if provided
+	// Get stats from PostgreSQL
+	var stats map[string]any
+	var err error
+
 	if tenantID != "" {
-		statsQuery["query"].(map[string]any)["bool"].(map[string]any)["must"] = append(
-			statsQuery["query"].(map[string]any)["bool"].(map[string]any)["must"].([]map[string]any),
-			map[string]any{
-				"term": map[string]any{
-					"tenant_id": tenantID,
-				},
-			},
-		)
+		tenantIDInt, convErr := strconv.Atoi(tenantID)
+		if convErr != nil {
+			response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
+			return
+		}
+		// Get stats for all providers for this tenant
+		stats, err = h.postgresLogger.GetPaymentStats(ctx, tenantIDInt, "", hoursInt)
+	} else {
+		// Get stats for all tenants
+		stats, err = h.postgresLogger.GetPaymentStats(ctx, 0, "", hoursInt)
 	}
 
-	// For now, return mock statistics
-	// TODO: Implement actual OpenSearch aggregation query
-	stats := map[string]any{
-		"total_logs": 0,
-		"by_level": map[string]int{
-			"error": 0,
-			"warn":  0,
-			"info":  0,
-			"debug": 0,
-		},
-		"by_component": map[string]int{},
-		"by_provider":  map[string]int{},
-		"time_range": map[string]any{
-			"hours": hoursInt,
-			"from":  time.Now().Add(-time.Duration(hoursInt) * time.Hour).Format(time.RFC3339),
-			"to":    time.Now().Format(time.RFC3339),
-		},
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to retrieve log statistics", err)
+		return
 	}
 
 	responseData := map[string]any{

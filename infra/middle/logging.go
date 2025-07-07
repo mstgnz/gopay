@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 // responseWriter wraps http.ResponseWriter to capture response data
@@ -43,7 +43,7 @@ func (rw *responseWriter) WriteHeader(statusCode int) {
 }
 
 // PaymentLoggingMiddleware creates a middleware for logging payment requests/responses
-func PaymentLoggingMiddleware(logger *opensearch.Logger) func(http.Handler) http.Handler {
+func PaymentLoggingMiddleware(logger *postgres.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip logging for non-payment endpoints
@@ -79,48 +79,57 @@ func PaymentLoggingMiddleware(logger *opensearch.Logger) func(http.Handler) http
 			next.ServeHTTP(rw, r)
 
 			// Create payment log
-			paymentLog := opensearch.PaymentLog{
-				Timestamp: rw.startTime,
-				TenantID:  tenantID,
-				Provider:  provider,
-				Method:    r.Method,
-				Endpoint:  r.URL.Path,
-				RequestID: requestID,
-				UserAgent: r.UserAgent(),
-				ClientIP:  getClientIP(r),
-				Request: opensearch.RequestLog{
-					Headers: extractHeaders(r.Header),
-					Body:    opensearch.SanitizeForLog(string(requestBody)),
-					Params:  extractURLParams(r.URL.Query()),
-				},
-				Response: opensearch.ResponseLog{
-					StatusCode:       rw.statusCode,
-					Headers:          extractHeaders(rw.Header()),
-					Body:             opensearch.SanitizeForLog(rw.body.String()),
-					ProcessingTimeMs: time.Since(rw.startTime).Milliseconds(),
-				},
+			tenantIDInt := 0
+			if tenantID != "" {
+				if id, err := strconv.Atoi(tenantID); err == nil {
+					tenantIDInt = id
+				}
+			}
+
+			requestData := make(map[string]any)
+			responseData := make(map[string]any)
+
+			if len(requestBody) > 0 {
+				json.Unmarshal(requestBody, &requestData)
+			}
+			if rw.body.Len() > 0 {
+				json.Unmarshal(rw.body.Bytes(), &responseData)
+			}
+
+			paymentLog := postgres.PaymentLog{
+				Timestamp:    rw.startTime,
+				TenantID:     tenantIDInt,
+				Provider:     provider,
+				Method:       r.Method,
+				Endpoint:     r.URL.Path,
+				RequestID:    requestID,
+				UserAgent:    r.UserAgent(),
+				ClientIP:     getClientIP(r),
+				Request:      postgres.SanitizeForLog(requestData),
+				Response:     postgres.SanitizeForLog(responseData),
+				ProcessingMs: time.Since(rw.startTime).Milliseconds(),
 			}
 
 			// Extract payment information from request/response
 			if paymentInfo := extractPaymentInfo(string(requestBody), rw.body.String()); paymentInfo != nil {
-				paymentLog.PaymentInfo = *paymentInfo
+				paymentLog.PaymentInfo = paymentInfo
 			}
 
 			// Extract error information if response indicates error
 			if rw.statusCode >= 400 {
 				if errorInfo := extractErrorInfo(rw.body.String()); errorInfo != nil {
-					paymentLog.Error = *errorInfo
+					paymentLog.Error = errorInfo
 				}
 			}
 
-			// Log to OpenSearch asynchronously to avoid blocking the response
+			// Log to PostgreSQL asynchronously to avoid blocking the response
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
 				if err := logger.LogPaymentRequest(ctx, paymentLog); err != nil {
 					// Log error to standard logger, but don't fail the request
-					// log.Printf("Failed to log payment request to OpenSearch: %v", err)
+					// log.Printf("Failed to log payment request to PostgreSQL: %v", err)
 				}
 			}()
 		})
@@ -214,8 +223,8 @@ func extractURLParams(params url.Values) map[string]string {
 }
 
 // extractPaymentInfo extracts payment information from request/response bodies
-func extractPaymentInfo(requestBody, responseBody string) *opensearch.PaymentInfo {
-	paymentInfo := &opensearch.PaymentInfo{}
+func extractPaymentInfo(requestBody, responseBody string) *postgres.PaymentInfo {
+	paymentInfo := &postgres.PaymentInfo{}
 
 	// Try to extract from request body first
 	if requestBody != "" {
@@ -263,7 +272,7 @@ func extractPaymentInfo(requestBody, responseBody string) *opensearch.PaymentInf
 }
 
 // extractErrorInfo extracts error information from response body
-func extractErrorInfo(responseBody string) *opensearch.ErrorInfo {
+func extractErrorInfo(responseBody string) *postgres.ErrorInfo {
 	if responseBody == "" {
 		return nil
 	}
@@ -273,7 +282,7 @@ func extractErrorInfo(responseBody string) *opensearch.ErrorInfo {
 		return nil
 	}
 
-	errorInfo := &opensearch.ErrorInfo{}
+	errorInfo := &postgres.ErrorInfo{}
 
 	// Try different error formats
 	if errorMsg, ok := responseData["error"].(string); ok {
@@ -297,7 +306,7 @@ func extractErrorInfo(responseBody string) *opensearch.ErrorInfo {
 }
 
 // LoggingStatsMiddleware creates middleware for collecting logging statistics
-func LoggingStatsMiddleware(logger *opensearch.Logger) func(http.Handler) http.Handler {
+func LoggingStatsMiddleware(logger *postgres.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if this is a stats request
@@ -312,7 +321,7 @@ func LoggingStatsMiddleware(logger *opensearch.Logger) func(http.Handler) http.H
 }
 
 // handleStatsRequest handles requests for logging statistics
-func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *opensearch.Logger) {
+func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *postgres.Logger) {
 	provider := r.URL.Query().Get("provider")
 	hoursStr := r.URL.Query().Get("hours")
 	tenantID := r.Header.Get("X-Tenant-ID")
@@ -332,7 +341,14 @@ func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *opensear
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	stats, err := logger.GetProviderStats(ctx, tenantID, provider, hours)
+	tenantIDInt := 0
+	if tenantID != "" {
+		if id, err := strconv.Atoi(tenantID); err == nil {
+			tenantIDInt = id
+		}
+	}
+
+	stats, err := logger.GetPaymentStats(ctx, tenantIDInt, provider, hours)
 	if err != nil {
 		http.Error(w, "Failed to get stats: "+err.Error(), http.StatusInternalServerError)
 		return

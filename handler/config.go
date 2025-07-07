@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/provider"
 )
@@ -50,10 +51,10 @@ type SetEnvRequest struct {
 
 // SetEnv handles setting environment variables for a tenant
 func (h *ConfigHandler) SetEnv(w http.ResponseWriter, r *http.Request) {
-	// Get tenant ID from header
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
-		response.Error(w, http.StatusBadRequest, "X-Tenant-ID header is required", nil)
+		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
 		return
 	}
 
@@ -199,10 +200,10 @@ func (h *ConfigHandler) registerTenantProvider(tenantID, providerName string, co
 
 // GetTenantConfig returns the configuration for a specific tenant and provider
 func (h *ConfigHandler) GetTenantConfig(w http.ResponseWriter, r *http.Request) {
-	// Get tenant ID from header
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
-		response.Error(w, http.StatusBadRequest, "X-Tenant-ID header is required", nil)
+		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
 		return
 	}
 
@@ -248,10 +249,10 @@ func (h *ConfigHandler) GetTenantConfig(w http.ResponseWriter, r *http.Request) 
 
 // DeleteTenantConfig deletes a tenant configuration
 func (h *ConfigHandler) DeleteTenantConfig(w http.ResponseWriter, r *http.Request) {
-	// Get tenant ID from header
-	tenantID := r.Header.Get("X-Tenant-ID")
+	// Get tenant ID from JWT context
+	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
-		response.Error(w, http.StatusBadRequest, "X-Tenant-ID header is required", nil)
+		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
 		return
 	}
 

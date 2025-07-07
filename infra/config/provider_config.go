@@ -11,20 +11,25 @@ import (
 type ProviderConfig struct {
 	configs map[string]map[string]string
 	baseURL string
-	storage *SQLiteStorage // SQLite storage for persistence
-	mu      sync.RWMutex   // Thread-safe access için mutex ekliyorum
+	storage *PostgresStorage // PostgreSQL storage for persistence
+	mu      sync.RWMutex     // Thread-safe access
 }
 
 // NewProviderConfig creates a new provider configuration
 func NewProviderConfig() *ProviderConfig {
-	// Get database path from environment variable or use default
-	dbPath := GetEnv("SQLITE_DB_PATH", "./data/gopay.db")
+	pass := GetEnv("DB_PASS", "password")
+	db := GetEnv("DB_NAME", "gopay")
+	host := GetEnv("DB_HOST", "localhost")
+	port := GetEnv("DB_PORT", "5432")
+	user := GetEnv("DB_USER", "postgres")
+	// Get database URL from environment variable
+	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, db)
 
-	// Initialize SQLite storage
-	storage, err := NewSQLiteStorage(dbPath)
+	// Initialize PostgreSQL storage
+	storage, err := NewPostgresStorage(dbURL)
 	if err != nil {
-		// Fallback to memory-only mode if SQLite fails
-		fmt.Printf("Warning: Failed to initialize SQLite storage (%v), falling back to memory-only mode\n", err)
+		// Fallback to memory-only mode if PostgreSQL fails
+		fmt.Printf("Warning: Failed to initialize PostgreSQL storage (%v), falling back to memory-only mode\n", err)
 	}
 
 	config := &ProviderConfig{
@@ -33,10 +38,10 @@ func NewProviderConfig() *ProviderConfig {
 		storage: storage,
 	}
 
-	// Load existing configurations from SQLite if available
+	// Load existing configurations from PostgreSQL if available
 	if storage != nil {
-		if err := config.loadFromSQLite(); err != nil {
-			fmt.Printf("Warning: Failed to load configurations from SQLite: %v\n", err)
+		if err := config.loadFromPostgreSQL(); err != nil {
+			fmt.Printf("Warning: Failed to load configurations from PostgreSQL: %v\n", err)
 		}
 	}
 
@@ -88,21 +93,21 @@ func (c *ProviderConfig) LoadFromEnv() {
 	})
 }
 
-// loadFromSQLite loads all tenant configurations from SQLite storage
-func (c *ProviderConfig) loadFromSQLite() error {
+// loadFromPostgreSQL loads all tenant configurations from PostgreSQL storage
+func (c *ProviderConfig) loadFromPostgreSQL() error {
 	if c.storage == nil {
-		return fmt.Errorf("SQLite storage not initialized")
+		return fmt.Errorf("PostgreSQL storage not initialized")
 	}
 
 	configs, err := c.storage.LoadAllTenantConfigs()
 	if err != nil {
-		return fmt.Errorf("failed to load configs from SQLite: %w", err)
+		return fmt.Errorf("failed to load configs from PostgreSQL: %w", err)
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Merge SQLite configs with in-memory configs
+	// Merge PostgreSQL configs with in-memory configs
 	maps.Copy(c.configs, configs)
 
 	return nil
@@ -131,10 +136,10 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 	// Create tenant-specific provider key
 	tenantProviderKey := fmt.Sprintf("%s_%s", strings.ToUpper(tenantID), strings.ToLower(providerName))
 
-	// Save to SQLite if available
+	// Save to PostgreSQL if available
 	if c.storage != nil {
 		if err := c.storage.SaveTenantConfig(tenantID, providerName, config); err != nil {
-			return fmt.Errorf("failed to save config to SQLite: %w", err)
+			return fmt.Errorf("failed to save config to PostgreSQL: %w", err)
 		}
 	}
 
@@ -156,15 +161,15 @@ func (c *ProviderConfig) GetTenantConfig(tenantID, providerName string) (map[str
 	config, exists := c.configs[tenantProviderKey]
 	c.mu.RUnlock()
 
-	// If not found in memory, try loading from SQLite
+	// If not found in memory, try loading from PostgreSQL
 	if !exists && c.storage != nil {
-		sqliteConfig, err := c.storage.LoadTenantConfig(tenantID, providerName)
+		postgresConfig, err := c.storage.LoadTenantConfig(tenantID, providerName)
 		if err == nil {
 			// Cache in memory for future use
 			c.mu.Lock()
-			c.configs[tenantProviderKey] = sqliteConfig
+			c.configs[tenantProviderKey] = postgresConfig
 			c.mu.Unlock()
-			config = sqliteConfig
+			config = postgresConfig
 			exists = true
 		}
 	}
@@ -278,7 +283,7 @@ func (c *ProviderConfig) GetBaseURL() string {
 	return c.baseURL
 }
 
-// Close closes the SQLite storage connection
+// Close closes the PostgreSQL storage connection
 func (c *ProviderConfig) Close() error {
 	if c.storage != nil {
 		return c.storage.Close()
@@ -297,16 +302,16 @@ func (c *ProviderConfig) GetStats() (map[string]any, error) {
 	stats["memory_configs"] = memoryConfigs
 	stats["base_url"] = c.baseURL
 
-	// Get SQLite statistics if available
+	// Get PostgreSQL statistics if available
 	if c.storage != nil {
-		sqliteStats, err := c.storage.GetStats()
+		postgresStats, err := c.storage.GetStats()
 		if err != nil {
-			stats["sqlite_error"] = err.Error()
+			stats["postgres_error"] = err.Error()
 		} else {
-			stats["sqlite"] = sqliteStats
+			stats["postgres"] = postgresStats
 		}
 	} else {
-		stats["sqlite"] = "not_available"
+		stats["postgres"] = "not_available"
 	}
 
 	return stats, nil

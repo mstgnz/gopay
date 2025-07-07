@@ -8,11 +8,13 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/mstgnz/gopay/infra/conn"
 )
 
 type CKey string
 
 type Config struct {
+	DB        *conn.DB
 	Validator *validator.Validate
 	SecretKey string
 }
@@ -20,9 +22,6 @@ type Config struct {
 // AppConfig represents the application configuration
 type AppConfig struct {
 	Port             string
-	OpenSearchURL    string
-	OpenSearchUser   string
-	OpenSearchPass   string
 	EnableLogging    bool
 	LoggingLevel     string
 	LogRetentionDays int
@@ -36,10 +35,12 @@ var (
 func App() *Config {
 	if instance == nil {
 		instance = &Config{
+			DB:        &conn.DB{},
 			Validator: validator.New(),
 			// the secret key will change every time the application is restarted.
 			SecretKey: uuid.New().String(),
 		}
+		instance.DB.ConnectDatabase()
 	}
 	return instance
 }
@@ -49,10 +50,7 @@ func GetAppConfig() *AppConfig {
 	if appConfigInstance == nil {
 		appConfigInstance = &AppConfig{
 			Port:             GetEnv("APP_PORT", "9999"),
-			OpenSearchURL:    GetEnv("OPENSEARCH_URL", "http://localhost:9200"),
-			OpenSearchUser:   GetEnv("OPENSEARCH_USER", ""),
-			OpenSearchPass:   GetEnv("OPENSEARCH_PASSWORD", ""),
-			EnableLogging:    GetBoolEnv("ENABLE_OPENSEARCH_LOGGING", true),
+			EnableLogging:    GetBoolEnv("ENABLE_LOGGING", true),
 			LoggingLevel:     GetEnv("LOGGING_LEVEL", "info"),
 			LogRetentionDays: GetIntEnv("LOG_RETENTION_DAYS", 30),
 		}

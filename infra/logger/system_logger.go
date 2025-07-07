@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 // LogLevel represents the severity level of a log entry
@@ -42,9 +42,9 @@ type SystemLog struct {
 	Version     string         `json:"version"`
 }
 
-// SystemLogger handles structured logging to OpenSearch and console
+// SystemLogger handles structured logging to PostgreSQL and console
 type SystemLogger struct {
-	openSearchLogger *opensearch.Logger
+	postgresLogger   *postgres.Logger
 	enableConsole    bool
 	enableOpenSearch bool
 	minLevel         LogLevel
@@ -54,11 +54,11 @@ type SystemLogger struct {
 }
 
 // NewSystemLogger creates a new system logger
-func NewSystemLogger(openSearchLogger *opensearch.Logger, config SystemLoggerConfig) *SystemLogger {
+func NewSystemLogger(postgresLogger *postgres.Logger, config SystemLoggerConfig) *SystemLogger {
 	return &SystemLogger{
-		openSearchLogger: openSearchLogger,
+		postgresLogger:   postgresLogger,
 		enableConsole:    config.EnableConsole,
-		enableOpenSearch: config.EnableOpenSearch && openSearchLogger != nil,
+		enableOpenSearch: config.EnableOpenSearch && postgresLogger != nil,
 		minLevel:         config.MinLevel,
 		service:          config.Service,
 		version:          config.Version,
@@ -187,9 +187,9 @@ func (sl *SystemLogger) log(level LogLevel, message string, ctx ...LogContext) {
 		sl.logToConsole(logEntry)
 	}
 
-	// Log to OpenSearch if enabled
+	// Log to PostgreSQL if enabled
 	if sl.enableOpenSearch {
-		go sl.logToOpenSearch(logEntry)
+		go sl.logToPostgreSQL(logEntry)
 	}
 }
 
@@ -290,15 +290,43 @@ func (sl *SystemLogger) logToConsole(entry SystemLog) {
 	}
 }
 
-// logToOpenSearch logs to OpenSearch asynchronously
-func (sl *SystemLogger) logToOpenSearch(entry SystemLog) {
+// logToPostgreSQL logs to PostgreSQL asynchronously
+func (sl *SystemLogger) logToPostgreSQL(entry SystemLog) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := sl.openSearchLogger.LogSystemEvent(ctx, entry); err != nil {
-		// Fallback to standard log if OpenSearch fails
-		log.Printf("Failed to log to OpenSearch: %v", err)
+	// Convert to PostgreSQL SystemLog format
+	pgLog := postgres.SystemLog{
+		Level:     string(entry.Level),
+		Message:   entry.Message,
+		Component: entry.Component,
+		Data:      entry.Fields,
+		CreatedAt: entry.Timestamp,
 	}
+
+	// Add tenant ID if available
+	if entry.TenantID != "" {
+		if tenantID := parseTenantID(entry.TenantID); tenantID > 0 {
+			pgLog.TenantID = &tenantID
+		}
+	}
+
+	if err := sl.postgresLogger.LogSystemEvent(ctx, pgLog); err != nil {
+		// Fallback to standard log if PostgreSQL fails
+		log.Printf("Failed to log to PostgreSQL: %v", err)
+	}
+}
+
+// parseTenantID converts string tenant ID to int
+func parseTenantID(tenantID string) int {
+	// Simple conversion, can be enhanced based on your tenant ID format
+	if tenantID == "legacy" || tenantID == "" {
+		return 0
+	}
+
+	var id int
+	fmt.Sscanf(tenantID, "%d", &id)
+	return id
 }
 
 // WithContext creates a new logger with context

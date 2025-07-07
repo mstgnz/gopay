@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/mstgnz/gopay/infra/config"
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 var (
@@ -13,11 +13,11 @@ var (
 )
 
 // InitGlobalLogger initializes the global system logger
-func InitGlobalLogger(openSearchLogger any) {
+func InitGlobalLogger(postgresLogger any) {
 	once.Do(func() {
 		config := SystemLoggerConfig{
 			EnableConsole:    true,
-			EnableOpenSearch: openSearchLogger != nil,
+			EnableOpenSearch: postgresLogger != nil,
 			MinLevel:         LevelInfo,
 			Service:          "gopay",
 			Version:          "1.0.0",
@@ -30,14 +30,14 @@ func InitGlobalLogger(openSearchLogger any) {
 		}
 
 		// Type assert to the expected type
-		var osLogger *opensearch.Logger
-		if openSearchLogger != nil {
-			if logger, ok := openSearchLogger.(*opensearch.Logger); ok {
-				osLogger = logger
+		var pgLogger *postgres.Logger
+		if postgresLogger != nil {
+			if logger, ok := postgresLogger.(*postgres.Logger); ok {
+				pgLogger = logger
 			}
 		}
 
-		globalLogger = NewSystemLogger(osLogger, config)
+		globalLogger = NewSystemLogger(pgLogger, config)
 	})
 }
 

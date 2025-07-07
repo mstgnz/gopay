@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 func TestNewAnalyticsHandler(t *testing.T) {
@@ -21,9 +21,8 @@ func TestNewAnalyticsHandler(t *testing.T) {
 		t.Error("Handler should store nil logger")
 	}
 
-	// Test with mock logger (using opensearch.NewLogger with nil client)
-	client := &opensearch.Client{}
-	logger := opensearch.NewLogger(client)
+	// Test with mock logger (using postgres.Logger)
+	logger := &postgres.Logger{}
 	handler2 := NewAnalyticsHandler(logger)
 
 	if handler2 == nil {
@@ -41,7 +40,7 @@ func TestAnalyticsHandler_GetDashboardStats(t *testing.T) {
 		tenantID       string
 		hoursParam     string
 		expectedStatus int
-		logger         *opensearch.Logger
+		logger         *postgres.Logger
 	}{
 		{
 			name:           "successful stats with nil logger (fallback to demo data)",
@@ -131,7 +130,7 @@ func TestAnalyticsHandler_GetProviderStats(t *testing.T) {
 		name           string
 		tenantID       string
 		expectedStatus int
-		logger         *opensearch.Logger
+		logger         *postgres.Logger
 	}{
 		{
 			name:           "successful provider stats with nil logger",
@@ -197,7 +196,7 @@ func TestAnalyticsHandler_GetRecentActivity(t *testing.T) {
 		tenantID       string
 		limitParam     string
 		expectedStatus int
-		logger         *opensearch.Logger
+		logger         *postgres.Logger
 	}{
 		{
 			name:           "successful recent activity",
@@ -282,7 +281,7 @@ func TestAnalyticsHandler_GetPaymentTrends(t *testing.T) {
 		tenantID       string
 		hoursParam     string
 		expectedStatus int
-		logger         *opensearch.Logger
+		logger         *postgres.Logger
 	}{
 		{
 			name:           "successful payment trends",
@@ -653,7 +652,7 @@ func TestAnalyticsHandler_CalculationFunctionsEdgeCases(t *testing.T) {
 	// Test with mock logger (random values)
 	t.Run("calculation functions with mock logger", func(t *testing.T) {
 		// Create a mock logger to trigger the random calculation path
-		mockLogger := &opensearch.Logger{}
+		mockLogger := &postgres.Logger{}
 		handler := NewAnalyticsHandler(mockLogger)
 
 		// Test multiple times to ensure they return valid formats

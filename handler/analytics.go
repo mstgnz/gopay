@@ -8,17 +8,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/mstgnz/gopay/infra/opensearch"
+	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
 // AnalyticsHandler handles analytics related HTTP requests
 type AnalyticsHandler struct {
-	logger *opensearch.Logger
+	logger *postgres.Logger
 }
 
 // NewAnalyticsHandler creates a new analytics handler
-func NewAnalyticsHandler(logger *opensearch.Logger) *AnalyticsHandler {
+func NewAnalyticsHandler(logger *postgres.Logger) *AnalyticsHandler {
 	return &AnalyticsHandler{
 		logger: logger,
 	}
@@ -89,7 +89,7 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	response.Success(w, http.StatusOK, "Dashboard stats retrieved successfully", stats)
 }
 
-// getRealDashboardStats fetches real analytics data from OpenSearch
+// getRealDashboardStats fetches real analytics data from PostgreSQL
 func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, tenantID string, hours int) (DashboardStats, error) {
 	// Get all providers data
 	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
@@ -100,40 +100,33 @@ func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, tenantID s
 	var totalResponseTime float64
 	var responseTimeCount int
 
+	// Convert tenantID to int for PostgreSQL
+	tenantIDInt := 0
+	if tenantID != "" && tenantID != "legacy" {
+		fmt.Sscanf(tenantID, "%d", &tenantIDInt)
+	}
+
 	for _, provider := range providers {
-		// Get provider stats from OpenSearch
-		providerStats, err := h.logger.GetProviderStats(ctx, tenantID, provider, hours)
+		// Get provider stats from PostgreSQL
+		providerStats, err := h.logger.GetPaymentStats(ctx, tenantIDInt, provider, hours)
 		if err != nil {
 			continue // Skip provider if error
 		}
 
-		// Extract aggregation results
-		if aggs, ok := providerStats["aggregations"].(map[string]any); ok {
-			// Total requests
-			if totalReq, ok := aggs["total_requests"].(map[string]any); ok {
-				if value, ok := totalReq["value"].(float64); ok {
-					totalPayments += int(value)
-				}
-			}
-
-			// Success count
-			if successReq, ok := aggs["success_count"].(map[string]any); ok {
-				if value, ok := successReq["doc_count"].(float64); ok {
-					totalSuccessful += int(value)
-				}
-			}
-
-			// Average processing time
-			if avgTime, ok := aggs["avg_processing_time"].(map[string]any); ok {
-				if value, ok := avgTime["value"].(float64); ok && value > 0 {
-					totalResponseTime += value
-					responseTimeCount++
-				}
-			}
+		// Extract stats from PostgreSQL response
+		if totalReq, ok := providerStats["total_requests"].(int); ok {
+			totalPayments += totalReq
+		}
+		if successReq, ok := providerStats["success_count"].(int); ok {
+			totalSuccessful += successReq
+		}
+		if avgTime, ok := providerStats["avg_processing_ms"].(float64); ok && avgTime > 0 {
+			totalResponseTime += avgTime
+			responseTimeCount++
 		}
 
-		// Get payment volumes from recent logs
-		volume, err := h.getProviderVolume(ctx, tenantID, provider, hours)
+		// Get payment volumes from PostgreSQL
+		volume, err := h.getProviderVolume(ctx, tenantIDInt, provider, hours)
 		if err == nil {
 			totalVolume += volume
 		}
@@ -169,43 +162,21 @@ func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, tenantID s
 }
 
 // getProviderVolume calculates total payment volume for a provider
-func (h *AnalyticsHandler) getProviderVolume(ctx context.Context, tenantID, provider string, hours int) (float64, error) {
-	// Search for successful payments with amounts
-	query := map[string]any{
-		"bool": map[string]any{
-			"must": []map[string]any{
-				{
-					"range": map[string]any{
-						"timestamp": map[string]any{
-							"gte": fmt.Sprintf("now-%dh", hours),
-						},
-					},
-				},
-				{
-					"range": map[string]any{
-						"response.status_code": map[string]any{
-							"gte": 200,
-							"lt":  300,
-						},
-					},
-				},
-				{
-					"exists": map[string]any{
-						"field": "payment_info.amount",
-					},
-				},
-			},
-		},
+func (h *AnalyticsHandler) getProviderVolume(ctx context.Context, tenantID int, provider string, hours int) (float64, error) {
+	// Create filters for PostgreSQL search
+	filters := map[string]interface{}{
+		"start_date": time.Now().Add(-time.Duration(hours) * time.Hour),
+		"end_date":   time.Now(),
 	}
 
-	logs, err := h.logger.SearchLogs(ctx, tenantID, provider, query)
+	logs, err := h.logger.SearchPaymentLogs(ctx, tenantID, provider, filters)
 	if err != nil {
 		return 0, err
 	}
 
 	var totalVolume float64
 	for _, log := range logs {
-		if log.PaymentInfo.Amount > 0 {
+		if log.PaymentInfo != nil && log.PaymentInfo.Amount > 0 {
 			totalVolume += log.PaymentInfo.Amount
 		}
 	}
@@ -236,16 +207,22 @@ func (h *AnalyticsHandler) GetProviderStats(w http.ResponseWriter, r *http.Reque
 	response.Success(w, http.StatusOK, "Provider stats retrieved successfully", providers)
 }
 
-// getRealProviderStats fetches real provider statistics from OpenSearch
+// getRealProviderStats fetches real provider statistics from PostgreSQL
 func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, tenantID string) ([]ProviderStats, error) {
 	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
 	providerKeys := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
 
 	stats := make([]ProviderStats, len(providers))
 
+	// Convert tenantID to int for PostgreSQL
+	tenantIDInt := 0
+	if tenantID != "" && tenantID != "legacy" {
+		fmt.Sscanf(tenantID, "%d", &tenantIDInt)
+	}
+
 	for i, providerKey := range providerKeys {
-		// Get provider stats from OpenSearch
-		providerStats, err := h.logger.GetProviderStats(ctx, tenantID, providerKey, 24)
+		// Get provider stats from PostgreSQL
+		providerStats, err := h.logger.GetPaymentStats(ctx, tenantIDInt, providerKey, 24)
 
 		status := "online"
 		responseTime := "150ms"
@@ -253,30 +230,18 @@ func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, tenantID st
 		successRate := 95.0
 
 		if err == nil {
-			if aggs, ok := providerStats["aggregations"].(map[string]any); ok {
-				// Total requests
-				if totalReq, ok := aggs["total_requests"].(map[string]any); ok {
-					if value, ok := totalReq["value"].(float64); ok {
-						transactions = int(value)
-					}
-				}
-
-				// Success count and rate
-				if successReq, ok := aggs["success_count"].(map[string]any); ok {
-					if successCount, ok := successReq["doc_count"].(float64); ok && transactions > 0 {
-						successRate = (successCount / float64(transactions)) * 100
-					}
-				}
-
-				// Average processing time
-				if avgTime, ok := aggs["avg_processing_time"].(map[string]any); ok {
-					if value, ok := avgTime["value"].(float64); ok && value > 0 {
-						responseTime = fmt.Sprintf("%.0fms", value)
-						// Mark as degraded if response time > 400ms
-						if value > 400 {
-							status = "degraded"
-						}
-					}
+			// Extract stats from PostgreSQL response
+			if totalReq, ok := providerStats["total_requests"].(int); ok {
+				transactions = totalReq
+			}
+			if successCount, ok := providerStats["success_count"].(int); ok && transactions > 0 {
+				successRate = (float64(successCount) / float64(transactions)) * 100
+			}
+			if avgTime, ok := providerStats["avg_processing_ms"].(float64); ok && avgTime > 0 {
+				responseTime = fmt.Sprintf("%.0fms", avgTime)
+				// Mark as degraded if response time > 400ms
+				if avgTime > 400 {
+					status = "degraded"
 				}
 			}
 		} else {
@@ -336,33 +301,25 @@ func (h *AnalyticsHandler) GetRecentActivity(w http.ResponseWriter, r *http.Requ
 	response.Success(w, http.StatusOK, "Recent activity retrieved successfully", activities)
 }
 
-// getRealRecentActivity fetches real recent activity from OpenSearch
+// getRealRecentActivity fetches real recent activity from PostgreSQL
 func (h *AnalyticsHandler) getRealRecentActivity(ctx context.Context, tenantID string, limit int) ([]RecentActivity, error) {
 	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara"}
 	var allActivities []RecentActivity
 
+	// Convert tenantID to int for PostgreSQL
+	tenantIDInt := 0
+	if tenantID != "" && tenantID != "legacy" {
+		fmt.Sscanf(tenantID, "%d", &tenantIDInt)
+	}
+
 	for _, provider := range providers {
-		// Search for recent payment logs
-		query := map[string]any{
-			"bool": map[string]any{
-				"must": []map[string]any{
-					{
-						"range": map[string]any{
-							"timestamp": map[string]any{
-								"gte": "now-2h", // Last 2 hours
-							},
-						},
-					},
-					{
-						"exists": map[string]any{
-							"field": "payment_info.payment_id",
-						},
-					},
-				},
-			},
+		// Create filters for recent payments
+		filters := map[string]interface{}{
+			"start_date": time.Now().Add(-2 * time.Hour), // Last 2 hours
+			"end_date":   time.Now(),
 		}
 
-		logs, err := h.logger.SearchLogs(ctx, tenantID, provider, query)
+		logs, err := h.logger.SearchPaymentLogs(ctx, tenantIDInt, provider, filters)
 		if err != nil {
 			continue // Skip provider if error
 		}
@@ -379,14 +336,14 @@ func (h *AnalyticsHandler) getRealRecentActivity(ctx context.Context, tenantID s
 			}
 
 			status := "success"
-			if log.Response.StatusCode >= 400 || log.Error.Code != "" {
+			if log.Error != nil && log.Error.Code != "" {
 				status = "failed"
 			} else if activityType == "refund" {
 				status = "processed"
 			}
 
 			amount := "₺100.00" // Default
-			if log.PaymentInfo.Amount > 0 {
+			if log.PaymentInfo != nil && log.PaymentInfo.Amount > 0 {
 				amount = fmt.Sprintf("₺%.2f", log.PaymentInfo.Amount)
 			}
 
@@ -397,13 +354,18 @@ func (h *AnalyticsHandler) getRealRecentActivity(ctx context.Context, tenantID s
 				timeStr = fmt.Sprintf("%.0f hours ago", timeAgo.Hours())
 			}
 
+			paymentID := "pay_unknown"
+			if log.PaymentInfo != nil && log.PaymentInfo.PaymentID != "" {
+				paymentID = log.PaymentInfo.PaymentID
+			}
+
 			allActivities = append(allActivities, RecentActivity{
 				Type:     activityType,
 				Provider: provider,
 				Amount:   amount,
 				Status:   status,
 				Time:     timeStr,
-				ID:       log.PaymentInfo.PaymentID,
+				ID:       paymentID,
 			})
 		}
 	}
@@ -453,7 +415,7 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 	response.Success(w, http.StatusOK, "Payment trends retrieved successfully", trends)
 }
 
-// getRealPaymentTrends fetches real payment trends from OpenSearch
+// getRealPaymentTrends fetches real payment trends from PostgreSQL
 func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, _ string, hours int) (map[string]any, error) {
 	// This would require more complex time-based aggregations
 	// For now, return generated data with a note about real implementation

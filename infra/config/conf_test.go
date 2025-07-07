@@ -44,13 +44,10 @@ func TestApp(t *testing.T) {
 func TestGetAppConfig(t *testing.T) {
 	// Save original env values
 	originalValues := map[string]string{
-		"APP_PORT":                  os.Getenv("APP_PORT"),
-		"OPENSEARCH_URL":            os.Getenv("OPENSEARCH_URL"),
-		"OPENSEARCH_USER":           os.Getenv("OPENSEARCH_USER"),
-		"OPENSEARCH_PASSWORD":       os.Getenv("OPENSEARCH_PASSWORD"),
-		"ENABLE_OPENSEARCH_LOGGING": os.Getenv("ENABLE_OPENSEARCH_LOGGING"),
-		"LOGGING_LEVEL":             os.Getenv("LOGGING_LEVEL"),
-		"LOG_RETENTION_DAYS":        os.Getenv("LOG_RETENTION_DAYS"),
+		"APP_PORT":           os.Getenv("APP_PORT"),
+		"ENABLE_LOGGING":     os.Getenv("ENABLE_LOGGING"),
+		"LOGGING_LEVEL":      os.Getenv("LOGGING_LEVEL"),
+		"LOG_RETENTION_DAYS": os.Getenv("LOG_RETENTION_DAYS"),
 	}
 
 	// Clear env vars
@@ -84,9 +81,6 @@ func TestGetAppConfig(t *testing.T) {
 			envVars: map[string]string{},
 			expected: &AppConfig{
 				Port:             "9999",
-				OpenSearchURL:    "http://localhost:9200",
-				OpenSearchUser:   "",
-				OpenSearchPass:   "",
 				EnableLogging:    true,
 				LoggingLevel:     "info",
 				LogRetentionDays: 30,
@@ -95,19 +89,13 @@ func TestGetAppConfig(t *testing.T) {
 		{
 			name: "custom_values",
 			envVars: map[string]string{
-				"APP_PORT":                  "8080",
-				"OPENSEARCH_URL":            "https://search.example.com:9200",
-				"OPENSEARCH_USER":           "testuser",
-				"OPENSEARCH_PASSWORD":       "testpass",
-				"ENABLE_OPENSEARCH_LOGGING": "false",
-				"LOGGING_LEVEL":             "debug",
-				"LOG_RETENTION_DAYS":        "60",
+				"APP_PORT":           "8080",
+				"ENABLE_LOGGING":     "false",
+				"LOGGING_LEVEL":      "debug",
+				"LOG_RETENTION_DAYS": "60",
 			},
 			expected: &AppConfig{
 				Port:             "8080",
-				OpenSearchURL:    "https://search.example.com:9200",
-				OpenSearchUser:   "testuser",
-				OpenSearchPass:   "testpass",
 				EnableLogging:    false,
 				LoggingLevel:     "debug",
 				LogRetentionDays: 60,
@@ -116,13 +104,10 @@ func TestGetAppConfig(t *testing.T) {
 		{
 			name: "invalid_boolean_defaults_to_true",
 			envVars: map[string]string{
-				"ENABLE_OPENSEARCH_LOGGING": "invalid",
+				"ENABLE_LOGGING": "invalid",
 			},
 			expected: &AppConfig{
 				Port:             "9999",
-				OpenSearchURL:    "http://localhost:9200",
-				OpenSearchUser:   "",
-				OpenSearchPass:   "",
 				EnableLogging:    true,
 				LoggingLevel:     "info",
 				LogRetentionDays: 30,
@@ -135,9 +120,6 @@ func TestGetAppConfig(t *testing.T) {
 			},
 			expected: &AppConfig{
 				Port:             "9999",
-				OpenSearchURL:    "http://localhost:9200",
-				OpenSearchUser:   "",
-				OpenSearchPass:   "",
 				EnableLogging:    true,
 				LoggingLevel:     "info",
 				LogRetentionDays: 30,
@@ -159,9 +141,6 @@ func TestGetAppConfig(t *testing.T) {
 			require.NotNil(t, config)
 
 			assert.Equal(t, tt.expected.Port, config.Port)
-			assert.Equal(t, tt.expected.OpenSearchURL, config.OpenSearchURL)
-			assert.Equal(t, tt.expected.OpenSearchUser, config.OpenSearchUser)
-			assert.Equal(t, tt.expected.OpenSearchPass, config.OpenSearchPass)
 			assert.Equal(t, tt.expected.EnableLogging, config.EnableLogging)
 			assert.Equal(t, tt.expected.LoggingLevel, config.LoggingLevel)
 			assert.Equal(t, tt.expected.LogRetentionDays, config.LogRetentionDays)
