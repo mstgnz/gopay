@@ -268,7 +268,7 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## 📄 License
 
-This project is licensed under the [Business Source License 1.0 (BSL-1.0)](./LICENSE).
+This project is licensed under the [Boost Software License 1.0 (BSL-1.0)](./LICENSE).
 
 ### 🎯 **License Terms Summary:**
 
@@ -278,26 +278,19 @@ This project is licensed under the [Business Source License 1.0 (BSL-1.0)](./LIC
 - ✅ Fork and develop improvements
 - ✅ Submit pull requests
 - ✅ Clone and install on VMs/servers
-- ✅ Use for internal/non-production systems
+- ✅ Use for any purpose (commercial, non-commercial, production)
 - ✅ Modify and create derivative works
-
-**❌ Restricted Uses:**
-
-- ❌ Redistribute under a different name
-- ❌ Fork into a public project (without written permission)
-- ❌ Commercial redistribution/selling
-- ❌ Production use without commercial license
-
-**📅 Change Date:** January 1, 2030 - After this date, the license changes to Apache License 2.0
+- ✅ Redistribute under any name
+- ✅ Sell and commercialize
 
 **📋 BSL-1.0 Benefits:**
 
 - **Go pkg.dev Compatible**: Recognized by Go ecosystem
-- **Business Protection**: Prevents commercial exploitation
-- **Time-Limited**: Transitions to Apache 2.0 in 2030
-- **Open Source Friendly**: Allows development and contributions
+- **OSI Approved**: Official Open Source Initiative license
+- **Permissive**: Minimal restrictions, business friendly
+- **Widely Accepted**: Standard in open source community
 
-For commercial licensing or special arrangements, please contact: https://github.com/mstgnz/gopay
+For questions or support, please contact: https://github.com/mstgnz/gopay
 
 ## 🆘 Support
 
