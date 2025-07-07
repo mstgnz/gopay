@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// Create payment service
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 
 	// Configure İyzico provider
 	iyzicoConfig := map[string]string{

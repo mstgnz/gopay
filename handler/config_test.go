@@ -15,7 +15,7 @@ import (
 
 func TestNewConfigHandler(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
@@ -39,7 +39,7 @@ func TestNewConfigHandler(t *testing.T) {
 
 func TestConfigHandler_SetEnv_MissingTenantID(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -81,7 +81,7 @@ func TestConfigHandler_SetEnv_MissingTenantID(t *testing.T) {
 
 func TestConfigHandler_SetEnv_InvalidJSON(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -108,7 +108,7 @@ func TestConfigHandler_SetEnv_InvalidJSON(t *testing.T) {
 
 func TestConfigHandler_SetEnv_EmptyConfig(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -141,7 +141,7 @@ func TestConfigHandler_SetEnv_EmptyConfig(t *testing.T) {
 
 func TestConfigHandler_SetEnv_ValidIyzicoConfig(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -193,7 +193,7 @@ func TestConfigHandler_SetEnv_ValidIyzicoConfig(t *testing.T) {
 
 func TestConfigHandler_SetEnv_ValidOzanpayConfig(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -223,7 +223,7 @@ func TestConfigHandler_SetEnv_ValidOzanpayConfig(t *testing.T) {
 
 func TestConfigHandler_SetEnv_MultipleProviders(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -266,7 +266,7 @@ func TestConfigHandler_SetEnv_MultipleProviders(t *testing.T) {
 
 func TestConfigHandler_GetTenantConfig_MissingTenantID(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -283,7 +283,7 @@ func TestConfigHandler_GetTenantConfig_MissingTenantID(t *testing.T) {
 
 func TestConfigHandler_GetTenantConfig_MissingProvider(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -300,7 +300,7 @@ func TestConfigHandler_GetTenantConfig_MissingProvider(t *testing.T) {
 
 func TestConfigHandler_DeleteTenantConfig_MissingTenantID(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -317,7 +317,7 @@ func TestConfigHandler_DeleteTenantConfig_MissingTenantID(t *testing.T) {
 
 func TestConfigHandler_GetStats(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -353,7 +353,7 @@ func TestConfigHandler_GetStats(t *testing.T) {
 
 func TestConfigHandler_HTTPMethods(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -423,7 +423,7 @@ func TestConfigHandler_HTTPMethods(t *testing.T) {
 
 func BenchmarkConfigHandler_SetEnv(b *testing.B) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -443,7 +443,7 @@ func BenchmarkConfigHandler_SetEnv(b *testing.B) {
 // Test Paycell configuration
 func TestConfigHandler_SetEnv_ValidPaycellConfig(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -477,7 +477,7 @@ func TestConfigHandler_SetEnv_ValidPaycellConfig(t *testing.T) {
 // Test multiple providers in one request
 func TestConfigHandler_SetEnv_MultipleProvidersWithPaycell(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -503,7 +503,7 @@ func TestConfigHandler_SetEnv_MultipleProvidersWithPaycell(t *testing.T) {
 // Test Paycell with partial configuration
 func TestConfigHandler_SetEnv_PaycellPartialConfig(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -528,7 +528,7 @@ func TestConfigHandler_SetEnv_PaycellPartialConfig(t *testing.T) {
 // Test GetTenantConfig with sensitive value masking
 func TestConfigHandler_GetTenantConfig_SensitiveValueMasking(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -587,7 +587,7 @@ func TestConfigHandler_GetTenantConfig_SensitiveValueMasking(t *testing.T) {
 func TestConfigHandler_GetStats_ErrorHandling(t *testing.T) {
 	// Create a config that will cause an error when getting stats
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -613,7 +613,7 @@ func TestConfigHandler_GetStats_ErrorHandling(t *testing.T) {
 // Test DeleteTenantConfig error handling
 func TestConfigHandler_DeleteTenantConfig_ErrorHandling(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 
@@ -638,7 +638,7 @@ func TestConfigHandler_DeleteTenantConfig_ErrorHandling(t *testing.T) {
 // Test edge cases for SetEnv
 func TestConfigHandler_SetEnv_EdgeCases(t *testing.T) {
 	providerConfig := config.NewProviderConfig()
-	paymentService := provider.NewPaymentService()
+	paymentService := provider.NewPaymentService(&provider.DBPaymentLogger{})
 	validate := validator.New()
 	handler := NewConfigHandler(providerConfig, paymentService, validate)
 

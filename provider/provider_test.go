@@ -143,7 +143,7 @@ func TestGenericProvider(t *testing.T) {
 // Example of using the generic provider in a service
 func ExampleNewGenericProvider() {
 	// Create a service
-	service := NewPaymentService()
+	service := NewPaymentService(&MockLogger{})
 
 	// Create a custom payment processor
 	customProcessor := &CustomPaymentProcessor{

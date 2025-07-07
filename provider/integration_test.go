@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+// MockLogger is a mock implementation of PaymentLogger for testing
+type MockLogger struct{}
+
+func (m *MockLogger) LogRequest(ctx context.Context, tenantID int, providerName string, method, endpoint string, request any, userAgent, clientIP string) (int64, error) {
+	return 1, nil // Return a dummy log ID
+}
+
+func (m *MockLogger) LogResponse(ctx context.Context, logID int64, response any, processingMs int64) error {
+	return nil // Do nothing in tests
+}
+
+func (m *MockLogger) LogError(ctx context.Context, logID int64, errorCode, errorMsg string, processingMs int64) error {
+	return nil // Do nothing in tests
+}
+
 // MockProvider is a mock implementation of PaymentProvider for testing
 type MockProvider struct {
 	shouldFail    bool
@@ -160,7 +175,7 @@ func TestPaymentServiceIntegration(t *testing.T) {
 	// Register mock provider
 	Register("mock", NewMockProvider)
 
-	service := NewPaymentService()
+	service := NewPaymentService(&MockLogger{})
 
 	// Test adding a provider
 	err := service.AddProvider("mock", map[string]string{})
@@ -287,7 +302,7 @@ func TestPaymentServiceIntegration(t *testing.T) {
 }
 
 func TestPaymentServiceProviderNotFound(t *testing.T) {
-	service := NewPaymentService()
+	service := NewPaymentService(&MockLogger{})
 
 	// Test with non-existent provider
 	paymentRequest := PaymentRequest{
@@ -307,7 +322,7 @@ func TestPaymentServiceFailingProvider(t *testing.T) {
 	// Register failing mock provider
 	Register("failing-mock", NewMockProvider)
 
-	service := NewPaymentService()
+	service := NewPaymentService(&MockLogger{})
 
 	// Add provider with failure configuration
 	err := service.AddProvider("failing-mock", map[string]string{
@@ -356,7 +371,7 @@ func TestPaymentServiceFailingProvider(t *testing.T) {
 }
 
 func TestMultipleProviders(t *testing.T) {
-	service := NewPaymentService()
+	service := NewPaymentService(&MockLogger{})
 
 	// Register multiple providers
 	Register("provider1", NewMockProvider)
