@@ -19,20 +19,24 @@ data:
               - alertmanager:9093
 
     scrape_configs:
+      # Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # PostgreSQL metrics
+      - job_name: 'postgres'
+        static_configs:
+          - targets: ['postgres:5432']
+        scrape_interval: 15s
+        metrics_path: /metrics
+
       # GoPay API metrics
       - job_name: 'gopay-api'
         static_configs:
-          - targets: ['gopay-api-service:8080']
-        metrics_path: /metrics
+          - targets: ['gopay-api:8080']
         scrape_interval: 15s
-        scrape_timeout: 10s
-
-      # OpenSearch metrics
-      - job_name: 'opensearch'
-        static_configs:
-          - targets: ['opensearch:9200']
-        metrics_path: /_prometheus/metrics
-        scrape_interval: 30s
+        metrics_path: /metrics
 
       # Kubernetes API server
       - job_name: 'kubernetes-apiservers'
@@ -126,15 +130,15 @@ data:
           summary: "High database connection usage"
           description: "Database connection usage is {{ $value }}"
 
-      # OpenSearch alerts
-      - alert: OpenSearchDown
-        expr: up{job="opensearch"} == 0
+      # PostgreSQL Database alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "OpenSearch is down"
-          description: "OpenSearch service has been down for more than 2 minutes"
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL database service has been down for more than 2 minutes"
 
       # Provider specific alerts
       - alert: ProviderHighErrorRate
