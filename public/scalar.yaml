@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: GoPay API Documentation
-  version: 1.0.0
+  version: 1.5.0
   description: |
     **GoPay** is a unified payment integration service developed in Go. It abstracts different payment providers behind a single, standardized API, allowing developers to switch payment systems seamlessly without changing their codebase.
 
@@ -64,13 +64,13 @@ info:
 
     ### Setup Flow
     1. **Authenticate**: Get JWT token via login
-    2. **Configure**: `POST /v1/set-env` with `X-Tenant-ID` header - Configure payment provider for a tenant
-    3. **Process**: Use payment endpoints with same `X-Tenant-ID` header - Automatically uses tenant-specific configuration
+    2. **Configure**: `POST /v1/set-env` - Configure payment provider (tenant automatically detected from JWT token)
+    3. **Process**: Use payment endpoints with JWT token - Automatically uses tenant-specific configuration
 
-    ### Tenant Header
-    For tenant-specific operations, include the tenant identifier in the header:
+    ### JWT Token Authentication
+    The system automatically extracts tenant information from JWT tokens:
     ```
-    X-Tenant-ID: your_project_name
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     ```
 
     ## Payment Flow
@@ -1018,15 +1018,16 @@ paths:
   # Configuration Operations
   /v1/set-env:
     post:
-      summary: Configure payment provider for tenant
+      summary: Configure payment provider for authenticated tenant
       description: |
-        Sets up payment provider configurations for a specific tenant.
-        This allows different projects to use different payment provider credentials.
+        Sets up payment provider configurations for the authenticated tenant.
+        Tenant information is automatically extracted from the JWT token.
         
-        **Multi-Tenant Flow:**
-        1. Call this endpoint with `X-Tenant-ID` header and provider credentials
-        2. Use payment endpoints with the same `X-Tenant-ID` header
-        3. GoPay automatically uses tenant-specific provider configuration
+        **JWT Token Flow:**
+        1. Authenticate and get JWT token via `/v1/auth/login`
+        2. Call this endpoint with Bearer token and provider credentials
+        3. Use payment endpoints with the same Bearer token
+        4. GoPay automatically uses tenant-specific configuration from JWT context
         
         **Supported Providers:**
         - **İyzico**: Requires `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_ENVIRONMENT`
@@ -1038,14 +1039,8 @@ paths:
         - **PayTR**: Requires `PAYTR_MERCHANT_ID`, `PAYTR_MERCHANT_KEY`, `PAYTR_MERCHANT_SALT`, `PAYTR_ENVIRONMENT`
         - **PayU**: Requires `PAYU_MERCHANT_ID`, `PAYU_SECRET_KEY`, `PAYU_API_KEY`, `PAYU_ENVIRONMENT`
       tags: [Configuration]
-      parameters:
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Unique identifier for the tenant/project
-          example: abc_project
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -1094,17 +1089,13 @@ paths:
     get:
       summary: Get tenant configuration for provider
       description: |
-        Retrieves the configuration for a specific tenant and provider.
+        Retrieves the configuration for the authenticated tenant and specified provider.
+        Tenant information is automatically extracted from the JWT token.
         Sensitive information (API keys, passwords) are masked in the response.
       tags: [Configuration]
+      security:
+        - BearerAuth: []
       parameters:
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Unique identifier for the tenant/project
-          example: abc_project
         - name: provider
           in: query
           required: true
@@ -1135,17 +1126,13 @@ paths:
     delete:
       summary: Delete tenant configuration for provider
       description: |
-        Deletes the configuration for a specific tenant and provider.
+        Deletes the configuration for the authenticated tenant and specified provider.
+        Tenant information is automatically extracted from the JWT token.
         This removes both the in-memory and persistent storage configuration.
       tags: [Configuration]
+      security:
+        - BearerAuth: []
       parameters:
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Unique identifier for the tenant/project
-          example: abc_project
         - name: provider
           in: query
           required: true
@@ -1332,15 +1319,16 @@ paths:
       summary: Process payment with specific provider
       description: |
         Processes a payment using a specific payment provider.
+        Tenant-specific provider configuration is automatically loaded from JWT token context.
         
         **Available Providers:**
         - `iyzico` - İyzico (Turkey)
         - `ozanpay` - OzanPay (Turkey) 
         - `stripe` - Stripe (Global)
         
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
-        - If no header provided, uses default environment configuration
+        **JWT Token Authentication:**
+        - Bearer token automatically provides tenant context
+        - Tenant-specific provider configuration is used automatically
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1353,13 +1341,6 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Tenant identifier for multi-tenant usage (optional)
-          example: abc_project
       requestBody:
         required: true
         content:
@@ -1466,9 +1447,7 @@ paths:
       summary: Get payment status with specific provider
       description: |
         Retrieves the current status of a payment using a specific provider.
-        
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        Tenant-specific provider configuration is automatically loaded from JWT token context.
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1488,13 +1467,6 @@ paths:
             type: string
           description: Payment ID to check
           example: payment123
-        - name: X-Tenant-ID
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Tenant identifier for multi-tenant usage (optional)
-          example: abc_project
       responses:
         '200':
           description: Payment status retrieved successfully
@@ -1510,9 +1482,7 @@ paths:
         '400':
           description: Invalid parameters
         '401':
-          description: Unauthorized - Invalid API key
-        '404':
-          description: Payment not found
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
     
@@ -1520,9 +1490,7 @@ paths:
       summary: Cancel payment with specific provider
       description: |
         Cancels a payment using a specific provider.
-        
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        Tenant-specific provider configuration is automatically loaded from JWT token context.
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1542,13 +1510,6 @@ paths:
             type: string
           description: Payment ID to cancel
           example: payment123
-        - name: X-Tenant-ID
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Tenant identifier for multi-tenant usage (optional)
-          example: abc_project
       requestBody:
         content:
           application/json:
@@ -1569,9 +1530,7 @@ paths:
         '400':
           description: Invalid parameters or payment cannot be cancelled
         '401':
-          description: Unauthorized - Invalid API key
-        '404':
-          description: Payment not found
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -1635,9 +1594,7 @@ paths:
       summary: Refund payment with specific provider
       description: |
         Processes a refund using a specific provider.
-        
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        Tenant-specific provider configuration is automatically loaded from JWT token context.
       tags: [Refunds]
       security:
         - BearerAuth: []
@@ -1650,13 +1607,6 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Tenant identifier for multi-tenant usage (optional)
-          example: abc_project
       requestBody:
         required: true
         content:
@@ -1785,8 +1735,9 @@ paths:
         Handles 3D Secure authentication callback from the bank using GET method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
         
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        **Multi-Tenant Routing:**
+        - Include `tenantId` query parameter for proper tenant routing (provided by bank callback)
+        - No authentication required as this is called directly by payment providers
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -1797,12 +1748,12 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
+        - name: tenantId
+          in: query
           required: false
           schema:
             type: string
-          description: Tenant identifier for multi-tenant usage (optional)
+          description: Tenant identifier for multi-tenant callback routing (optional)
           example: abc_project
         - name: paymentId
           in: query
@@ -1852,8 +1803,9 @@ paths:
         Handles 3D Secure authentication callback from the bank using POST method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
         
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        **Multi-Tenant Routing:**
+        - Include `tenantId` query parameter for proper tenant routing (provided by bank callback)
+        - No authentication required as this is called directly by payment providers
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -1864,12 +1816,12 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
+        - name: tenantId
+          in: query
           required: false
           schema:
             type: string
-          description: Tenant identifier for multi-tenant usage (optional)
+          description: Tenant identifier for multi-tenant callback routing (optional)
           example: abc_project
       requestBody:
         content:
@@ -1920,8 +1872,9 @@ paths:
         - Refund notifications
         - Fraud alerts
         
-        **Multi-Tenant Support:**
-        - Include `X-Tenant-ID` header to use tenant-specific provider configuration
+        **Multi-Tenant Routing:**
+        - Include `tenantId` query parameter for proper tenant routing (optional)
+        - No authentication required as this endpoint validates webhook signatures
         
         **Note:** This endpoint validates webhook signatures and processes notifications asynchronously.
       tags: [Webhooks]
@@ -1934,12 +1887,12 @@ paths:
             enum: [iyzico, ozanpay, stripe]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
+        - name: tenantId
+          in: query
           required: false
           schema:
             type: string
-          description: Tenant identifier for multi-tenant usage (optional)
+          description: Tenant identifier for multi-tenant webhook routing (optional)
           example: abc_project
       requestBody:
         required: true
@@ -1992,6 +1945,14 @@ paths:
         **No Authentication Required** - This endpoint is public for dashboard display.
       tags: [Analytics]
       parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
         - name: hours
           in: query
           required: false
@@ -2085,6 +2046,14 @@ paths:
         - Volume distribution
       tags: [Analytics]
       parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
         - name: hours
           in: query
           required: false
@@ -2232,6 +2201,14 @@ paths:
         - Seasonal patterns
       tags: [Analytics]
       parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: iyzico
         - name: hours
           in: query
           required: false
@@ -2585,11 +2562,11 @@ paths:
     get:
       summary: List payment logs with filtering
       description: |
-        Retrieves payment logs for a specific tenant and provider with various filtering options.
+        Retrieves payment logs for the authenticated tenant and specified provider with various filtering options.
         
         **Tenant Isolation:**
         - Each tenant can only access their own logs
-        - X-Tenant-ID header is required for authentication
+        - Tenant information is automatically extracted from JWT token
         
         **Available Filters:**
         - Payment ID
@@ -2599,7 +2576,7 @@ paths:
         
         **Security:**
         - Sensitive data is automatically redacted in logs
-        - Auth protected endpoint
+        - JWT token authentication required
       tags: [Logs]
       security:
         - BearerAuth: []
@@ -2612,13 +2589,6 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Tenant identifier (required)
-          example: tenant123
         - name: paymentId
           in: query
           required: false
@@ -2693,9 +2663,9 @@ paths:
                             items:
                               $ref: '#/components/schemas/PaymentLog'
         '400':
-          description: Invalid parameters or missing X-Tenant-ID header
+          description: Invalid parameters
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -2703,7 +2673,8 @@ paths:
     get:
       summary: Get logs for specific payment
       description: |
-        Retrieves all logs related to a specific payment ID.
+        Retrieves all logs related to a specific payment ID for the authenticated tenant.
+        Tenant information is automatically extracted from JWT token.
         
         **Use Cases:**
         - Debug payment issues
@@ -2767,7 +2738,7 @@ paths:
         '400':
           description: Invalid parameters or missing X-Tenant-ID header
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '404':
           description: Payment logs not found
         '500':
@@ -2777,7 +2748,8 @@ paths:
     get:
       summary: Get recent error logs
       description: |
-        Retrieves recent error logs for a specific provider and tenant.
+        Retrieves recent error logs for the authenticated tenant and specified provider.
+        Tenant information is automatically extracted from JWT token.
         
         **Error Types:**
         - Payment failures
@@ -2845,7 +2817,7 @@ paths:
         '400':
           description: Invalid parameters or missing X-Tenant-ID header
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -2853,7 +2825,8 @@ paths:
     get:
       summary: Get logging statistics
       description: |
-        Retrieves comprehensive logging statistics for a specific provider and tenant.
+        Retrieves comprehensive logging statistics for the authenticated tenant and specified provider.
+        Tenant information is automatically extracted from JWT token.
         
         **Statistics Include:**
         - Total request count
@@ -2873,13 +2846,6 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Tenant identifier (required)
-          example: tenant123
         - name: hours
           in: query
           required: false
@@ -2917,7 +2883,7 @@ paths:
         '400':
           description: Invalid parameters or missing X-Tenant-ID header
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
