@@ -431,6 +431,338 @@ func SanitizeForLog(data map[string]any) map[string]any {
 	return sanitized
 }
 
+// GetPaymentStatsComparison retrieves payment statistics comparison between two periods
+func (l *Logger) GetPaymentStatsComparison(ctx context.Context, tenantID int, provider string, currentHours, previousHours int) (map[string]any, error) {
+	if l.db == nil {
+		return map[string]any{
+			"current_total":          0,
+			"current_success":        0,
+			"current_volume":         0.0,
+			"current_processing_ms":  0.0,
+			"previous_total":         0,
+			"previous_success":       0,
+			"previous_volume":        0.0,
+			"previous_processing_ms": 0.0,
+		}, nil
+	}
+
+	tableName := l.getProviderTableName(provider)
+
+	query := fmt.Sprintf(`
+		WITH current_period AS (
+			SELECT 
+				COUNT(*) as total_requests,
+				COUNT(CASE WHEN response::text LIKE '%%"success":true%%' THEN 1 END) as success_count,
+				SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END) as total_volume,
+				AVG(CASE WHEN processing_ms IS NOT NULL THEN processing_ms ELSE 0 END) as avg_processing_ms
+			FROM %s
+			WHERE tenant_id = $1 
+			AND request_at >= NOW() - INTERVAL '%d hours'
+		),
+		previous_period AS (
+			SELECT 
+				COUNT(*) as total_requests,
+				COUNT(CASE WHEN response::text LIKE '%%"success":true%%' THEN 1 END) as success_count,
+				SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END) as total_volume,
+				AVG(CASE WHEN processing_ms IS NOT NULL THEN processing_ms ELSE 0 END) as avg_processing_ms
+			FROM %s
+			WHERE tenant_id = $1 
+			AND request_at >= NOW() - INTERVAL '%d hours'
+			AND request_at < NOW() - INTERVAL '%d hours'
+		)
+		SELECT 
+			c.total_requests as current_total,
+			c.success_count as current_success,
+			c.total_volume as current_volume,
+			c.avg_processing_ms as current_processing_ms,
+			p.total_requests as previous_total,
+			p.success_count as previous_success,
+			p.total_volume as previous_volume,
+			p.avg_processing_ms as previous_processing_ms
+		FROM current_period c, previous_period p
+	`, tableName, currentHours, tableName, previousHours+currentHours, currentHours)
+
+	var stats struct {
+		CurrentTotal         int      `json:"current_total"`
+		CurrentSuccess       int      `json:"current_success"`
+		CurrentVolume        *float64 `json:"current_volume"`
+		CurrentProcessingMs  *float64 `json:"current_processing_ms"`
+		PreviousTotal        int      `json:"previous_total"`
+		PreviousSuccess      int      `json:"previous_success"`
+		PreviousVolume       *float64 `json:"previous_volume"`
+		PreviousProcessingMs *float64 `json:"previous_processing_ms"`
+	}
+
+	err := l.db.QueryRowContext(ctx, query, tenantID).Scan(
+		&stats.CurrentTotal,
+		&stats.CurrentSuccess,
+		&stats.CurrentVolume,
+		&stats.CurrentProcessingMs,
+		&stats.PreviousTotal,
+		&stats.PreviousSuccess,
+		&stats.PreviousVolume,
+		&stats.PreviousProcessingMs,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Return zero stats if no data found
+			return map[string]any{
+				"current_total":          0,
+				"current_success":        0,
+				"current_volume":         0.0,
+				"current_processing_ms":  0.0,
+				"previous_total":         0,
+				"previous_success":       0,
+				"previous_volume":        0.0,
+				"previous_processing_ms": 0.0,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to get payment stats comparison: %w", err)
+	}
+
+	result := map[string]any{
+		"current_total":    stats.CurrentTotal,
+		"current_success":  stats.CurrentSuccess,
+		"previous_total":   stats.PreviousTotal,
+		"previous_success": stats.PreviousSuccess,
+	}
+
+	if stats.CurrentVolume != nil {
+		result["current_volume"] = *stats.CurrentVolume
+	} else {
+		result["current_volume"] = 0.0
+	}
+
+	if stats.CurrentProcessingMs != nil {
+		result["current_processing_ms"] = *stats.CurrentProcessingMs
+	} else {
+		result["current_processing_ms"] = 0.0
+	}
+
+	if stats.PreviousVolume != nil {
+		result["previous_volume"] = *stats.PreviousVolume
+	} else {
+		result["previous_volume"] = 0.0
+	}
+
+	if stats.PreviousProcessingMs != nil {
+		result["previous_processing_ms"] = *stats.PreviousProcessingMs
+	} else {
+		result["previous_processing_ms"] = 0.0
+	}
+
+	return result, nil
+}
+
+// GetPaymentTrends retrieves hourly payment trends for analytics
+func (l *Logger) GetPaymentTrends(ctx context.Context, tenantID int, provider string, hours int) (map[string]any, error) {
+	if l.db == nil {
+		return map[string]any{
+			"labels": []string{},
+			"datasets": []map[string]any{
+				{
+					"label":           "Successful Payments",
+					"data":            []int{},
+					"borderColor":     "#10B981",
+					"backgroundColor": "rgba(16, 185, 129, 0.1)",
+				},
+				{
+					"label":           "Failed Payments",
+					"data":            []int{},
+					"borderColor":     "#EF4444",
+					"backgroundColor": "rgba(239, 68, 68, 0.1)",
+				},
+			},
+			"volume": []float64{},
+		}, nil
+	}
+
+	tableName := l.getProviderTableName(provider)
+
+	query := fmt.Sprintf(`
+		WITH hourly_data AS (
+			SELECT 
+				DATE_TRUNC('hour', request_at) as hour,
+				COUNT(*) as total_payments,
+				COUNT(CASE WHEN response::text LIKE '%%"success":true%%' THEN 1 END) as successful_payments,
+				COUNT(CASE WHEN response::text LIKE '%%"success":false%%' THEN 1 END) as failed_payments,
+				SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END) as volume
+			FROM %s
+			WHERE tenant_id = $1 
+			AND request_at >= NOW() - INTERVAL '%d hours'
+			GROUP BY DATE_TRUNC('hour', request_at)
+			ORDER BY hour DESC
+		)
+		SELECT 
+			hour,
+			total_payments,
+			successful_payments,
+			failed_payments,
+			volume
+		FROM hourly_data
+		LIMIT %d
+	`, tableName, hours, hours)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment trends: %w", err)
+	}
+	defer rows.Close()
+
+	var labels []string
+	var successData []int
+	var failedData []int
+	var volumeData []float64
+
+	for rows.Next() {
+		var hour time.Time
+		var total, successful, failed int
+		var volume float64
+
+		err := rows.Scan(&hour, &total, &successful, &failed, &volume)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan trend row: %w", err)
+		}
+
+		// Calculate hours ago from now
+		hoursAgo := int(time.Since(hour).Hours())
+		if hoursAgo == 0 {
+			labels = append(labels, "Now")
+		} else {
+			labels = append(labels, fmt.Sprintf("%dh ago", hoursAgo))
+		}
+
+		successData = append(successData, successful)
+		failedData = append(failedData, failed)
+		volumeData = append(volumeData, volume)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating trend rows: %w", err)
+	}
+
+	// Reverse arrays to show oldest to newest
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+		successData[i], successData[j] = successData[j], successData[i]
+		failedData[i], failedData[j] = failedData[j], failedData[i]
+		volumeData[i], volumeData[j] = volumeData[j], volumeData[i]
+	}
+
+	return map[string]any{
+		"labels": labels,
+		"datasets": []map[string]any{
+			{
+				"label":           "Successful Payments",
+				"data":            successData,
+				"borderColor":     "#10B981",
+				"backgroundColor": "rgba(16, 185, 129, 0.1)",
+			},
+			{
+				"label":           "Failed Payments",
+				"data":            failedData,
+				"borderColor":     "#EF4444",
+				"backgroundColor": "rgba(239, 68, 68, 0.1)",
+			},
+		},
+		"volume": volumeData,
+	}, nil
+}
+
+// GetRecentPaymentActivity retrieves recent payment activity for analytics
+func (l *Logger) GetRecentPaymentActivity(ctx context.Context, tenantID int, provider string, limit int) ([]map[string]any, error) {
+	tableName := l.getProviderTableName(provider)
+
+	query := fmt.Sprintf(`
+		SELECT 
+			request_at,
+			payment_id,
+			amount,
+			currency,
+			status,
+			CASE 
+				WHEN response::text LIKE '%%"success":true%%' THEN 'success'
+				WHEN response::text LIKE '%%"success":false%%' THEN 'failed'
+				ELSE 'processing'
+			END as activity_status,
+			method
+		FROM %s
+		WHERE tenant_id = $1 
+		AND request_at >= NOW() - INTERVAL '24 hours'
+		ORDER BY request_at DESC
+		LIMIT $2
+	`, tableName)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recent activity: %w", err)
+	}
+	defer rows.Close()
+
+	var activities []map[string]any
+
+	for rows.Next() {
+		var requestAt time.Time
+		var paymentID, currency, status, activityStatus, method sql.NullString
+		var amount sql.NullFloat64
+
+		err := rows.Scan(&requestAt, &paymentID, &amount, &currency, &status, &activityStatus, &method)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan activity row: %w", err)
+		}
+
+		// Calculate time ago
+		timeAgo := time.Since(requestAt)
+		var timeString string
+		if timeAgo.Hours() >= 1 {
+			timeString = fmt.Sprintf("%.0fh ago", timeAgo.Hours())
+		} else {
+			timeString = fmt.Sprintf("%.0fm ago", timeAgo.Minutes())
+		}
+
+		activity := map[string]any{
+			"timestamp": requestAt,
+			"time":      timeString,
+			"provider":  provider,
+			"type":      "payment",
+			"status":    activityStatus.String,
+		}
+
+		if paymentID.Valid {
+			activity["id"] = paymentID.String
+		}
+
+		if amount.Valid && currency.Valid {
+			activity["amount"] = fmt.Sprintf("%.2f %s", amount.Float64, currency.String)
+		}
+
+		activities = append(activities, activity)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating activity rows: %w", err)
+	}
+
+	return activities, nil
+}
+
+// GetAllProvidersStats retrieves stats for all providers for a tenant
+func (l *Logger) GetAllProvidersStats(ctx context.Context, tenantID int, hours int) (map[string]map[string]any, error) {
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	allStats := make(map[string]map[string]any)
+
+	for _, provider := range providers {
+		stats, err := l.GetPaymentStats(ctx, tenantID, provider, hours)
+		if err != nil {
+			// Continue with other providers if one fails
+			continue
+		}
+		allStats[provider] = stats
+	}
+
+	return allStats, nil
+}
+
 // GetTenantIDFromString converts string tenant ID to integer
 func GetTenantIDFromString(tenantIDStr string) (int, error) {
 	if tenantIDStr == "" || tenantIDStr == "legacy" {
