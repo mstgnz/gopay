@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -185,9 +186,32 @@ func (l *DBPaymentLogger) getActualProviderName(providerName string) string {
 		parts = append(parts, temp)
 	}
 
+	var actualProvider string
 	if len(parts) > 1 {
-		return parts[len(parts)-1] // Return the last part (actual provider name)
+		actualProvider = parts[len(parts)-1] // Return the last part (actual provider name)
+	} else {
+		actualProvider = providerName
 	}
 
-	return providerName
+	// SECURITY FIX: Validate against whitelist to prevent SQL injection
+	allowedProviders := map[string]bool{
+		"iyzico":  true,
+		"ozanpay": true,
+		"paycell": true,
+		"stripe":  true,
+		"papara":  true,
+		"nkolay":  true,
+		"paytr":   true,
+		"payu":    true,
+		"shopier": true,
+	}
+
+	// Convert to lowercase for case-insensitive comparison
+	actualProviderLower := strings.ToLower(actualProvider)
+	if allowedProviders[actualProviderLower] {
+		return actualProviderLower
+	}
+
+	// Default fallback for invalid provider names
+	return "default"
 }

@@ -325,6 +325,11 @@ func (l *Logger) SearchSystemLogs(ctx context.Context, filters map[string]any) (
 
 // GetPaymentStats retrieves payment statistics for a provider
 func (l *Logger) GetPaymentStats(ctx context.Context, tenantID int, provider string, hours int) (map[string]any, error) {
+	// Validate hours parameter to prevent SQL injection
+	if hours <= 0 || hours > 8760 { // Max 1 year (365*24 hours)
+		return nil, fmt.Errorf("invalid hours parameter: must be between 1 and 8760")
+	}
+
 	tableName := l.getProviderTableName(provider)
 
 	query := fmt.Sprintf(`
@@ -433,6 +438,14 @@ func SanitizeForLog(data map[string]any) map[string]any {
 
 // GetPaymentStatsComparison retrieves payment statistics comparison between two periods
 func (l *Logger) GetPaymentStatsComparison(ctx context.Context, tenantID int, provider string, currentHours, previousHours int) (map[string]any, error) {
+	// Validate hours parameters to prevent SQL injection
+	if currentHours <= 0 || currentHours > 8760 {
+		return nil, fmt.Errorf("invalid currentHours parameter: must be between 1 and 8760")
+	}
+	if previousHours <= 0 || previousHours > 8760 {
+		return nil, fmt.Errorf("invalid previousHours parameter: must be between 1 and 8760")
+	}
+
 	if l.db == nil {
 		return map[string]any{
 			"current_total":          0,
@@ -556,6 +569,11 @@ func (l *Logger) GetPaymentStatsComparison(ctx context.Context, tenantID int, pr
 
 // GetPaymentTrends retrieves hourly payment trends for analytics
 func (l *Logger) GetPaymentTrends(ctx context.Context, tenantID int, provider string, hours int) (map[string]any, error) {
+	// Validate hours parameter to prevent SQL injection
+	if hours <= 0 || hours > 8760 { // Max 1 year (365*24 hours)
+		return nil, fmt.Errorf("invalid hours parameter: must be between 1 and 8760")
+	}
+
 	if l.db == nil {
 		return map[string]any{
 			"labels": []string{},
@@ -671,6 +689,11 @@ func (l *Logger) GetPaymentTrends(ctx context.Context, tenantID int, provider st
 
 // GetRecentPaymentActivity retrieves recent payment activity for analytics
 func (l *Logger) GetRecentPaymentActivity(ctx context.Context, tenantID int, provider string, limit int) ([]map[string]any, error) {
+	// Validate limit parameter
+	if limit <= 0 || limit > 1000 { // Max 1000 records
+		return nil, fmt.Errorf("invalid limit parameter: must be between 1 and 1000")
+	}
+
 	tableName := l.getProviderTableName(provider)
 
 	query := fmt.Sprintf(`
@@ -748,6 +771,11 @@ func (l *Logger) GetRecentPaymentActivity(ctx context.Context, tenantID int, pro
 
 // GetAllProvidersStats retrieves stats for all providers for a tenant
 func (l *Logger) GetAllProvidersStats(ctx context.Context, tenantID int, hours int) (map[string]map[string]any, error) {
+	// Validate hours parameter (this will also be validated in GetPaymentStats but adding here for consistency)
+	if hours <= 0 || hours > 8760 { // Max 1 year (365*24 hours)
+		return nil, fmt.Errorf("invalid hours parameter: must be between 1 and 8760")
+	}
+
 	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
 	allStats := make(map[string]map[string]any)
 
