@@ -18,7 +18,6 @@ data:
   ENABLE_OPENSEARCH_LOGGING: "true"
   LOGGING_LEVEL: "info"
   LOG_RETENTION_DAYS: "30"
-  SQLITE_DB_PATH: "/app/data/gopay.db"
 ---
 apiVersion: v1
 kind: Secret
@@ -89,9 +88,6 @@ spec:
             name: gopay-config
         - secretRef:
             name: gopay-secrets
-        volumeMounts:
-        - name: data
-          mountPath: /app/data
         livenessProbe:
           httpGet:
             path: /health

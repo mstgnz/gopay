@@ -332,10 +332,10 @@ func (c *ProviderConfig) DeleteTenantConfig(tenantID, providerName string) error
 	// Create tenant-specific provider key
 	tenantProviderKey := fmt.Sprintf("%s_%s", strings.ToUpper(tenantID), strings.ToLower(providerName))
 
-	// Delete from SQLite if available
+	// Delete from PostgreSQL if available
 	if c.storage != nil {
 		if err := c.storage.DeleteTenantConfig(tenantID, providerName); err != nil {
-			return fmt.Errorf("failed to delete config from SQLite: %w", err)
+			return fmt.Errorf("failed to delete config from PostgreSQL: %w", err)
 		}
 	}
 

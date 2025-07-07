@@ -129,7 +129,7 @@ graph TD
 | **Papara**  | ✅ Production  | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
 | **Nkolay**  | ✅ Production  | [Guide](provider/nkolay/README.md)  | Payment, 3D, Refund, Cancel |
 | **PayTR**   | ✅ Production  | [Guide](provider/paytr/README.md)   | Payment, 3D, Refund, Cancel |
-| **PayU**    | 🚧 Development | [Guide](provider/payu/README.md)    | Payment, 3D, Refund, Cancel |
+| **PayU**    | ✅ Production  | [Guide](provider/payu/README.md)    | Payment, 3D, Refund, Cancel |
 | **Shopier** | 🚧 Development | [Guide](provider/shopier/README.md) | Coming Soon                 |
 
 ## 🚦 Quick Start

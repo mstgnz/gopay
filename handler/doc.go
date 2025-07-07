@@ -1,5 +1,7 @@
 // Package handler provides HTTP request handlers for the GoPay payment gateway.
 //
+// All persistent data, configuration, and audit logs are stored in **PostgreSQL**.
+//
 // This package contains all the HTTP handlers that implement the REST API
 // endpoints for payment processing, configuration management, analytics,
 // and logging. The handlers bridge the HTTP layer with the underlying
