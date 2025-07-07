@@ -45,11 +45,13 @@
 //	        Email:   "john@example.com",
 //	    },
 //	    CardInfo: CardInfo{
-//	        CardNumber:  "5528790000000008",
-//	        ExpireMonth: "12",
-//	        ExpireYear:  "2030",
-//	        CVV:         "123",
+//	        CardHolderName: "John Doe",
+//	        CardNumber:     "5528790000000008",
+//	        ExpireMonth:    "12",
+//	        ExpireYear:     "2030",
+//	        CVV:            "123",
 //	    },
+//	    Use3D: true,
 //	}
 //
 //	// Process the payment
@@ -60,9 +62,9 @@
 //
 //	// Handle the response
 //	if response.Success {
-//	    if response.ThreeDURL != "" {
+//	    if response.RedirectURL != "" {
 //	        // Redirect user to 3D secure page
-//	        fmt.Printf("Redirect to: %s\n", response.ThreeDURL)
+//	        fmt.Printf("Redirect to: %s\n", response.RedirectURL)
 //	    } else {
 //	        // Payment completed successfully
 //	        fmt.Printf("Payment completed: %s\n", response.PaymentID)
@@ -178,6 +180,27 @@
 // Each provider is implemented in its own subpackage and can be imported
 // individually as needed.
 //
+// # Security Features
+//
+// The provider package implements comprehensive security measures:
+//
+//   - SQL injection protection with input validation
+//   - Secure data handling with sensitive information masking
+//   - Provider-specific authentication and encryption
+//   - Request signing and verification
+//   - Webhook signature validation
+//   - Connection security with HTTPS enforcement
+//
+// # Database Integration
+//
+// All payment operations are logged to PostgreSQL for:
+//
+//   - Comprehensive audit trails
+//   - Payment tracking and reconciliation
+//   - Performance monitoring and analytics
+//   - Error analysis and debugging
+//   - Compliance and reporting
+//
 // # Thread Safety
 //
 // The PaymentService and all provider implementations are designed to be
@@ -189,6 +212,29 @@
 // - Provider instances are reused across requests
 // - Timeouts are configurable per provider
 // - Logging and metrics are built-in for monitoring
+// - Efficient request/response processing
+// - Memory-optimized data structures
+//
+// # Testing Support
+//
+// All providers include comprehensive test suites:
+//
+//   - Unit tests for all core functionality
+//   - Integration tests with real provider APIs
+//   - Test data and mock responses
+//   - Performance benchmarks
+//   - Security vulnerability tests
+//
+// # Production Considerations
+//
+// When deploying to production:
+//
+//   - Use production provider credentials
+//   - Enable comprehensive logging and monitoring
+//   - Configure appropriate timeouts and retry policies
+//   - Implement proper error handling and alerting
+//   - Set up health checks and metrics
+//   - Configure rate limiting and security measures
 //
 // For more specific information about individual providers, see their
 // respective package documentation in the subpackages.

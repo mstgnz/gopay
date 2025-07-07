@@ -4,25 +4,73 @@
 //
 // This package contains all the HTTP handlers that implement the REST API
 // endpoints for payment processing, configuration management, analytics,
-// and logging. The handlers bridge the HTTP layer with the underlying
-// payment provider services.
+// logging, and authentication. The handlers bridge the HTTP layer with the underlying
+// payment provider services and implement JWT-based authentication.
 //
 // # Core Handlers
 //
 // The package includes several specialized handlers:
 //
+//   - AuthHandler: Manages JWT authentication (login, register, token management)
 //   - PaymentHandler: Handles payment operations (create, status, cancel, refund)
 //   - ConfigHandler: Manages tenant configurations and provider settings
 //   - LogsHandler: Provides access to payment logs and audit trails
 //   - AnalyticsHandler: Serves analytics data and dashboard statistics
+//   - TenantRateLimitHandler: Provides rate limiting statistics for tenants
+//
+// # Authentication System
+//
+// GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys:
+//
+//	authHandler := handler.NewAuthHandler(tenantService, jwtService, validator)
+//
+//	// Authentication routes
+//	r.Post("/v1/auth/login", authHandler.Login)
+//	r.Post("/v1/auth/register", authHandler.Register)        // First user only
+//	r.Post("/v1/auth/create-tenant", authHandler.CreateTenant) // Admin only
+//	r.Post("/v1/auth/refresh", authHandler.RefreshToken)
+//	r.Post("/v1/auth/validate", authHandler.ValidateToken)
+//	r.Get("/v1/auth/profile", authHandler.GetProfile)
+//	r.Post("/v1/auth/change-password", authHandler.ChangePassword)
+//
+// Example login request:
+//
+//	POST /v1/auth/login
+//	Content-Type: application/json
+//
+//	{
+//	  "username": "admin",
+//	  "password": "password123"
+//	}
+//
+//	Response:
+//	{
+//	  "success": true,
+//	  "data": {
+//	    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+//	    "expires_at": "2024-01-16T10:30:00Z",
+//	    "username": "admin",
+//	    "tenant_id": "1"
+//	  }
+//	}
+//
+// # JWT Security Model
+//
+// Enhanced security features:
+//
+//   - Auto-rotating JWT secret keys (regenerate on each service restart)
+//   - All tokens become invalid after service restart
+//   - Users must re-authenticate after restart
+//   - No persistent secret storage (UUID-generated keys)
+//   - 24-hour token expiry with refresh capability
 //
 // # Payment Handler
 //
-// The PaymentHandler manages all payment-related HTTP requests:
+// The PaymentHandler manages all payment-related HTTP requests with JWT authentication:
 //
 //	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 //
-//	// Routes
+//	// Routes (all require JWT authentication)
 //	r.Post("/v1/payments/{provider}", paymentHandler.ProcessPayment)
 //	r.Get("/v1/payments/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
 //	r.Delete("/v1/payments/{provider}/{paymentID}", paymentHandler.CancelPayment)
@@ -30,15 +78,13 @@
 //
 // # Multi-Tenant Support
 //
-// All handlers support multi-tenant operations via the X-Tenant-ID header:
+// All handlers support multi-tenant operations via JWT token authentication.
+// Tenant information is automatically extracted from the JWT token:
 //
 //	POST /v1/payments/iyzico
-//	Headers:
-//	  X-Tenant-ID: APP1
-//	  Authorization: Bearer your-api-key
-//	  Content-Type: application/json
+//	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+//	Content-Type: application/json
 //
-//	Body:
 //	{
 //	  "amount": 100.50,
 //	  "currency": "TRY",
@@ -47,88 +93,147 @@
 //	    "name": "John",
 //	    "surname": "Doe",
 //	    "email": "john@example.com"
-//	  }
+//	  },
+//	  "cardInfo": {
+//	    "cardHolderName": "John Doe",
+//	    "cardNumber": "5528790000000008",
+//	    "expireMonth": "12",
+//	    "expireYear": "2030",
+//	    "cvv": "123"
+//	  },
+//	  "use3D": true
 //	}
+//
+// Note: No X-Tenant-ID header needed - tenant is extracted from JWT token automatically.
 //
 // # Configuration Handler
 //
-// The ConfigHandler manages tenant-specific provider configurations:
+// The ConfigHandler manages tenant-specific provider configurations via JWT authentication:
 //
 //	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
 //
-//	// Set tenant configuration
+//	// Configuration routes (require JWT authentication)
 //	r.Post("/v1/set-env", configHandler.SetEnv)
-//
-//	// Get tenant configuration
 //	r.Get("/v1/config/tenant-config", configHandler.GetTenantConfig)
-//
-//	// Delete tenant configuration
 //	r.Delete("/v1/config/tenant-config", configHandler.DeleteTenantConfig)
 //
 // Example configuration request:
 //
 //	POST /v1/set-env
-//	Headers:
-//	  X-Tenant-ID: APP1
-//	  Content-Type: application/json
+//	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+//	Content-Type: application/json
 //
-//	Body:
 //	{
 //	  "IYZICO_API_KEY": "sandbox-api-key",
 //	  "IYZICO_SECRET_KEY": "sandbox-secret-key",
 //	  "IYZICO_ENVIRONMENT": "sandbox"
 //	}
 //
+// Tenant information is automatically extracted from the JWT token.
+//
+// # Rate Limiting Handler
+//
+// The TenantRateLimitHandler provides rate limiting statistics for authenticated tenants:
+//
+//	rateLimitHandler := handler.NewTenantRateLimitHandler(rateLimiter)
+//
+//	// Rate limiting routes (require JWT authentication)
+//	r.Get("/v1/rate-limit/stats", rateLimitHandler.GetTenantStats)
+//
+// Example response:
+//
+//	{
+//	  "success": true,
+//	  "data": {
+//	    "tenant_id": "123",
+//	    "global_limit": 100,
+//	    "global_used": 15,
+//	    "global_remaining": 85,
+//	    "actions": {
+//	      "payment": {
+//	        "limit": 50,
+//	        "used": 5,
+//	        "remaining": 45,
+//	        "reset_time": "2024-01-15T10:31:00Z"
+//	      }
+//	    }
+//	  }
+//	}
+//
+// # Tenant-Based Rate Limiting
+//
+// All handlers are protected by sophisticated rate limiting:
+//
+//   - Individual rate limits per tenant (extracted from JWT token)
+//   - Action-specific limits (payment, refund, status, auth, config)
+//   - Premium tenant support with higher limits
+//   - IP-based rate limiting for unauthenticated requests
+//   - Automatic cleanup and burst allowance
+//
+// Rate limiting configuration:
+//
+//   - Global requests: 100/minute per tenant (default)
+//   - Payment requests: 50/minute per tenant (default)
+//   - Refund requests: 20/minute per tenant (default)
+//   - Status requests: 200/minute per tenant (default)
+//   - Unauthenticated requests: 10/minute per IP
+//   - Premium tenants: 2x rate multiplier
+//
 // # Callback and Webhook Handling
 //
-// The PaymentHandler also manages provider callbacks and webhooks:
+// The PaymentHandler also manages provider callbacks and webhooks with multi-tenant support:
 //
-//	// 3D Secure callbacks
-//	r.HandleFunc("/callback/{provider}", paymentHandler.HandleCallback)
+//	// 3D Secure callbacks (no authentication required - called by payment providers)
+//	r.HandleFunc("/v1/callback/{provider}", paymentHandler.HandleCallback)
+//	r.HandleFunc("/callback/{provider}", paymentHandler.HandleCallback) // Legacy
 //
-//	// Payment webhooks
-//	r.Post("/webhooks/{provider}", paymentHandler.HandleWebhook)
+//	// Payment webhooks (no authentication required - signature validated)
+//	r.Post("/v1/webhooks/{provider}", paymentHandler.HandleWebhook)
+//	r.Post("/webhooks/{provider}", paymentHandler.HandleWebhook) // Legacy
 //
-// These endpoints automatically preserve tenant information and route
-// responses back to the correct application.
+// These endpoints automatically preserve tenant information via query parameters:
+//
+//	/v1/callback/iyzico?tenantId=APP1&paymentId=123&originalCallbackUrl=...
+//	/v1/webhooks/iyzico?tenantId=APP1
 //
 // # Analytics Handler
 //
-// The AnalyticsHandler provides business intelligence endpoints:
+// The AnalyticsHandler provides business intelligence endpoints (no authentication required for dashboard display):
 //
 //	analyticsHandler := handler.NewAnalyticsHandler(logger)
 //
-//	// Dashboard statistics
+//	// Public analytics routes
 //	r.Get("/v1/analytics/dashboard", analyticsHandler.GetDashboardStats)
-//
-//	// Provider performance stats
 //	r.Get("/v1/analytics/providers", analyticsHandler.GetProviderStats)
-//
-//	// Recent payment activity
 //	r.Get("/v1/analytics/activity", analyticsHandler.GetRecentActivity)
+//	r.Get("/v1/analytics/trends", analyticsHandler.GetPaymentTrends)
 //
 // # Logs Handler
 //
-// The LogsHandler provides access to payment logs and audit trails:
+// The LogsHandler provides access to payment logs and audit trails (requires JWT authentication):
 //
 //	logsHandler := handler.NewLogsHandler(logger)
 //
-//	// Get payment logs for a provider
+//	// Authenticated log routes
 //	r.Get("/v1/logs/{provider}", logsHandler.GetLogs)
+//	r.Get("/v1/logs/{provider}/payment/{paymentID}", logsHandler.GetPaymentLogs)
+//	r.Get("/v1/logs/{provider}/errors", logsHandler.GetErrorLogs)
+//	r.Get("/v1/logs/{provider}/stats", logsHandler.GetLoggingStats)
 //
-//	// Search logs
-//	r.Get("/v1/logs/search", logsHandler.SearchLogs)
+// Tenant isolation is enforced - each tenant can only access their own logs.
 //
 // # Request Validation
 //
 // All handlers use structured validation for incoming requests:
 //
 //	type PaymentRequest struct {
-//	    Amount      float64  `json:"amount" validate:"required,gt=0"`
-//	    Currency    string   `json:"currency" validate:"required,len=3"`
-//	    CallbackURL string   `json:"callbackUrl" validate:"required,url"`
-//	    Customer    Customer `json:"customer" validate:"required"`
-//	    CardInfo    CardInfo `json:"cardInfo" validate:"required"`
+//	    Amount       float64  `json:"amount" validate:"required,gt=0"`
+//	    Currency     string   `json:"currency" validate:"required,len=3"`
+//	    CallbackURL  string   `json:"callbackUrl" validate:"required,url"`
+//	    Customer     Customer `json:"customer" validate:"required"`
+//	    CardInfo     CardInfo `json:"cardInfo" validate:"required"`
+//	    Use3D        bool     `json:"use3D"`
+//	    Description  string   `json:"description"`
 //	}
 //
 // Validation errors are returned with detailed messages:
@@ -138,7 +243,8 @@
 //	  "message": "Validation error",
 //	  "error": {
 //	    "amount": "must be greater than 0",
-//	    "currency": "must be exactly 3 characters"
+//	    "currency": "must be exactly 3 characters",
+//	    "callbackUrl": "must be a valid URL"
 //	  }
 //	}
 //
@@ -149,11 +255,11 @@
 //	// Success response
 //	{
 //	  "success": true,
-//	  "message": "Payment processed",
+//	  "message": "Payment processed successfully",
 //	  "data": {
 //	    "paymentId": "12345",
 //	    "status": "pending",
-//	    "threeDUrl": "https://provider.com/3d-secure"
+//	    "redirectUrl": "https://provider.com/3d-secure"
 //	  }
 //	}
 //
@@ -169,22 +275,48 @@
 //
 // # Authentication and Authorization
 //
-// API endpoints require Bearer token authentication:
+// Most API endpoints require JWT Bearer token authentication:
 //
-//	Authorization: Bearer your-api-key
+//	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 //
-// Some endpoints (callbacks, webhooks, health checks) are public and
-// don't require authentication.
+// Public endpoints (no authentication required):
+//   - /health - Health check
+//   - /v1/auth/login - User login
+//   - /v1/auth/register - First user registration
+//   - /v1/analytics/* - Dashboard analytics
+//   - /v1/callback/* - 3D Secure callbacks
+//   - /v1/webhooks/* - Payment webhooks
 //
-// # Rate Limiting and Security
+// Admin-only endpoints (require admin tenant):
+//   - /v1/auth/create-tenant - Create new tenant
+//   - /v1/auth/change-password (for other users)
 //
-// Handlers are protected by several middleware layers:
+// # JWT Middleware Integration
 //
-//   - Rate limiting per IP and API key
-//   - IP whitelisting for sensitive operations
-//   - Request size validation
+// JWT authentication is handled by middleware that extracts tenant information:
+//
+//	// JWT middleware validates token and extracts tenant info
+//	func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler
+//
+//	// Usage in handlers
+//	func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) {
+//	    // Tenant ID automatically available from JWT context
+//	    tenantID := middle.GetTenantIDFromContext(r.Context())
+//	    // Process payment with tenant-specific configuration
+//	}
+//
+// # Security Features
+//
+// Handlers are protected by comprehensive security measures:
+//
+//   - JWT authentication with auto-rotating secret keys
+//   - Tenant-based rate limiting with action-specific limits
+//   - SQL injection protection with input validation
+//   - Request size validation and limits
 //   - Security headers (CORS, CSP, etc.)
-//   - Request logging and monitoring
+//   - Sensitive data masking in logs and responses
+//   - Webhook signature validation
+//   - Comprehensive audit logging
 //
 // # Content Type Support
 //
@@ -193,6 +325,10 @@
 //	Content-Type: application/json
 //	Accept: application/json
 //
+// Form data is supported for webhook and callback endpoints:
+//
+//	Content-Type: application/x-www-form-urlencoded
+//
 // # HTTP Status Codes
 //
 // Handlers use standard HTTP status codes:
@@ -200,59 +336,33 @@
 //   - 200 OK: Successful operation
 //   - 201 Created: Resource created successfully
 //   - 400 Bad Request: Invalid request format or validation error
-//   - 401 Unauthorized: Missing or invalid authentication
+//   - 401 Unauthorized: Missing or invalid JWT token
+//   - 403 Forbidden: Insufficient permissions
 //   - 404 Not Found: Resource not found
+//   - 409 Conflict: Resource already exists
 //   - 429 Too Many Requests: Rate limit exceeded
-//   - 500 Internal Server Error: Server-side error
+//   - 500 Internal Server Error: Unexpected server error
 //
-// # Logging and Monitoring
+// # Database Integration
 //
-// All handlers automatically log requests and responses for monitoring:
+// All handlers integrate with PostgreSQL for:
 //
-//   - Request/response timing
-//   - HTTP status codes
-//   - Error rates
-//   - Payment success rates
-//   - Provider performance metrics
-//
-// Logs are structured and can be sent to PostgreSQL for analysis.
-//
-// # Testing
-//
-// All handlers include comprehensive tests covering:
-//
-//   - Valid request scenarios
-//   - Invalid request validation
-//   - Authentication failures
-//   - Provider errors
-//   - Multi-tenant scenarios
-//   - Edge cases and error conditions
-//
-// Example test:
-//
-//	func TestPaymentHandler_ProcessPayment(t *testing.T) {
-//	    handler := NewPaymentHandler(mockService, validator)
-//
-//	    req := httptest.NewRequest("POST", "/payments/iyzico", requestBody)
-//	    req.Header.Set("X-Tenant-ID", "TEST")
-//	    req.Header.Set("Content-Type", "application/json")
-//
-//	    w := httptest.NewRecorder()
-//	    handler.ProcessPayment(w, req)
-//
-//	    assert.Equal(t, 200, w.Code)
-//	}
+//   - User authentication and tenant management
+//   - Payment logging with tenant isolation
+//   - Configuration storage and retrieval
+//   - Analytics and business intelligence
+//   - Audit trails and compliance
 //
 // # Performance Considerations
 //
-// Handlers are optimized for high throughput:
+// Handlers are optimized for performance:
 //
-//   - Streaming JSON parsing for large requests
-//   - Connection pooling for provider API calls
-//   - Efficient logging with batching
-//   - Minimal memory allocations
-//   - Concurrent request processing
+//   - Connection pooling for database operations
+//   - Efficient JWT token validation
+//   - Rate limiting to prevent abuse
+//   - Structured logging for monitoring
+//   - Error handling to prevent cascading failures
 //
-// For production deployments, consider using multiple handler instances
-// behind a load balancer for optimal performance.
+// For specific implementation details, see the individual handler files
+// and their corresponding test files.
 package handler

@@ -31,122 +31,215 @@
 //   - PayTR: Popular Turkish payment gateway
 //   - PayU: International payment processing
 //
+// # Authentication System
+//
+// GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys:
+//
+//	// 1. Register or login to get JWT token
+//	POST /v1/auth/login
+//	{
+//	  "username": "admin",
+//	  "password": "password123"
+//	}
+//
+//	// Response includes JWT token
+//	{
+//	  "success": true,
+//	  "data": {
+//	    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+//	    "expires_at": "2024-01-16T10:30:00Z",
+//	    "tenant_id": "1"
+//	  }
+//	}
+//
+//	// 2. Use JWT token in Authorization header
+//	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+//
+// # Enhanced Security Features
+//
+// Auto-Rotating JWT Secret Keys:
+//   - JWT secret key regenerates on every service restart
+//   - All existing tokens become invalid after restart
+//   - Users must re-authenticate after service restart
+//   - No persistent secret storage (UUID-generated keys)
+//
+// Tenant-Based Rate Limiting:
+//   - Individual rate limits per tenant extracted from JWT token
+//   - Action-specific limits (payment, refund, status, auth, config)
+//   - Premium tenant support with higher limits
+//   - IP-based rate limiting for unauthenticated requests
+//   - Automatic cleanup and burst allowance
+//
 // # Quick Start
 //
-// Basic usage example:
+// Basic usage example with JWT authentication:
 //
 //	package main
 //
 //	import (
 //	    "context"
+//	    "net/http"
 //	    "github.com/mstgnz/gopay/provider"
 //	    _ "github.com/mstgnz/gopay/provider/iyzico" // Import to register provider
 //	)
 //
 //	func main() {
-//	    // Create payment service
-//	    service := provider.NewPaymentService()
-//
-//	    // Configure provider
-//	    config := map[string]string{
-//	        "apiKey":      "your-api-key",
-//	        "secretKey":   "your-secret-key",
-//	        "environment": "sandbox", // or "production"
+//	    // 1. Authenticate and get JWT token
+//	    loginReq := map[string]string{
+//	        "username": "admin",
+//	        "password": "password123",
 //	    }
 //
-//	    // Add provider
-//	    err := service.AddProvider("iyzico", config)
+//	    token := authenticateAndGetToken(loginReq)
+//
+//	    // 2. Configure provider with JWT authentication
+//	    configReq := map[string]string{
+//	        "IYZICO_API_KEY":    "your-api-key",
+//	        "IYZICO_SECRET_KEY": "your-secret-key",
+//	        "IYZICO_ENVIRONMENT": "sandbox",
+//	    }
+//
+//	    err := configureProvider(token, configReq)
 //	    if err != nil {
 //	        panic(err)
 //	    }
 //
-//	    // Create payment request
-//	    paymentReq := provider.PaymentRequest{
-//	        Amount:      100.50,
-//	        Currency:    "TRY",
-//	        CallbackURL: "https://yourapp.com/callback",
-//	        Customer: provider.Customer{
-//	            Name:    "John",
-//	            Surname: "Doe",
-//	            Email:   "john@example.com",
+//	    // 3. Create payment request with JWT authentication
+//	    paymentReq := map[string]any{
+//	        "amount":   100.50,
+//	        "currency": "TRY",
+//	        "customer": map[string]string{
+//	            "name":    "John",
+//	            "surname": "Doe",
+//	            "email":   "john@example.com",
 //	        },
-//	        CardInfo: provider.CardInfo{
-//	            CardNumber:  "5528790000000008",
-//	            ExpireMonth: "12",
-//	            ExpireYear:  "2030",
-//	            CVV:         "123",
+//	        "cardInfo": map[string]string{
+//	            "cardHolderName": "John Doe",
+//	            "cardNumber":     "5528790000000008",
+//	            "expireMonth":    "12",
+//	            "expireYear":     "2030",
+//	            "cvv":            "123",
 //	        },
+//	        "use3D":       true,
+//	        "callbackUrl": "https://yourapp.com/callback",
 //	    }
 //
-//	    // Process payment
-//	    ctx := context.Background()
-//	    response, err := service.CreatePayment(ctx, "iyzico", paymentReq)
-//	    if err != nil {
-//	        panic(err)
-//	    }
+//	    // 4. Process payment with JWT token (tenant automatically detected from token)
+//	    response := processPaymentWithToken(token, "iyzico", paymentReq)
 //
-//	    // Handle response
+//	    // 5. Handle response
 //	    if response.Success {
-//	        // Payment successful or requires 3D authentication
-//	        if response.ThreeDURL != "" {
+//	        if response.RedirectURL != "" {
 //	            // Redirect user to 3D secure page
-//	            fmt.Printf("Redirect to: %s\n", response.ThreeDURL)
+//	            fmt.Printf("Redirect to: %s\n", response.RedirectURL)
 //	        }
 //	    }
 //	}
 //
 // # Multi-Tenant Support
 //
-// GoPay supports multi-tenant architecture where different applications can use
-// different provider configurations:
+// GoPay supports multi-tenant architecture where tenant information is automatically
+// extracted from JWT tokens:
 //
-//	// Setup tenant-specific configuration
-//	err := providerConfig.SetTenantConfig("APP1", "iyzico", map[string]string{
-//	    "apiKey":      "app1-api-key",
-//	    "secretKey":   "app1-secret-key",
-//	    "environment": "sandbox",
-//	})
+//	// Each JWT token contains tenant information
+//	// No need for X-Tenant-ID headers - tenant is extracted from JWT
 //
-//	// Use with tenant header
-//	// X-Tenant-ID: APP1
-//	// The system automatically routes to tenant-specific configuration
+//	// 1. Configure tenant-specific provider settings
+//	POST /v1/set-env
+//	Authorization: Bearer <tenant_jwt_token>
+//	{
+//	  "IYZICO_API_KEY": "tenant-specific-api-key",
+//	  "IYZICO_SECRET_KEY": "tenant-specific-secret-key",
+//	  "IYZICO_ENVIRONMENT": "sandbox"
+//	}
+//
+//	// 2. Process payments (tenant automatically detected from JWT)
+//	POST /v1/payments/iyzico
+//	Authorization: Bearer <tenant_jwt_token>
+//	{
+//	  "amount": 100.50,
+//	  "currency": "TRY",
+//	  "customer": {...}
+//	}
 //
 // # Environment Support
 //
 // Each provider supports both test (sandbox) and production environments:
 //
 //	config := map[string]string{
-//	    "apiKey":      "your-api-key",
-//	    "secretKey":   "your-secret-key",
-//	    "environment": "production", // or "sandbox"
+//	    "IYZICO_API_KEY":     "your-api-key",
+//	    "IYZICO_SECRET_KEY":  "your-secret-key",
+//	    "IYZICO_ENVIRONMENT": "production", // or "sandbox"
 //	}
 //
 // # HTTP API
 //
-// GoPay also provides a REST API for integration:
+// GoPay provides a comprehensive REST API with JWT authentication:
 //
-//	# Create payment
-//	POST /v1/payments/{provider}
-//	Headers:
-//	  Authorization: Bearer your-api-key
-//	  X-Tenant-ID: your-tenant-id
-//	  Content-Type: application/json
+//	# Authentication
+//	POST /v1/auth/login          - User login
+//	POST /v1/auth/register       - First user registration (admin)
+//	POST /v1/auth/create-tenant  - Create new tenant (admin only)
+//	POST /v1/auth/refresh        - Refresh JWT token
+//	POST /v1/auth/validate       - Validate JWT token
 //
-//	# Check payment status
-//	GET /v1/payments/{provider}/{paymentID}
+//	# Configuration
+//	POST /v1/set-env                    - Configure payment provider
+//	GET  /v1/config/tenant-config       - Get tenant configuration
+//	DELETE /v1/config/tenant-config     - Delete tenant configuration
 //
-//	# Cancel payment
-//	DELETE /v1/payments/{provider}/{paymentID}
+//	# Payments
+//	POST /v1/payments/{provider}                 - Create payment
+//	GET  /v1/payments/{provider}/{paymentID}     - Check payment status
+//	DELETE /v1/payments/{provider}/{paymentID}   - Cancel payment
+//	POST /v1/payments/{provider}/refund          - Process refund
 //
-//	# Process refund
-//	POST /v1/payments/{provider}/refund
+//	# Rate Limiting
+//	GET /v1/rate-limit/stats  - Get tenant rate limit statistics
+//
+//	# Analytics
+//	GET /v1/analytics/dashboard  - Dashboard statistics
+//	GET /v1/analytics/providers  - Provider performance stats
+//	GET /v1/analytics/activity   - Recent payment activity
+//
+//	# Logs
+//	GET /v1/logs/{provider}                      - Get payment logs
+//	GET /v1/logs/{provider}/payment/{paymentID}  - Get specific payment logs
+//	GET /v1/logs/{provider}/errors               - Get error logs
+//
+// All API endpoints require JWT authentication:
+//
+//	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+//
+// # Rate Limiting
+//
+// GoPay implements sophisticated tenant-based rate limiting:
+//
+//   - Global requests: 100/minute per tenant (default)
+//   - Payment requests: 50/minute per tenant (default)
+//   - Refund requests: 20/minute per tenant (default)
+//   - Status requests: 200/minute per tenant (default)
+//   - Unauthenticated requests: 10/minute per IP
+//   - Premium tenants: 2x rate multiplier
+//   - Burst allowance: Additional 10 requests above limits
+//   - Automatic cleanup: Old entries cleaned every 5 minutes
+//
+// Rate limit configuration via environment variables:
+//
+//	TENANT_GLOBAL_RATE_LIMIT=100      # Global requests per minute
+//	TENANT_PAYMENT_RATE_LIMIT=50      # Payment requests per minute
+//	TENANT_REFUND_RATE_LIMIT=20       # Refund requests per minute
+//	TENANT_STATUS_RATE_LIMIT=200      # Status requests per minute
+//	UNAUTHENTICATED_RATE_LIMIT=10     # Unauthenticated requests per minute
+//	PREMIUM_TENANTS=tenant1,tenant2   # Premium tenant list
 //
 // # Callbacks and Webhooks
 //
-// GoPay handles provider callbacks and webhooks automatically:
+// GoPay handles provider callbacks and webhooks automatically with multi-tenant support:
 //
-//   - Callback URLs: /callback/{provider}?tenantId={tenantId}
-//   - Webhook URLs: /webhooks/{provider}?tenantId={tenantId}
+//   - Callback URLs: /v1/callback/{provider}?tenantId={tenantId}
+//   - Webhook URLs: /v1/webhooks/{provider}?tenantId={tenantId}
+//   - Legacy URLs: /callback/{provider}, /webhooks/{provider}
 //
 // The system preserves tenant information and routes responses back to
 // the correct application.
@@ -155,37 +248,44 @@
 //
 // GoPay integrates with PostgreSQL for comprehensive logging and analytics:
 //
-//   - Real-time payment tracking
+//   - Real-time payment tracking with tenant isolation
 //   - Provider-specific performance metrics
-//   - Tenant-isolated logging
-//   - Dashboard analytics
+//   - Comprehensive request/response logging
+//   - SQL injection protection with input validation
+//   - Dashboard analytics with business intelligence
+//   - Audit trails for all operations
 //
 // # Configuration
 //
-// Configuration can be done via environment variables or programmatically:
+// Configuration is done programmatically via JWT-authenticated API calls:
 //
-//	# Environment variables
+//	# Configure via API (recommended)
+//	POST /v1/set-env
+//	Authorization: Bearer <jwt_token>
+//	{
+//	  "IYZICO_API_KEY": "your-api-key",
+//	  "IYZICO_SECRET_KEY": "your-secret-key",
+//	  "IYZICO_ENVIRONMENT": "sandbox"
+//	}
+//
+//	# Environment variables (legacy/global)
 //	IYZICO_API_KEY=your-api-key
 //	IYZICO_SECRET_KEY=your-secret-key
 //	IYZICO_ENVIRONMENT=sandbox
 //
-//	# Or programmatically
-//	config := map[string]string{
-//	    "apiKey":      "your-api-key",
-//	    "secretKey":   "your-secret-key",
-//	    "environment": "sandbox",
-//	}
-//
 // # Security Features
 //
-// GoPay includes several security features:
+// GoPay includes comprehensive security features:
 //
-//   - API key authentication
-//   - Rate limiting
-//   - IP whitelisting
-//   - Request validation
+//   - JWT authentication with auto-rotating secret keys
+//   - Tenant-based rate limiting with action-specific limits
+//   - SQL injection protection with input validation
+//   - IP whitelisting support
+//   - Request validation and size limits
 //   - Webhook signature validation
-//   - Secure data handling
+//   - Secure data handling with sensitive data masking
+//   - Audit logging for all operations
+//   - CORS and security headers
 //
 // # Development and Testing
 //
@@ -199,17 +299,18 @@
 // Comprehensive examples are available in the examples/ directory:
 //   - examples/iyzico_example.go - İyzico integration example
 //   - examples/multi_tenant/ - Multi-tenant setup examples
-//   - examples/*_curl_examples.sh - cURL command examples
+//   - examples/*_curl_examples.sh - cURL examples for each provider
 //
-// # Contributing
+// # Production Deployment
 //
-// To add a new payment provider:
+// For production deployment:
 //
-//  1. Implement the provider.PaymentProvider interface
-//  2. Add the provider package under provider/{provider}/
-//  3. Register the provider in provider/{provider}/register.go
-//  4. Add comprehensive tests and documentation
-//  5. Submit a pull request
+//   - Use Kubernetes manifests in k8s/ directory
+//   - Configure PostgreSQL for persistence
+//   - Set up monitoring with Prometheus
+//   - Use nginx for load balancing
+//   - Enable rate limiting and security features
+//   - Configure backup and disaster recovery
 //
-// For more information, visit: https://github.com/mstgnz/gopay
+// For comprehensive documentation, visit the API documentation at /docs endpoint.
 package gopay
