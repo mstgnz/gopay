@@ -126,9 +126,9 @@ graph TD
 | **Stripe**  | ✅ Production  | [Guide](provider/stripe/README.md)  | Payment, 3D, Refund, Cancel |
 | **OzanPay** | ✅ Production  | [Guide](provider/ozanpay/README.md) | Payment, 3D, Refund, Cancel |
 | **Paycell** | ✅ Production  | [Guide](provider/paycell/README.md) | Payment, 3D, Refund, Cancel |
-| **Papara**  | 🚧 Development | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
+| **Papara**  | ✅ Production  | [Guide](provider/papara/README.md)  | Payment, 3D, Refund, Cancel |
 | **Nkolay**  | ✅ Production  | [Guide](provider/nkolay/README.md)  | Payment, 3D, Refund, Cancel |
-| **PayTR**   | 🚧 Development | [Guide](provider/paytr/README.md)   | Payment, 3D, Refund, Cancel |
+| **PayTR**   | ✅ Production  | [Guide](provider/paytr/README.md)   | Payment, 3D, Refund, Cancel |
 | **PayU**    | 🚧 Development | [Guide](provider/payu/README.md)    | Payment, 3D, Refund, Cancel |
 | **Shopier** | 🚧 Development | [Guide](provider/shopier/README.md) | Coming Soon                 |
 
