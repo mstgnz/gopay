@@ -164,7 +164,7 @@ func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, tenantID s
 // getProviderVolume calculates total payment volume for a provider
 func (h *AnalyticsHandler) getProviderVolume(ctx context.Context, tenantID int, provider string, hours int) (float64, error) {
 	// Create filters for PostgreSQL search
-	filters := map[string]interface{}{
+	filters := map[string]any{
 		"start_date": time.Now().Add(-time.Duration(hours) * time.Hour),
 		"end_date":   time.Now(),
 	}
@@ -314,7 +314,7 @@ func (h *AnalyticsHandler) getRealRecentActivity(ctx context.Context, tenantID s
 
 	for _, provider := range providers {
 		// Create filters for recent payments
-		filters := map[string]interface{}{
+		filters := map[string]any{
 			"start_date": time.Now().Add(-2 * time.Hour), // Last 2 hours
 			"end_date":   time.Now(),
 		}

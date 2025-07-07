@@ -14,7 +14,9 @@ info:
     - 💰 **Full Payment Lifecycle**: Process, track, cancel, and refund payments
     - 🎯 **Webhook Integration**: Receive real-time payment notifications
     - 🛡️ **Secure by Design**: Built-in authentication and security features
-    - 💾 **Persistent Configuration**: SQLite-based tenant configuration storage
+    - 🔐 **JWT Authentication**: Secure user authentication with token-based access
+    - 💾 **PostgreSQL Database**: Persistent configuration and comprehensive payment logging
+    - 📊 **Advanced Logging**: Complete request/response logging with PostgreSQL storage
 
     ## Supported Payment Providers
     - ✅ **İyzico** (Turkey) - Full integration with 3D Secure support
@@ -26,18 +28,44 @@ info:
     - ✅ **PayTR** (Turkey) - Production ready
     - ✅ **PayU** (Global) - Production ready
 
-    ## Authentication
-    All API endpoints require a Bearer token for authentication. Include the token in the Authorization header:
-    ```
-    Authorization: Bearer <your_api_key>
-    ```
+    ## Authentication System
+    GoPay uses JWT (JSON Web Token) based authentication for secure API access.
+
+    ### Getting Started
+    1. **First Setup**: Register first admin user with `POST /v1/auth/register`
+            2. **Subsequent Users**: Use `POST /v1/auth/create-tenant` (admin only)
+    3. **Login**: Get JWT token with `POST /v1/auth/login`
+    4. **API Access**: Include token in Authorization header: `Bearer <token>`
+
+    ### Registration Rules
+    - ✅ **First User**: Automatic admin privileges, no restrictions
+    - ❌ **Additional Users**: Only admin can create via create-tenant endpoint
+
+    ### Token Management
+    - **Expiry**: 24 hours default
+    - **Refresh**: Use `/v1/auth/refresh` to extend validity
+    - **Validation**: Use `/v1/auth/validate` to check token status
+
+    ## Database & Logging
+    GoPay uses **PostgreSQL 17.5** for:
+    - **User Management**: Secure tenant authentication
+    - **Payment Logging**: Complete request/response tracking
+    - **Configuration Storage**: Tenant-specific provider settings
+    - **Analytics**: Real-time payment statistics
+
+    ### Payment Logging Features
+    - 📝 **Request/Response Logging**: All payment requests logged to provider-specific tables
+    - ⏱️ **Performance Tracking**: Processing time measurement
+    - 🔍 **Error Analysis**: Detailed error logging and categorization
+    - 📊 **Multi-tenant Isolation**: Secure data separation
 
     ## Multi-Tenant Configuration
     GoPay supports multi-tenant architecture where different projects can use different payment provider configurations.
 
     ### Setup Flow
-    1. `POST /v1/set-env` with `X-Tenant-ID` header - Configure payment provider for a tenant
-    2. Use payment endpoints with same `X-Tenant-ID` header - Automatically uses tenant-specific configuration
+    1. **Authenticate**: Get JWT token via login
+    2. **Configure**: `POST /v1/set-env` with `X-Tenant-ID` header - Configure payment provider for a tenant
+    3. **Process**: Use payment endpoints with same `X-Tenant-ID` header - Automatically uses tenant-specific configuration
 
     ### Tenant Header
     For tenant-specific operations, include the tenant identifier in the header:
@@ -77,6 +105,117 @@ components:
       description: API key required for payment operations
   
   schemas:
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "admin"
+          description: User username
+        password:
+          type: string
+          minLength: 6
+          example: "password123"
+          description: User password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          description: JWT authentication token
+        expires_at:
+          type: string
+          format: date-time
+          example: "2024-01-16T10:30:00Z"
+          description: Token expiration time
+        username:
+          type: string
+          example: "admin"
+          description: Username
+        tenant_id:
+          type: string
+          example: "1"
+          description: Tenant ID
+
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "admin"
+          description: Desired username
+        password:
+          type: string
+          minLength: 6
+          example: "password123"
+          description: Password for the account
+
+    ChangePasswordRequest:
+      type: object
+      required: [new_password]
+      properties:
+        current_password:
+          type: string
+          minLength: 6
+          example: "oldpassword123"
+          description: Current password (required when changing own password)
+        new_password:
+          type: string
+          minLength: 6
+          example: "newpassword123"
+          description: New password
+        target_tenant_id:
+          type: integer
+          example: 2
+          description: Target tenant ID (admin only - for changing other users' passwords)
+
+    CreateTenantRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "newuser"
+          description: Username for new tenant
+        password:
+          type: string
+          minLength: 6
+          example: "password123"
+          description: Password for new tenant
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+          description: Tenant ID
+        username:
+          type: string
+          example: "admin"
+          description: Username
+        last_login:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+          description: Last login time
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+          description: Account creation time
+
     # Common Response Schemas
     ApiResponse:
       type: object
@@ -663,7 +802,7 @@ components:
           type: string
           example: "http://localhost:9999"
           description: Base URL for callbacks
-        sqlite:
+        postgresql:
           type: object
           properties:
             total_configs:
@@ -678,15 +817,20 @@ components:
               type: integer
               example: 3
               description: Number of unique providers
-            db_size_bytes:
+            total_payments:
               type: integer
-              example: 32768
-              description: Database file size in bytes
-            db_path:
+              example: 1250
+              description: Total payments logged
+            database_size_mb:
+              type: number
+              format: float
+              example: 45.2
+              description: Database size in megabytes
+            connection_status:
               type: string
-              example: "/app/data/gopay.db"
-              description: Database file path
-          description: SQLite database statistics
+              example: "connected"
+              description: Database connection status
+          description: PostgreSQL database statistics
 
     # Logging Schemas
     PaymentLog:
@@ -1045,7 +1189,8 @@ paths:
       description: |
         Returns system statistics including:
         - Number of configurations in memory
-        - SQLite database statistics
+        - PostgreSQL database statistics
+        - Payment logging metrics
         - Storage information
       tags: [Configuration]
       responses:
@@ -2162,8 +2307,8 @@ paths:
       description: |
         Returns the health status of the GoPay service including:
         - Service availability
-        - OpenSearch logging status
-        - Provider connectivity
+        - PostgreSQL database connectivity
+        - Payment provider connectivity
         - System version
         
         **No Authentication Required** - This is a public health check endpoint.
@@ -2195,9 +2340,10 @@ paths:
                       version:
                         type: string
                         example: "1.0.0"
-                      opensearch_enabled:
+                      postgres_enabled:
                         type: boolean
                         example: true
+                        description: PostgreSQL database status
         '503':
           description: Service unavailable
 
@@ -2772,5 +2918,494 @@ paths:
           description: Invalid parameters or missing X-Tenant-ID header
         '401':
           description: Unauthorized - Invalid API key
+        '500':
+          description: Internal server error
+
+  # Authentication Operations
+  /v1/auth/register:
+    post:
+      summary: Register new user (Admin only)
+      description: |
+        Registers a new user account with special rules:
+        
+        **Registration Rules:**
+        - ✅ **First Registration**: If no users exist, registration creates the first admin user
+        - ❌ **Subsequent Registrations**: Blocked - only admins can create new users via `/v1/auth/create-tenant`
+        
+        **First User Benefits:**
+        - Automatically becomes admin
+        - Gets full system access
+        - Can create other users
+        
+        **Security:**
+        - No authentication required for first user
+        - Validates username uniqueness
+        - Password must be at least 6 characters
+        
+        **Usage Scenarios:**
+        1. **Fresh Installation**: First call creates admin user
+        2. **Existing System**: Returns 403 Forbidden
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              first_admin:
+                summary: First Admin Registration
+                value:
+                  username: "admin"
+                  password: "securepassword123"
+              blocked_registration:
+                summary: Blocked Registration (after first user)
+                value:
+                  username: "user2"
+                  password: "password123"
+      responses:
+        '201':
+          description: Registration successful (first user only)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+              examples:
+                success:
+                  summary: Successful Registration
+                  value:
+                    success: true
+                    message: "Registration successful"
+                    data:
+                      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      expires_at: "2024-01-16T10:30:00Z"
+                      username: "admin"
+                      tenant_id: "1"
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  summary: Validation Error
+                  value:
+                    success: false
+                    message: "Validation error"
+                    error: "Username must be at least 3 characters"
+        '403':
+          description: Registration is closed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                registration_closed:
+                  summary: Registration Closed
+                  value:
+                    success: false
+                    message: "Registration is closed. Only administrators can create new accounts."
+        '500':
+          description: Internal server error
+
+  /v1/auth/login:
+    post:
+      summary: User login
+      description: |
+        Authenticates a user and returns a JWT token for API access.
+        
+        **Authentication Flow:**
+        1. Validate username and password
+        2. Generate JWT token (24 hour expiry)
+        3. Update last login timestamp
+        4. Return token and user info
+        
+        **Token Usage:**
+        - Include in Authorization header: `Bearer <token>`
+        - Required for all protected endpoints
+        - Auto-expires after 24 hours
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin_login:
+                summary: Admin Login
+                value:
+                  username: "admin"
+                  password: "securepassword123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid request format
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_credentials:
+                  summary: Invalid Credentials
+                  value:
+                    success: false
+                    message: "Invalid username or password"
+        '500':
+          description: Internal server error
+
+  /v1/auth/logout:
+    post:
+      summary: User logout
+      description: |
+        Logs out the current user. Since JWT tokens are stateless, 
+        this endpoint mainly provides a logout confirmation.
+        
+        **Note:** Clients should discard the JWT token after logout.
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Logged out successfully"
+        '401':
+          description: Unauthorized - Invalid or missing token
+
+  /v1/auth/change-password:
+    post:
+      summary: Change user password
+      description: |
+        Changes password for authenticated user or other users (admin only).
+        
+        **For Regular Users:**
+        - Must provide current password for verification
+        - Can only change their own password
+        
+        **For Admin Users (tenant_id=1):**
+        - Can change any user's password by providing target_tenant_id
+        - No current password required when changing other users' passwords
+        - Current password required when changing own password
+        
+        **Security Requirements:**
+        - New password must be at least 6 characters
+        - User must be authenticated with valid JWT token
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            examples:
+              own_password_change:
+                summary: Change Own Password
+                value:
+                  current_password: "oldpassword123"
+                  new_password: "newpassword123"
+              admin_change_other:
+                summary: Admin Change Other User's Password
+                value:
+                  target_tenant_id: 3
+                  new_password: "newpassword123"
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Password changed successfully"
+                          target_tenant_id:
+                            type: integer
+                            example: 2
+                            description: ID of the tenant whose password was changed
+                          changed_by_admin:
+                            type: boolean
+                            example: false
+                            description: Whether the password was changed by admin for another user
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_current_password:
+                  summary: Missing Current Password
+                  value:
+                    success: false
+                    message: "Current password is required when changing your own password"
+        '401':
+          description: Unauthorized or current password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                wrong_password:
+                  summary: Wrong Current Password
+                  value:
+                    success: false
+                    message: "Current password is incorrect"
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_admin:
+                  summary: Non-admin Trying to Change Other's Password
+                  value:
+                    success: false
+                    message: "Only administrators can change other users' passwords"
+        '404':
+          description: Target tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                tenant_not_found:
+                  summary: Target Tenant Not Found
+                  value:
+                    success: false
+                    message: "Target tenant not found"
+        '500':
+          description: Internal server error
+
+  /v1/auth/create-tenant:
+    post:
+      summary: Create new tenant (Admin only)
+      description: |
+        Creates a new tenant account. Only available to authenticated admin users.
+        
+        **Admin Privileges:**
+        - Only authenticated users can create new tenants
+        - No limit on number of tenants
+        - New tenant gets standard user privileges
+        
+        **Use Cases:**
+        - Add new team members
+        - Create service accounts
+        - Manage multi-user access
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+            examples:
+              new_tenant:
+                summary: Create New Tenant
+                value:
+                  username: "newuser"
+                  password: "password123"
+      responses:
+        '201':
+          description: Tenant created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid request data or validation error
+        '401':
+          description: Unauthorized - Admin access required
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                username_exists:
+                  summary: Username Already Exists
+                  value:
+                    success: false
+                    message: "Username already exists"
+        '500':
+          description: Internal server error
+
+  /v1/auth/profile:
+    get:
+      summary: Get user profile
+      description: |
+        Retrieves the profile information for the authenticated user.
+        
+        **Returned Information:**
+        - User ID and username
+        - Account creation date
+        - Last login timestamp
+        - No sensitive data (passwords, tokens)
+      tags: [Authentication]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Unauthorized - Invalid or missing token
+        '500':
+          description: Internal server error
+
+  /v1/auth/refresh:
+    post:
+      summary: Refresh JWT token
+      description: |
+        Refreshes an existing JWT token to extend its validity.
+        
+        **Token Refresh:**
+        - Validates current token
+        - Issues new token with extended expiry
+        - Original token becomes invalid
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  description: Current JWT token to refresh
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Invalid token format
+        '401':
+          description: Token expired or invalid
+        '500':
+          description: Internal server error
+
+  /v1/auth/validate:
+    post:
+      summary: Validate JWT token
+      description: |
+        Validates a JWT token and returns user information if valid.
+        
+        **Use Cases:**
+        - Check token validity before API calls
+        - Verify user identity
+        - Get user info from token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  description: JWT token to validate
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          valid:
+                            type: boolean
+                            example: true
+                          user:
+                            $ref: '#/components/schemas/UserProfile'
+        '400':
+          description: Invalid token format
+        '401':
+          description: Token expired or invalid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          valid:
+                            type: boolean
+                            example: false
         '500':
           description: Internal server error

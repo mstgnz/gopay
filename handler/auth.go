@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,8 +46,9 @@ type LoginResponse struct {
 
 // ChangePasswordRequest represents the change password request structure
 type ChangePasswordRequest struct {
-	CurrentPassword string `json:"current_password" validate:"required,min=6"`
+	CurrentPassword string `json:"current_password,omitempty" validate:"omitempty,min=6"`
 	NewPassword     string `json:"new_password" validate:"required,min=6"`
+	TargetTenantID  *int   `json:"target_tenant_id,omitempty"` // Optional: for admin to change other users' passwords
 }
 
 // CreateTenantRequest represents the create tenant request structure
@@ -58,6 +60,12 @@ type CreateTenantRequest struct {
 // RefreshTokenRequest represents the refresh token request structure
 type RefreshTokenRequest struct {
 	Token string `json:"token" validate:"required"`
+}
+
+// RegisterRequest represents the registration request structure
+type RegisterRequest struct {
+	Username string `json:"username" validate:"required,min=3,max=50"`
+	Password string `json:"password" validate:"required,min=6"`
 }
 
 // Login handles tenant login requests
@@ -99,6 +107,60 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, http.StatusOK, "Login successful", loginResp)
 }
 
+// Register handles tenant registration requests
+// Only allows registration if no tenants exist (first user becomes admin)
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	// Parse the registration request
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
+		return
+	}
+
+	// Validate the request
+	if err := h.validate.Struct(req); err != nil {
+		response.Error(w, http.StatusBadRequest, "Validation error", err)
+		return
+	}
+
+	// Create auth register request
+	registerReq := auth.RegisterRequest{
+		Username: req.Username,
+		Password: req.Password,
+	}
+
+	// Register tenant
+	tenant, err := h.tenantService.Register(registerReq)
+	if err != nil {
+		if strings.Contains(err.Error(), "registration is closed") {
+			response.Error(w, http.StatusForbidden, "Registration is closed. Only administrators can create new accounts.", nil)
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "Registration failed", err)
+		return
+	}
+
+	// Generate JWT token for the new user
+	tenantID := fmt.Sprintf("%d", tenant.ID)
+	token, err := h.jwtService.GenerateToken(tenantID, tenant.Username)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to generate authentication token", err)
+		return
+	}
+
+	// Calculate expiry time
+	expiresAt := time.Now().Add(24 * time.Hour) // Default 24 hours
+
+	registerResp := LoginResponse{
+		Token:     token,
+		TenantID:  tenantID,
+		Username:  tenant.Username,
+		ExpiresAt: expiresAt,
+	}
+
+	response.Success(w, http.StatusCreated, "Registration successful", registerResp)
+}
+
 // Logout handles tenant logout requests
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Get tenant information from context (set by JWT middleware)
@@ -122,16 +184,16 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 // ChangePassword handles password change requests
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Get tenant information from context (set by JWT middleware)
-	tenantIDStr := middle.GetTenantIDFromContext(r.Context())
+	currentTenantIDStr := middle.GetTenantIDFromContext(r.Context())
 	username := middle.GetTenantUserFromContext(r.Context())
 
-	if tenantIDStr == "" || username == "" {
+	if currentTenantIDStr == "" || username == "" {
 		response.Error(w, http.StatusUnauthorized, "Invalid session", nil)
 		return
 	}
 
-	// Convert tenant ID to int
-	tenantID, err := strconv.Atoi(tenantIDStr)
+	// Convert current tenant ID to int
+	currentTenantID, err := strconv.Atoi(currentTenantIDStr)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid tenant ID", nil)
 		return
@@ -150,22 +212,53 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Change password
-	err = h.tenantService.ChangePassword(tenantID, req.CurrentPassword, req.NewPassword)
+	// Check if current user is admin (tenant_id = 1)
+	isAdmin := currentTenantID == 1
+
+	// Determine target tenant ID
+	targetTenantID := currentTenantID
+	if req.TargetTenantID != nil {
+		if !isAdmin {
+			response.Error(w, http.StatusForbidden, "Only administrators can change other users' passwords", nil)
+			return
+		}
+		targetTenantID = *req.TargetTenantID
+	}
+
+	// Validate current password requirement
+	if targetTenantID == currentTenantID {
+		// User is changing their own password - current password required
+		if req.CurrentPassword == "" {
+			response.Error(w, http.StatusBadRequest, "Current password is required when changing your own password", nil)
+			return
+		}
+
+		// Change password with current password verification
+		err = h.tenantService.ChangePassword(targetTenantID, req.CurrentPassword, req.NewPassword)
+	} else if isAdmin {
+		// Admin is changing another user's password - no current password needed
+		err = h.tenantService.AdminChangePassword(targetTenantID, req.NewPassword)
+	} else {
+		response.Error(w, http.StatusForbidden, "Access denied", nil)
+		return
+	}
+
 	if err != nil {
 		switch err {
 		case auth.ErrInvalidCredentials:
 			response.Error(w, http.StatusUnauthorized, "Current password is incorrect", nil)
 		case auth.ErrTenantNotFound:
-			response.Error(w, http.StatusNotFound, "Tenant not found", nil)
+			response.Error(w, http.StatusNotFound, "Target tenant not found", nil)
 		default:
 			response.Error(w, http.StatusInternalServerError, "Failed to change password", err)
 		}
 		return
 	}
 
-	responseData := map[string]string{
-		"message": "Password changed successfully",
+	responseData := map[string]any{
+		"message":          "Password changed successfully",
+		"target_tenant_id": targetTenantID,
+		"changed_by_admin": targetTenantID != currentTenantID,
 	}
 
 	response.Success(w, http.StatusOK, "Password changed", responseData)

@@ -30,7 +30,7 @@ func GenerateToken(userId int) (string, error) {
 
 // ValidateToken token validate
 func ValidateToken(token string) (*jwt.Token, error) {
-	return jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+	return jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
 		}

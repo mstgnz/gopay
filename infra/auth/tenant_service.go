@@ -48,6 +48,12 @@ type CreateTenantRequest struct {
 	Password string `json:"password" validate:"required,min=6"`
 }
 
+// RegisterRequest represents a registration request
+type RegisterRequest struct {
+	Username string `json:"username" validate:"required,min=3,max=50"`
+	Password string `json:"password" validate:"required,min=6"`
+}
+
 // TenantService handles tenant operations
 type TenantService struct {
 	db         *conn.DB
@@ -247,6 +253,36 @@ func (s *TenantService) ChangePassword(tenantID int, oldPassword, newPassword st
 	return nil
 }
 
+// AdminChangePassword changes the password for a tenant without requiring the old password
+// This method should only be used by administrators
+func (s *TenantService) AdminChangePassword(tenantID int, newPassword string) error {
+	// Check if target tenant exists
+	_, err := s.GetTenantByID(tenantID)
+	if err != nil {
+		return err
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Update password
+	query := `
+		UPDATE tenants
+		SET password = $1
+		WHERE id = $2
+	`
+
+	_, err = s.db.Exec(query, string(hashedPassword), tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}
+
 // ValidateToken validates a JWT token and returns tenant information
 func (s *TenantService) ValidateToken(tokenString string) (*Tenant, error) {
 	// Validate JWT token
@@ -299,4 +335,65 @@ func (s *TenantService) ClearVerificationCode(tenantID int) error {
 	}
 
 	return nil
+}
+
+// CountTenants returns the total number of tenants in the system
+func (s *TenantService) CountTenants() (int, error) {
+	query := `SELECT COUNT(*) FROM tenants`
+
+	var count int
+	err := s.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count tenants: %w", err)
+	}
+
+	return count, nil
+}
+
+// Register handles user registration with special rules:
+// - Only allows registration if no tenants exist (first user becomes admin)
+// - Blocks registration if tenants already exist (only admin can create new users)
+func (s *TenantService) Register(req RegisterRequest) (*Tenant, error) {
+	// Check how many tenants exist
+	count, err := s.CountTenants()
+	if err != nil {
+		return nil, err
+	}
+
+	// If tenants already exist, registration is not allowed
+	// Only admin can create new tenants via CreateTenant
+	if count > 0 {
+		return nil, errors.New("registration is closed - only administrators can create new accounts")
+	}
+
+	// First user registration is allowed and becomes admin
+	return s.createFirstTenant(req)
+}
+
+// createFirstTenant creates the first tenant (admin) in the system
+func (s *TenantService) createFirstTenant(req RegisterRequest) (*Tenant, error) {
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Insert first tenant (admin)
+	query := `
+		INSERT INTO tenants (username, password, created_at)
+		VALUES ($1, $2, CURRENT_TIMESTAMP)
+		RETURNING id, username, created_at
+	`
+
+	var tenant Tenant
+	err = s.db.QueryRow(query, req.Username, string(hashedPassword)).Scan(
+		&tenant.ID,
+		&tenant.Username,
+		&tenant.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create first tenant: %w", err)
+	}
+
+	return &tenant, nil
 }

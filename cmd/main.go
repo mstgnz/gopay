@@ -226,12 +226,24 @@ func main() {
 		r.Get("/trends", analyticsHandler.GetPaymentTrends)     // GET /v1/analytics/trends?hours=24
 	})
 
-	// API routes with authentication
+	// Public v1 auth routes (no authentication required)
+	r.Route("/v1/auth", func(r chi.Router) {
+		// Initialize auth handler
+		validatorInstance := validator.New()
+		authHandler := handler.NewAuthHandler(tenantService, jwtService, validatorInstance)
+
+		r.Post("/login", authHandler.Login)
+		r.Post("/register", authHandler.Register) // Public registration (only if no users exist)
+		r.Post("/refresh", authHandler.RefreshToken)
+		r.Post("/validate", authHandler.ValidateToken)
+	})
+
+	// Protected v1 routes with authentication
 	r.Route("/v1", func(r chi.Router) {
-		// Add JWT authentication middleware only to API routes
+		// Add JWT authentication middleware only to protected routes
 		r.Use(middle.JWTAuthMiddleware(jwtService))
 
-		// Import v1 routes with required services
+		// Import v1 routes with required services (but exclude auth routes since they're handled above)
 		v1.Routes(r, postgresLogger, paymentService, providerConfig, jwtService, tenantService)
 	})
 
