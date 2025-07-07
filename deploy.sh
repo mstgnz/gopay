@@ -19,14 +19,14 @@ echo "   Environment: $ENVIRONMENT"
 echo "📦 Building GoPay application..."
 docker-compose build
 
-# Step 2: Start core services first (OpenSearch)
-echo "🔍 Starting OpenSearch..."
-docker-compose up -d opensearch
+# Step 2: Start core services first (PostgreSQL)
+echo "🐘 Starting PostgreSQL database..."
+docker-compose up -d postgres
 
-# Wait for OpenSearch to be ready
-echo "⏳ Waiting for OpenSearch to be ready..."
-timeout 60s bash -c 'until curl -s http://localhost:9200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
-echo "✅ OpenSearch is ready"
+# Wait for PostgreSQL to be ready
+echo "⏳ Waiting for PostgreSQL to be ready..."
+timeout 60s bash -c 'until docker-compose exec -T postgres pg_isready -U ${DB_USER:-gopay} > /dev/null 2>&1; do sleep 2; done'
+echo "✅ PostgreSQL is ready"
 
 # Step 3: Start API services with scaling
 echo "🌐 Starting API services with $REPLICAS replicas..."
@@ -62,19 +62,20 @@ echo ""
 echo "📊 Deployment Summary:"
 echo "   • API Replicas: $REPLICAS"
 echo "   • Load Balancer: Nginx (Port: $APP_PORT)"
-echo "   • OpenSearch: Running (Port: 9200)"
+echo "   • Database: PostgreSQL (Port: ${DB_PORT:-5432})"
 echo "   • Health Check: ✅ Passed"
 echo ""
 echo "🔗 Endpoints:"
 echo "   • API: http://localhost:$APP_PORT"
 echo "   • Health: http://localhost:$APP_PORT/health"
-echo "   • OpenSearch: http://localhost:9200"
+echo "   • Database: postgresql://localhost:${DB_PORT:-5432}"
 echo ""
 echo "📋 Useful Commands:"
 echo "   • Scale API: docker-compose up -d --scale api=5"
 echo "   • View logs: docker-compose logs -f api"
 echo "   • Monitor: docker-compose ps"
 echo "   • Stop: docker-compose down"
+echo "   • Database logs: docker-compose logs -f postgres"
 echo ""
 
 # Show running containers
