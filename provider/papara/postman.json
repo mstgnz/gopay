@@ -1,0 +1,1112 @@
+{
+    "info": {
+        "_postman_id": "f76b425a-b976-403c-bbcb-6cab28b4c438",
+        "name": "Merchant API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Account",
+            "item": [
+                {
+                    "name": "Account",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/account",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "account"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account Ledger",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "name": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n\t\"startDate\": \"01/01/2019 00:00\",\n\t\"endDate\": \"15/11/2019 00:00\",\n\t\"page\":1,\n\t\"pageSize\":50,\n\t\"accountNumber\": \"9087654321\", //opsiyonel\n\t\"entryType\": 9 //opsiyonel\n\t\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/account/ledgers",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "account",
+                                "ledgers"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account Settlement",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "name": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n\t\"startDate\": \"01/01/2019 00:00\",\n\t\"endDate\": \"11/15/2019 00:00\",\n  \"entryType\": 9 //opsiyonel\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/account/settlement",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "account",
+                                "settlement"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "id": "dca4379c-ce29-4894-b91c-4b8a013853a8",
+                        "type": "text/javascript",
+                        "exec": [
+                            ""
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "id": "9fc62539-9ea4-45ce-950c-0eb1e84ceca4",
+                        "type": "text/javascript",
+                        "exec": [
+                            ""
+                        ]
+                    }
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "Banking",
+            "item": [
+                {
+                    "name": "Banking Withdrawal",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\t\"bankAccountId\": 31,\r\n\t\"amount\": 100\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/banking/withdrawal",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "banking",
+                                "withdrawal"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Bank Accounts",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\"accountNumber\":\"9087654321\",\r\n\"amount\": 99.99,\r\n\"massPaymentId\": \"1234-5678-9999\",\r\n\"referenceId\":12435443,\r\n\"OrderDescription\":\"description\",\r\n\"NotificationUrl\":\"notification url\",\r\n\"RedirectUrl\":\"redirect url\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/banking/bankaccounts?id=973ed5fd-e2b2-41b3-a9cd-2abcd8a74042",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "banking",
+                                "bankaccounts"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "973ed5fd-e2b2-41b3-a9cd-2abcd8a74042"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "Cash Deposit",
+            "item": [
+                {
+                    "name": "Cash Deposit",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"phoneNumber\": \"+905055555555\",\r\n  \"amount\": 99.99,\r\n  \"merchantReference\": \"1234-4567-8922\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit AccountNumber",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{ \r\n  \"accountNumber\": \"9087654321\",\r\n  \"amount\": 10.99,\r\n  \"merchantReference\": \"1234-4567-8923\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/accountnumber",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "accountnumber"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit TCKN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{ \r\n  \"tckn\": \"21111111888\",\r\n  \"amount\": 10.99,\r\n  \"merchantReference\": \"1234-4567-8923\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/tckn",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "tckn"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit Settlement",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"StartDate\": \"2019-10-01\",\r\n  \"EndDate\": \"2019-10-02\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/settlement",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "settlement"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit With Id",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit?id=56272",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "56272"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit By Reference",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/byreference?reference=1234-4567-8923",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "byreference"
+                            ],
+                            "query": [
+                                {
+                                    "key": "reference",
+                                    "value": "1234-4567-8923"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Deposit By Date",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/bydate?StartDate=2019.10.01&EndDate=2019.10.03&PageIndex=1&PageItemCount=10",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "bydate"
+                            ],
+                            "query": [
+                                {
+                                    "key": "StartDate",
+                                    "value": "2019.10.01"
+                                },
+                                {
+                                    "key": "EndDate",
+                                    "value": "2019.10.03"
+                                },
+                                {
+                                    "key": "PageIndex",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "PageItemCount",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "Cash Deposit (Provision)",
+            "item": [
+                {
+                    "name": "Provison PhoneNumber",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"phoneNumber\": \"+905055555555\",\r\n  \"amount\": 99.99,\r\n  \"merchantReference\": \"1234-4567-8909\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/provision/phonenumber",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "provision",
+                                "phonenumber"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Provison AccountNumber",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n\"accountNumber\": \"9087654321\",\r\n  \"amount\": 99.99,\r\n  \"merchantReference\": \"1234-4567-8906\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/provision/accountnumber",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "provision",
+                                "accountnumber"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Provison TCKN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"tckn\": \"21111111888\",\r\n  \"amount\": 99.99,\r\n  \"merchantReference\": \"1234-4567-8905\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/provision/tckn",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "provision",
+                                "tckn"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Provison Complete",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"Id\": 20249,\r\n  \"TransactionDate\": \"2019.10.02 10:50\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/provision/complete",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "provision",
+                                "complete"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Provision Settlement",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "type": "text",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "type": "text",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"StartDate\": \"2019-10-01\",\r\n  \"EndDate\": \"2019-10-02\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/cashdeposit/provision/settlement",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "cashdeposit",
+                                "provision",
+                                "settlement"
+                            ],
+                            "query": [
+                                {
+                                    "key": "",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "",
+                                    "value": "",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "Checkout (Receive Payments)",
+            "item": [
+                {
+                    "name": "New Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"amount\": 39.99,\r\n  \"referenceId\": \"123456789\",\r\n  \"orderDescription\": \"order description\",\r\n  \"notificationUrl\": \"https://www.paparamerchant.com/ipn\",\r\n  \"redirectUrl\": \"https://www.paparamerchant.com/checkout\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/payments",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "payments"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Payment",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/payments?id=your-payment-id",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "payments"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "your-payment-id"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Refund Payment",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": ""
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/payments?id=your-payment-id",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "payments"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "your-payment-id"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Payments",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/payments/list?pageIndex=0&pageItemCount=10",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "payments",
+                                "list"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageIndex",
+                                    "value": "0"
+                                },
+                                {
+                                    "key": "pageItemCount",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "MassPayment (Send/Distribute Payments)",
+            "item": [
+                {
+                    "name": "Mass Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"accountNumber\": 9087654321,\r\n  \"amount\": 0.01,\r\n  \"massPaymentId\": \"1234-5678-54541\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/masspayment",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "masspayment"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Mass Payment With Id",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/masspayment?id=56249",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "masspayment"
+                            ],
+                            "query": [
+                                {
+                                    "key": "id",
+                                    "value": "56249"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Mass Payment By Reference",
+                    "protocolProfileBehavior": {
+                        "disableBodyPruning": true
+                    },
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/masspayment/byreference?reference=1234-5678-9997",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "masspayment",
+                                "byreference"
+                            ],
+                            "query": [
+                                {
+                                    "key": "reference",
+                                    "value": "1234-5678-9997"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Mass Payment To Email",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"email\": \"test@test.com\",\r\n  \"amount\": 99.99,\r\n  \"massPaymentId\": \"1234-5678-9997\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/masspayment/email",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "masspayment",
+                                "email"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Mass Payment To Phone Number",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\r\n  \"phoneNumber\": \"+905055555555\",\r\n  \"amount\": 1.99,\r\n  \"massPaymentId\": \"1234-5678-234234\"\r\n}"
+                        },
+                        "url": {
+                            "raw": "{{api-url}}/masspayment/phone",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "masspayment",
+                                "phone"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": {
+                        "id": "6040ca15-6d55-4fa6-81eb-ab79b87dabcc",
+                        "type": "text/javascript",
+                        "exec": [
+                            ""
+                        ]
+                    }
+                },
+                {
+                    "listen": "test",
+                    "script": {
+                        "id": "0215b891-22d1-425f-bbad-a2cff4103d41",
+                        "type": "text/javascript",
+                        "exec": [
+                            ""
+                        ]
+                    }
+                }
+            ],
+            "protocolProfileBehavior": {}
+        },
+        {
+            "name": "User Validation",
+            "item": [
+                {
+                    "name": "Validate Papara Number",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/validation/accountNumber?accountNumber=9087654321",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "validation",
+                                "accountNumber"
+                            ],
+                            "query": [
+                                {
+                                    "key": "accountNumber",
+                                    "value": "2099653816"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Validate Phone Number",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/validation/phoneNumber?phoneNumber=905555555555",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "validation",
+                                "phoneNumber"
+                            ],
+                            "query": [
+                                {
+                                    "key": "phoneNumber",
+                                    "value": "905555555555"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Validate TCKN",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "ApiKey",
+                                "value": "{{api-key}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api-url}}/validation/tckn?tckn=21111111888",
+                            "host": [
+                                "{{api-url}}"
+                            ],
+                            "path": [
+                                "validation",
+                                "tckn"
+                            ],
+                            "query": [
+                                {
+                                    "key": "tckn",
+                                    "value": "21111111888"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ],
+            "protocolProfileBehavior": {}
+        }
+    ],
+    "protocolProfileBehavior": {}
+}

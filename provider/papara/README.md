@@ -2,6 +2,8 @@
 
 This document explains how to use the Papara payment provider within GoPay.
 
+[Papara API Documentation](https://merchant-api.papara.com/)
+
 ## Features
 
 - ✅ **Standard Payment**: Direct card payment

@@ -118,9 +118,10 @@ func (p *PaparaProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 		return nil, errors.New("papara: paymentID is required")
 	}
 
-	endpoint := fmt.Sprintf(endpointPaymentStatus, paymentID)
+	// Papara API: /payments?id=paymentID (query parametreli)
+	endpoint := p.baseURL + "/payments?id=" + paymentID
 
-	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("papara: failed to create request: %w", err)
 	}
@@ -187,16 +188,19 @@ func (p *PaparaProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, errors.New("papara: paymentID is required")
 	}
 
-	paparaReq := map[string]any{
-		"paymentId":   request.PaymentID,
-		"description": request.Description,
-		"referenceId": request.ConversationID,
-	}
+	// Papara API: Refund için PUT /payments?id=paymentID
+	endpoint := p.baseURL + "/payments?id=" + request.PaymentID
 
+	paparaReq := map[string]any{}
 	if request.RefundAmount > 0 {
 		paparaReq["amount"] = request.RefundAmount
 	}
-
+	if request.Description != "" {
+		paparaReq["description"] = request.Description
+	}
+	if request.ConversationID != "" {
+		paparaReq["referenceId"] = request.ConversationID
+	}
 	if request.Currency != "" {
 		paparaReq["currency"] = request.Currency
 	}
@@ -206,7 +210,7 @@ func (p *PaparaProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, fmt.Errorf("papara: failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpointRefund, strings.NewReader(string(reqBody)))
+	req, err := http.NewRequestWithContext(ctx, "PUT", endpoint, strings.NewReader(string(reqBody)))
 	if err != nil {
 		return nil, fmt.Errorf("papara: failed to create request: %w", err)
 	}
@@ -432,8 +436,10 @@ func (p *PaparaProvider) mapToRefundResponse(paparaResp PaparaResponse) *provide
 
 // addAuthHeaders adds authentication headers to the request
 func (p *PaparaProvider) addAuthHeaders(req *http.Request) {
-	req.Header.Set("Authorization", "ApiKey "+p.apiKey)
+	req.Header.Set("ApiKey", p.apiKey) // Papara API için zorunlu
 	req.Header.Set("Accept", "application/json")
+	// Eğer Authorization header'ı da gerekiyorsa, Papara dokümantasyonuna göre eklenebilir.
+	// req.Header.Set("Authorization", "ApiKey "+p.apiKey)
 }
 
 // generateWebhookSignature generates webhook signature for validation
@@ -465,4 +471,100 @@ type PaparaData struct {
 type PaparaError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// ValidationResponse Papara kullanıcı doğrulama response'u için örnek struct
+// (Gerekirse gerçek Papara API response'una göre güncellenebilir)
+type ValidationResponse struct {
+	Succeeded bool `json:"succeeded"`
+	Data      any  `json:"data"`
+	Error     any  `json:"error"`
+}
+
+// ValidateAccountNumber Papara numarası ile kullanıcı doğrulama
+func (p *PaparaProvider) ValidateAccountNumber(ctx context.Context, accountNumber string) (*ValidationResponse, error) {
+	url := p.baseURL + "/validation/accountNumber?accountNumber=" + accountNumber
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.addAuthHeaders(req)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result ValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ValidatePhoneNumber telefon numarası ile kullanıcı doğrulama
+func (p *PaparaProvider) ValidatePhoneNumber(ctx context.Context, phoneNumber string) (*ValidationResponse, error) {
+	url := p.baseURL + "/validation/phoneNumber?phoneNumber=" + phoneNumber
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.addAuthHeaders(req)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result ValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ValidateTCKN TCKN ile kullanıcı doğrulama
+func (p *PaparaProvider) ValidateTCKN(ctx context.Context, tckn string) (*ValidationResponse, error) {
+	url := p.baseURL + "/validation/tckn?tckn=" + tckn
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.addAuthHeaders(req)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result ValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// AccountResponse Papara hesap bilgisi response'u için örnek struct
+// (Gerekirse gerçek Papara API response'una göre güncellenebilir)
+type AccountResponse struct {
+	Succeeded bool `json:"succeeded"`
+	Data      any  `json:"data"`
+	Error     any  `json:"error"`
+}
+
+// GetAccountInfo Papara hesabı bilgisi çekme
+func (p *PaparaProvider) GetAccountInfo(ctx context.Context) (*AccountResponse, error) {
+	url := p.baseURL + "/account"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	p.addAuthHeaders(req)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result AccountResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

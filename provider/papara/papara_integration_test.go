@@ -238,6 +238,46 @@ func TestPaparaProvider_Integration(t *testing.T) {
 			t.Error("Webhook validation should fail with invalid signature")
 		}
 	})
+
+	t.Run("ValidateAccountNumber", func(t *testing.T) {
+		resp, err := p.ValidateAccountNumber(ctx, "9087654321")
+		if err != nil {
+			t.Fatalf("ValidateAccountNumber failed: %v", err)
+		}
+		if resp == nil || !resp.Succeeded {
+			t.Error("ValidateAccountNumber should succeed for test account number")
+		}
+	})
+
+	t.Run("ValidatePhoneNumber", func(t *testing.T) {
+		resp, err := p.ValidatePhoneNumber(ctx, "905555555555")
+		if err != nil {
+			t.Fatalf("ValidatePhoneNumber failed: %v", err)
+		}
+		if resp == nil || !resp.Succeeded {
+			t.Error("ValidatePhoneNumber should succeed for test phone number")
+		}
+	})
+
+	t.Run("ValidateTCKN", func(t *testing.T) {
+		resp, err := p.ValidateTCKN(ctx, "21111111888")
+		if err != nil {
+			t.Fatalf("ValidateTCKN failed: %v", err)
+		}
+		if resp == nil || !resp.Succeeded {
+			t.Error("ValidateTCKN should succeed for test tckn")
+		}
+	})
+
+	t.Run("GetAccountInfo", func(t *testing.T) {
+		resp, err := p.GetAccountInfo(ctx)
+		if err != nil {
+			t.Fatalf("GetAccountInfo failed: %v", err)
+		}
+		if resp == nil || !resp.Succeeded {
+			t.Error("GetAccountInfo should succeed for test account")
+		}
+	})
 }
 
 func TestPaparaProvider_ErrorHandling(t *testing.T) {
