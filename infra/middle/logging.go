@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -172,54 +171,6 @@ func extractProviderFromURL(path string) string {
 	}
 
 	return ""
-}
-
-// extractHeaders converts http.Header to map[string]string for logging
-func extractHeaders(headers http.Header) map[string]string {
-	result := make(map[string]string)
-
-	for key, values := range headers {
-		if len(values) > 0 {
-			// Skip sensitive headers
-			if isSensitiveHeader(key) {
-				result[key] = "***REDACTED***"
-			} else {
-				result[key] = values[0]
-			}
-		}
-	}
-
-	return result
-}
-
-// isSensitiveHeader checks if a header contains sensitive information
-func isSensitiveHeader(header string) bool {
-	sensitiveHeaders := []string{
-		"authorization", "x-api-key", "x-secret-key", "cookie",
-		"x-auth-token", "x-access-token", "x-refresh-token",
-	}
-
-	header = strings.ToLower(header)
-	for _, sensitive := range sensitiveHeaders {
-		if header == sensitive {
-			return true
-		}
-	}
-
-	return false
-}
-
-// extractURLParams converts url.Values to map[string]string
-func extractURLParams(params url.Values) map[string]string {
-	result := make(map[string]string)
-
-	for key, values := range params {
-		if len(values) > 0 {
-			result[key] = values[0]
-		}
-	}
-
-	return result
 }
 
 // extractPaymentInfo extracts payment information from request/response bodies

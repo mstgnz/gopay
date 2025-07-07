@@ -130,10 +130,10 @@ func main() {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	// Security Middleware
-	rateLimiter := middle.NewRateLimiter()
+	tenantRateLimiter := middle.NewTenantRateLimiter()
 	r.Use(middle.SecurityHeadersMiddleware())
 	r.Use(middle.IPWhitelistMiddleware())
-	r.Use(middle.RateLimitMiddleware(rateLimiter))
+	r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter))
 	r.Use(middle.RequestValidationMiddleware())
 
 	// PostgreSQL Logging Middleware (add before authentication to log all requests)
@@ -158,6 +158,9 @@ func main() {
 
 	// Initialize health handler
 	healthHandler := handler.NewHealthHandler(config.App().DB.DB, postgresLogger, paymentService, providerConfig)
+
+	// Initialize tenant rate limit handler
+	rateLimitHandler := handler.NewTenantRateLimitHandler(tenantRateLimiter)
 
 	// Health check endpoint (no auth required)
 	r.Get("/health", healthHandler.CheckHealth)
@@ -225,6 +228,9 @@ func main() {
 
 		// Import v1 routes with required services (but exclude auth routes since they're handled above)
 		v1.Routes(r, postgresLogger, paymentService, providerConfig, jwtService, tenantService)
+
+		// Add tenant rate limiting stats endpoint
+		r.Get("/rate-limit/stats", rateLimitHandler.GetTenantStats)
 	})
 
 	// Not Found
