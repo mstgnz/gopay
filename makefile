@@ -1,6 +1,6 @@
 # GoPay Makefile
 
-.PHONY: help test test-unit test-integration test-coverage build run clean lint format deps dev opensearch-start opensearch-stop opensearch-status logs-query docker-build docker-run docker-stop docker-logs ci-test ci-build integration-help
+.PHONY: help test test-unit test-integration test-coverage build run clean lint format deps dev postgres-start postgres-stop postgres-status logs-query docker-build docker-run docker-stop docker-logs ci-test ci-build integration-help
 
 # Default target
 help: ## Show this help message
@@ -158,29 +158,29 @@ integration-help: ## Show integration test setup help
 dev: format lint test ## Run development workflow (format, lint, test)
 	@echo "✅ Development workflow completed!"
 
-# OpenSearch related commands
-opensearch-start: ## Start OpenSearch with Docker
-	@echo "Starting OpenSearch..."
-	docker-compose up -d opensearch
-	@echo "✅ OpenSearch started at http://localhost:9200"
+# PostgreSQL related commands
+postgres-start: ## Start PostgreSQL with Docker
+	@echo "Starting PostgreSQL..."
+	docker-compose up -d postgres
+	@echo "✅ PostgreSQL started at localhost:5432"
 
-opensearch-stop: ## Stop OpenSearch
-	@echo "Stopping OpenSearch..."
-	docker-compose stop opensearch
-	@echo "✅ OpenSearch stopped"
+postgres-stop: ## Stop PostgreSQL
+	@echo "Stopping PostgreSQL..."
+	docker-compose stop postgres
+	@echo "✅ PostgreSQL stopped"
 
-opensearch-status: ## Check OpenSearch status
-	@echo "Checking OpenSearch status..."
-	@curl -s http://localhost:9200/_cluster/health | jq . || echo "❌ OpenSearch not responding"
+postgres-status: ## Check PostgreSQL status
+	@echo "Checking PostgreSQL status..."
+	@docker-compose exec postgres pg_isready -U ${DB_USER:-gopay} || echo "❌ PostgreSQL not responding"
 
-logs-query: ## Query recent payment logs (requires provider parameter)
+logs-query: ## Query recent payment logs from PostgreSQL (requires provider parameter)
 	@if [ -z "$(PROVIDER)" ]; then \
 		echo "Usage: make logs-query PROVIDER=iyzico"; \
-		echo "Available providers: iyzico, ozanpay"; \
+		echo "Available providers: iyzico, ozanpay, paycell, papara, nkolay, paytr, payu"; \
 		exit 1; \
 	fi
 	@echo "Querying logs for provider: $(PROVIDER)"
-	@curl -s "http://localhost:9200/gopay-$(PROVIDER)-logs/_search?size=10&sort=timestamp:desc" | jq .
+	@docker-compose exec postgres psql -U ${DB_USER:-gopay} -d ${DB_NAME:-gopay} -c "SELECT timestamp, method, endpoint, request_id, response->'status_code' as status, payment_info->'amount' as amount FROM gopay_$(PROVIDER)_logs ORDER BY timestamp DESC LIMIT 10;" 2>/dev/null || echo "❌ Failed to query logs. Make sure PostgreSQL is running and provider table exists."
 
 # Docker commands
 docker-build: ## Build Docker image
@@ -245,6 +245,6 @@ help: ## Display available commands
 	@echo "Examples:"
 	@echo "  make dev                    # Run complete development workflow"
 	@echo "  make test-integration       # Run integration tests"
-	@echo "  make opensearch-start       # Start OpenSearch for logging"
+	@echo "  make postgres-start         # Start PostgreSQL for logging"
 	@echo "  make logs-query PROVIDER=iyzico  # Query logs"
 	@echo "" 
