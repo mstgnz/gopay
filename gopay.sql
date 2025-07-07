@@ -4,19 +4,9 @@
 -- https://tableplus.com/
 --
 -- Database: gopay
--- Generation Time: 2025-07-07 01:54:48.5600
+-- Generation Time: 2025-07-07 09:47:11.0140
 -- -------------------------------------------------------------
 
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS providers_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."providers" (
-    "id" int4 NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
-    "name" varchar NOT NULL,
-    PRIMARY KEY ("id")
-);
 
 -- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS tenants_id_seq;
@@ -106,6 +96,16 @@ CREATE TABLE "public"."papara" (
 );
 
 -- Sequence and defined type
+CREATE SEQUENCE IF NOT EXISTS providers_id_seq;
+
+-- Table Definition
+CREATE TABLE "public"."providers" (
+    "id" int2 NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
+    "name" varchar NOT NULL,
+    PRIMARY KEY ("id")
+);
+
+-- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS nkolay_id_seq;
 
 -- Table Definition
@@ -179,20 +179,13 @@ CREATE SEQUENCE IF NOT EXISTS tenant_configs_id_seq;
 -- Table Definition
 CREATE TABLE "public"."tenant_configs" (
     "id" int4 NOT NULL DEFAULT nextval('tenant_configs_id_seq'::regclass),
-    "tenant_id" varchar NOT NULL,
-    "provider_name" varchar NOT NULL,
-    "config_data" jsonb NOT NULL,
-    "created_at" timestamp DEFAULT now(),
-    "updated_at" timestamp DEFAULT now(),
+    "tenent_id" int4 NOT NULL,
+    "provider_id" int2 NOT NULL,
+    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['test'::character varying, 'prod'::character varying])::text[])),
+    "key" varchar NOT NULL,
+    "value" varchar NOT NULL,
     PRIMARY KEY ("id")
 );
-
--- Create unique index for tenant_id and provider_name combination
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_configs_unique ON "public"."tenant_configs" ("tenant_id", "provider_name");
-
--- Create index for faster queries
-CREATE INDEX IF NOT EXISTS idx_tenant_configs_tenant_id ON "public"."tenant_configs" ("tenant_id");
-CREATE INDEX IF NOT EXISTS idx_tenant_configs_provider_name ON "public"."tenant_configs" ("provider_name");
 
 ALTER TABLE "public"."paycell" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 ALTER TABLE "public"."iyzico" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
@@ -203,3 +196,5 @@ ALTER TABLE "public"."nkolay" ADD FOREIGN KEY ("tenant_id") REFERENCES "public".
 ALTER TABLE "public"."paytr" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 ALTER TABLE "public"."payu" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 ALTER TABLE "public"."shopier" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
+ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("tenent_id") REFERENCES "public"."tenants"("id");
