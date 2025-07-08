@@ -205,7 +205,6 @@ func (trl *TenantRateLimiter) allowUnauthenticated(clientIP string, now time.Tim
 			ResetTime:  now.Add(trl.config.DefaultWindow),
 			RetryAfter: 0,
 			ActionType: "unauthenticated",
-			TenantID:   "",
 		}
 	}
 
@@ -215,9 +214,8 @@ func (trl *TenantRateLimiter) allowUnauthenticated(clientIP string, now time.Tim
 			Limit:      trl.config.UnauthenticatedRate,
 			Remaining:  0,
 			ResetTime:  v.lastReset.Add(trl.config.DefaultWindow),
-			RetryAfter: int(time.Until(v.lastReset.Add(trl.config.DefaultWindow)).Seconds()),
+			RetryAfter: int(trl.config.DefaultWindow.Seconds()),
 			ActionType: "unauthenticated",
-			TenantID:   "",
 		}
 	}
 
@@ -229,7 +227,6 @@ func (trl *TenantRateLimiter) allowUnauthenticated(clientIP string, now time.Tim
 		ResetTime:  v.lastReset.Add(trl.config.DefaultWindow),
 		RetryAfter: 0,
 		ActionType: "unauthenticated",
-		TenantID:   "",
 	}
 }
 
@@ -359,6 +356,12 @@ type RateLimitInfo struct {
 func TenantRateLimitMiddleware(trl *TenantRateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip rate limiting for certain paths
+			if shouldSkipRateLimit(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Get tenant ID from JWT context (if authenticated)
 			tenantID := GetTenantIDFromContext(r.Context())
 
@@ -400,6 +403,45 @@ func TenantRateLimitMiddleware(trl *TenantRateLimiter) func(http.Handler) http.H
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// shouldSkipRateLimit determines if a request should skip rate limiting
+func shouldSkipRateLimit(path string) bool {
+	path = strings.ToLower(path)
+
+	// Static assets - no rate limiting
+	staticPaths := []string{
+		"/public/",
+		"/favicon.ico",
+		"/robots.txt",
+		"/sitemap.xml",
+	}
+
+	for _, staticPath := range staticPaths {
+		if strings.HasPrefix(path, staticPath) {
+			return true
+		}
+	}
+
+	// Public endpoints - no rate limiting
+	publicEndpoints := []string{
+		"/health",
+		"/docs",
+		"/scalar.yaml",
+		"/",                       // Dashboard main page
+		"/v1/analytics/dashboard", // Public analytics
+		"/v1/analytics/providers", // Public analytics
+		"/v1/analytics/activity",  // Public analytics
+		"/v1/analytics/trends",    // Public analytics
+	}
+
+	for _, endpoint := range publicEndpoints {
+		if path == endpoint {
+			return true
+		}
+	}
+
+	return false
 }
 
 // determineActionType determines the action type based on URL path and method

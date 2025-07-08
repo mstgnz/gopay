@@ -114,19 +114,23 @@ func getClientIP(r *http.Request) string {
 	if xff != "" {
 		// Take the first IP in case of multiple
 		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
+			ip := strings.TrimSpace(xff[:idx])
+			return ip
 		}
-		return strings.TrimSpace(xff)
+		ip := strings.TrimSpace(xff)
+		return ip
 	}
 
 	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+		ip := strings.TrimSpace(xri)
+		return ip
 	}
 
 	// Fall back to RemoteAddr
 	if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
-		return r.RemoteAddr[:idx]
+		ip := r.RemoteAddr[:idx]
+		return ip
 	}
 
 	return r.RemoteAddr
