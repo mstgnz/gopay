@@ -1,6 +1,7 @@
 package papara
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mstgnz/gopay/provider"
@@ -329,5 +330,140 @@ func TestPaparaProvider_generateWebhookSignature(t *testing.T) {
 	differentSignature := p.generateWebhookSignature(differentPayload)
 	if signature == differentSignature {
 		t.Error("Expected different signature for different payload")
+	}
+}
+
+func TestPaparaProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*PaparaProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 2},
+		{"production environment", "production", 2},
+		{"test environment", "test", 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"apiKey", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestPaparaProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*PaparaProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"apiKey":      "12345678-1234-1234-1234-123456789012",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"apiKey":      "87654321-4321-4321-4321-210987654321",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing apiKey",
+			config: map[string]string{
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' is missing",
+		},
+		{
+			name: "missing environment",
+			config: map[string]string{
+				"apiKey": "12345678-1234-1234-1234-123456789012",
+			},
+			expectError: true,
+			errorMsg:    "required field 'environment' is missing",
+		},
+		{
+			name: "empty apiKey",
+			config: map[string]string{
+				"apiKey":      "",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"apiKey":      "12345678-1234-1234-1234-123456789012",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "apiKey too short",
+			config: map[string]string{
+				"apiKey":      "short-api-key",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 32 characters",
+		},
+		{
+			name: "apiKey too long",
+			config: map[string]string{
+				"apiKey":      "12345678-1234-1234-1234-123456789012-extra-long-part",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must not exceed 50 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
+				}
+			}
+		})
 	}
 }
