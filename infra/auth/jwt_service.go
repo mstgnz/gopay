@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/mstgnz/gopay/infra/config"
 )
 
 var (
@@ -26,16 +27,16 @@ type JWTClaims struct {
 // JWTService handles JWT token operations
 type JWTService struct {
 	secretKey []byte
-	issuer    string
 	expiry    time.Duration
 }
 
 // NewJWTService creates a new JWT service
-func NewJWTService(secretKey, issuer string, expiry time.Duration) *JWTService {
+func NewJWTService() *JWTService {
+	jwtSecret := config.App().SecretKey
+	jwtExpiry := 12 * time.Hour // 12 hours
 	return &JWTService{
-		secretKey: []byte(secretKey),
-		issuer:    issuer,
-		expiry:    expiry,
+		secretKey: []byte(jwtSecret),
+		expiry:    jwtExpiry,
 	}
 }
 
@@ -48,7 +49,7 @@ func (s *JWTService) GenerateToken(tenantID, username string) (string, error) {
 		Username:  username,
 		LastLogin: now.Unix(),
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.issuer,
+			Issuer:    tenantID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.expiry)),
 			NotBefore: jwt.NewNumericDate(now),

@@ -30,23 +30,12 @@ func NewConfigHandler(providerConfig *config.ProviderConfig, paymentService *pro
 
 // SetEnvRequest represents the request structure for setting environment variables
 type SetEnvRequest struct {
-	// Iyzico fields
-	IyzicoApiKey    string `json:"IYZICO_API_KEY,omitempty"`
-	IyzicoSecretKey string `json:"IYZICO_SECRET_KEY,omitempty"`
-	IyzicoEnv       string `json:"IYZICO_ENVIRONMENT,omitempty"`
-
-	// OzanPay fields
-	OzanpayApiKey    string `json:"OZANPAY_API_KEY,omitempty"`
-	OzanpaySecretKey string `json:"OZANPAY_SECRET_KEY,omitempty"`
-	OzanpayMerchant  string `json:"OZANPAY_MERCHANT_ID,omitempty"`
-	OzanpayEnv       string `json:"OZANPAY_ENVIRONMENT,omitempty"`
-
-	// Paycell fields
-	PaycellUsername   string `json:"PAYCELL_USERNAME,omitempty"`
-	PaycellPassword   string `json:"PAYCELL_PASSWORD,omitempty"`
-	PaycellMerchantId string `json:"PAYCELL_MERCHANT_ID,omitempty"`
-	PaycellTerminalId string `json:"PAYCELL_TERMINAL_ID,omitempty"`
-	PaycellEnv        string `json:"PAYCELL_ENVIRONMENT,omitempty"`
+	Provider    string `json:"provider"`
+	Environment string `json:"environment"`
+	Configs     []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	} `json:"configs"`
 }
 
 // SetEnv handles setting environment variables for a tenant
@@ -65,120 +54,58 @@ func (h *ConfigHandler) SetEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track which providers were configured
-	var configuredProviders []string
-
-	// Process Iyzico configuration
-	if req.IyzicoApiKey != "" || req.IyzicoSecretKey != "" {
-		iyzicoConfig := make(map[string]string)
-
-		if req.IyzicoApiKey != "" {
-			iyzicoConfig["apiKey"] = req.IyzicoApiKey
-		}
-		if req.IyzicoSecretKey != "" {
-			iyzicoConfig["secretKey"] = req.IyzicoSecretKey
-		}
-		if req.IyzicoEnv != "" {
-			iyzicoConfig["environment"] = req.IyzicoEnv
-		} else {
-			iyzicoConfig["environment"] = "sandbox" // Default
-		}
-
-		if err := h.providerConfig.SetTenantConfig(tenantID, "iyzico", iyzicoConfig); err != nil {
-			response.Error(w, http.StatusBadRequest, "Failed to set Iyzico configuration", err)
-			return
-		}
-
-		// Register provider in payment service
-		if err := h.registerTenantProvider(tenantID, "iyzico", iyzicoConfig); err != nil {
-			response.Error(w, http.StatusInternalServerError, "Failed to register Iyzico provider", err)
-			return
-		}
-
-		configuredProviders = append(configuredProviders, "iyzico")
+	req.Provider = strings.ToLower(strings.TrimSpace(req.Provider))
+	req.Environment = strings.ToLower(strings.TrimSpace(req.Environment))
+	if req.Provider == "" || req.Environment == "" || len(req.Configs) == 0 {
+		response.Error(w, http.StatusBadRequest, "provider, environment and configs are required", nil)
+		return
+	}
+	if req.Environment != "test" && req.Environment != "prod" && req.Environment != "production" {
+		response.Error(w, http.StatusBadRequest, "environment must be 'test' or 'prod'", nil)
+		return
+	}
+	if req.Environment == "production" {
+		req.Environment = "prod"
 	}
 
-	// Process OzanPay configuration
-	if req.OzanpayApiKey != "" || req.OzanpaySecretKey != "" || req.OzanpayMerchant != "" {
-		ozanpayConfig := make(map[string]string)
-
-		if req.OzanpayApiKey != "" {
-			ozanpayConfig["apiKey"] = req.OzanpayApiKey
-		}
-		if req.OzanpaySecretKey != "" {
-			ozanpayConfig["secretKey"] = req.OzanpaySecretKey
-		}
-		if req.OzanpayMerchant != "" {
-			ozanpayConfig["merchantId"] = req.OzanpayMerchant
-		}
-		if req.OzanpayEnv != "" {
-			ozanpayConfig["environment"] = req.OzanpayEnv
-		} else {
-			ozanpayConfig["environment"] = "sandbox" // Default
-		}
-
-		if err := h.providerConfig.SetTenantConfig(tenantID, "ozanpay", ozanpayConfig); err != nil {
-			response.Error(w, http.StatusBadRequest, "Failed to set OzanPay configuration", err)
-			return
-		}
-
-		// Register provider in payment service
-		if err := h.registerTenantProvider(tenantID, "ozanpay", ozanpayConfig); err != nil {
-			response.Error(w, http.StatusInternalServerError, "Failed to register OzanPay provider", err)
-			return
-		}
-
-		configuredProviders = append(configuredProviders, "ozanpay")
-	}
-
-	// Process Paycell configuration
-	if req.PaycellUsername != "" || req.PaycellPassword != "" || req.PaycellMerchantId != "" || req.PaycellTerminalId != "" {
-		paycellConfig := make(map[string]string)
-
-		if req.PaycellUsername != "" {
-			paycellConfig["username"] = req.PaycellUsername
-		}
-		if req.PaycellPassword != "" {
-			paycellConfig["password"] = req.PaycellPassword
-		}
-		if req.PaycellMerchantId != "" {
-			paycellConfig["merchantId"] = req.PaycellMerchantId
-		}
-		if req.PaycellTerminalId != "" {
-			paycellConfig["terminalId"] = req.PaycellTerminalId
-		}
-		if req.PaycellEnv != "" {
-			paycellConfig["environment"] = req.PaycellEnv
-		} else {
-			paycellConfig["environment"] = "sandbox" // Default
-		}
-
-		if err := h.providerConfig.SetTenantConfig(tenantID, "paycell", paycellConfig); err != nil {
-			response.Error(w, http.StatusBadRequest, "Failed to set Paycell configuration", err)
-			return
-		}
-
-		// Register provider in payment service
-		if err := h.registerTenantProvider(tenantID, "paycell", paycellConfig); err != nil {
-			response.Error(w, http.StatusInternalServerError, "Failed to register Paycell provider", err)
-			return
-		}
-
-		configuredProviders = append(configuredProviders, "paycell")
-	}
-
-	if len(configuredProviders) == 0 {
-		response.Error(w, http.StatusBadRequest, "No valid provider configuration found in request", nil)
+	// Validate provider existence using DB (providers table)
+	providerID, err := h.providerConfig.GetProviderIDByName(req.Provider)
+	if err != nil || providerID <= 0 {
+		response.Error(w, http.StatusBadRequest, "Provider not found", nil)
 		return
 	}
 
-	// Return success response
-	responseData := map[string]any{
-		"tenantId":            tenantID,
-		"configuredProviders": configuredProviders,
-		"message":             "Provider configurations set successfully",
+	// Prepare config map for DB
+	configMap := make(map[string]string)
+	configMap["environment"] = req.Environment
+	for _, kv := range req.Configs {
+		if kv.Key == "" {
+			continue
+		}
+		configMap[kv.Key] = kv.Value
+	}
+	if len(configMap) <= 1 { // only environment
+		response.Error(w, http.StatusBadRequest, "At least one config key/value required", nil)
+		return
 	}
 
+	// Save to DB (tenant_configs)
+	if err := h.providerConfig.SetTenantConfig(tenantID, req.Provider, configMap); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to save configuration", err)
+		return
+	}
+
+	// Register provider in payment service (optional, for runtime usage)
+	if err := h.registerTenantProvider(tenantID, req.Provider, configMap); err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to register provider", err)
+		return
+	}
+
+	responseData := map[string]any{
+		"tenantId":            tenantID,
+		"configuredProviders": []string{req.Provider},
+		"message":             "Provider configuration set successfully",
+	}
 	response.Success(w, http.StatusOK, "Configuration updated", responseData)
 }
 

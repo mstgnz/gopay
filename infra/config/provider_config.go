@@ -123,9 +123,13 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 		return fmt.Errorf("config cannot be empty")
 	}
 
-	// Validate required keys based on provider
-	if err := c.validateProviderConfig(providerName, config); err != nil {
-		return fmt.Errorf("invalid config for provider %s: %w", providerName, err)
+	// Skip validation for tenant-specific configs (new generic approach)
+	// Only validate for legacy provider configs (non-tenant-specific)
+	if !strings.Contains(tenantID, "_") && tenantID == strings.ToUpper(tenantID) {
+		// This is a legacy provider config, apply validation
+		if err := c.validateProviderConfig(providerName, config); err != nil {
+			return fmt.Errorf("invalid config for provider %s: %w", providerName, err)
+		}
 	}
 
 	c.mu.Lock()
@@ -340,4 +344,12 @@ func (c *ProviderConfig) DeleteTenantConfig(tenantID, providerName string) error
 	// Delete from memory cache
 	delete(c.configs, tenantProviderKey)
 	return nil
+}
+
+// GetProviderIDByName returns the provider ID for a given provider name, or error if not found
+func (c *ProviderConfig) GetProviderIDByName(providerName string) (int, error) {
+	if c.storage == nil {
+		return 0, fmt.Errorf("storage not initialized")
+	}
+	return c.storage.getProviderID(providerName)
 }

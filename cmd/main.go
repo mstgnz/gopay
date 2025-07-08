@@ -64,10 +64,7 @@ func init() {
 	}
 
 	// Initialize JWT service
-	jwtSecret := config.App().SecretKey
-	jwtIssuer := config.GetEnv("JWT_ISSUER", "gopay")
-	jwtExpiry := 24 * time.Hour // 24 hours
-	jwtService = auth.NewJWTService(jwtSecret, jwtIssuer, jwtExpiry)
+	jwtService = auth.NewJWTService()
 
 	// Initialize tenant service
 	tenantService = auth.NewTenantService(config.App().DB, jwtService)

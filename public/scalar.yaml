@@ -1044,14 +1044,14 @@ paths:
         4. GoPay automatically uses tenant-specific configuration from JWT context
         
         **Supported Providers:**
-        - **İyzico**: Requires `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_ENVIRONMENT`
-        - **OzanPay**: Requires `OZANPAY_API_KEY`, `OZANPAY_SECRET_KEY`, `OZANPAY_MERCHANT_ID`, `OZANPAY_ENVIRONMENT`
-        - **Stripe**: Requires `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`, `STRIPE_ENVIRONMENT`
-        - **Paycell**: Requires `PAYCELL_USERNAME`, `PAYCELL_PASSWORD`, `PAYCELL_MERCHANT_ID`, `PAYCELL_TERMINAL_ID`, `PAYCELL_ENVIRONMENT`
-        - **Papara**: Requires `PAPARA_API_KEY`, `PAPARA_SECRET_KEY`, `PAPARA_MERCHANT_ID`, `PAPARA_ENVIRONMENT`
-        - **Nkolay**: Requires `NKOLAY_API_KEY`, `NKOLAY_SECRET_KEY`, `NKOLAY_MERCHANT_ID`, `NKOLAY_ENVIRONMENT`
-        - **PayTR**: Requires `PAYTR_MERCHANT_ID`, `PAYTR_MERCHANT_KEY`, `PAYTR_MERCHANT_SALT`, `PAYTR_ENVIRONMENT`
-        - **PayU**: Requires `PAYU_MERCHANT_ID`, `PAYU_SECRET_KEY`, `PAYU_API_KEY`, `PAYU_ENVIRONMENT`
+        - iyzico
+        - ozanpay
+        - stripe
+        - paycell
+        - papara
+        - nkolay
+        - paytr
+        - payu
       tags: [Configuration]
       security:
         - BearerAuth: []
@@ -1060,24 +1060,49 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SetEnvRequest'
+              type: object
+              required: [provider, environment, configs]
+              properties:
+                provider:
+                  type: string
+                  enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+                  description: Payment provider name (select from list)
+                  example: paycell
+                environment:
+                  type: string
+                  enum: [test, prod]
+                  description: Environment (test or prod)
+                  example: test
+                configs:
+                  type: array
+                  description: Provider configuration key/value pairs
+                  items:
+                    type: object
+                    required: [key, value]
+                    properties:
+                      key:
+                        type: string
+                        description: Configuration key
+                        example: PAYCELL_USERNAME
+                      value:
+                        type: string
+                        description: Configuration value
+                        example: "paycell-user"
             examples:
-              iyzico_config:
-                summary: İyzico Configuration
+              paycell_config:
+                summary: Paycell Configuration
                 value:
-                  IYZICO_API_KEY: "sandbox-DzgHbZnL4y7TVIYMqgKRw5lGlYDm5KCH"
-                  IYZICO_SECRET_KEY: "sandbox-aXKQk8o6f4KQhFvG0hQlRfPTL8kMJ1wC"
-                  IYZICO_ENVIRONMENT: "sandbox"
-              multi_provider_config:
-                summary: Multiple Providers
-                value:
-                  IYZICO_API_KEY: "sandbox-DzgHbZnL4y7TVIYMqgKRw5lGlYDm5KCH"
-                  IYZICO_SECRET_KEY: "sandbox-aXKQk8o6f4KQhFvG0hQlRfPTL8kMJ1wC"
-                  IYZICO_ENVIRONMENT: "sandbox"
-                  OZANPAY_API_KEY: "ozanpay-api-key"
-                  OZANPAY_SECRET_KEY: "ozanpay-secret-key"
-                  OZANPAY_MERCHANT_ID: "merchant123"
-                  OZANPAY_ENVIRONMENT: "sandbox"
+                  provider: paycell
+                  environment: test
+                  configs:
+                    - key: PAYCELL_USERNAME
+                      value: "paycell-user"
+                    - key: PAYCELL_PASSWORD
+                      value: "paycell-pass"
+                    - key: PAYCELL_MERCHANT_ID
+                      value: "merchant456"
+                    - key: PAYCELL_TERMINAL_ID
+                      value: "terminal789"
       responses:
         '200':
           description: Configuration saved successfully

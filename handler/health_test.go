@@ -9,6 +9,7 @@ func TestNewHealthHandler(t *testing.T) {
 	handler := NewHealthHandler(nil, nil, nil, nil)
 	if handler == nil {
 		t.Error("NewHealthHandler should not return nil")
+		return
 	}
 
 	if handler.startTime.IsZero() {
