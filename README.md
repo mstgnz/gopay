@@ -293,3 +293,5 @@ This project is licensed under the [Boost Software License 1.0](./LICENSE).
 ---
 
 **🚀 Ready to integrate payments?** Start with the [API documentation](http://localhost:9999/docs) or check out the [examples](examples/)!
+
+![](./public/dashboard.png)
