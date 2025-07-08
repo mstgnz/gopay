@@ -4,19 +4,196 @@ class GoPayAnalytics {
         this.providers = ['iyzico', 'stripe', 'ozanpay', 'paycell', 'papara', 'nkolay', 'paytr', 'payu'];
         this.trendsChart = null;
         this.distributionChart = null;
+        this.currentFilters = {
+            tenant_id: 'all',
+            provider_id: 'all',
+            environment: 'all',
+            hours: '24'
+        };
         this.init();
     }
 
     async init() {
+        this.initializeFilters();
+        await this.loadFilterOptions();
         await this.loadDashboardData();
         this.initCharts();
         this.startRealTimeUpdates();
     }
 
+    initializeFilters() {
+        // Add event listeners to filter controls
+        const tenantFilter = document.getElementById('tenantFilter');
+        const providerFilter = document.getElementById('providerFilter');
+        const environmentFilter = document.getElementById('environmentFilter');
+        const hoursFilter = document.getElementById('hoursFilter');
+        const refreshButton = document.getElementById('refreshButton');
+
+        if (tenantFilter) {
+            tenantFilter.addEventListener('change', (e) => {
+                this.currentFilters.tenant_id = e.target.value;
+                this.onFiltersChanged();
+            });
+        }
+
+        if (providerFilter) {
+            providerFilter.addEventListener('change', (e) => {
+                this.currentFilters.provider_id = e.target.value;
+                this.onFiltersChanged();
+            });
+        }
+
+        if (environmentFilter) {
+            environmentFilter.addEventListener('change', (e) => {
+                this.currentFilters.environment = e.target.value;
+                this.onFiltersChanged();
+            });
+        }
+
+        if (hoursFilter) {
+            hoursFilter.addEventListener('change', (e) => {
+                this.currentFilters.hours = e.target.value;
+                this.onFiltersChanged();
+            });
+        }
+
+        if (refreshButton) {
+            refreshButton.addEventListener('click', () => {
+                this.refreshDashboard();
+            });
+        }
+    }
+
+    async loadFilterOptions() {
+        try {
+            // Load tenants from API
+            await this.loadTenantOptions();
+            
+            // Load providers from API
+            await this.loadProviderOptions();
+        } catch (error) {
+            console.error('Error loading filter options:', error);
+        }
+    }
+
+    async loadTenantOptions() {
+        try {
+            const response = await fetch('/v1/analytics/tenants');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const tenantFilter = document.getElementById('tenantFilter');
+                    if (tenantFilter) {
+                        // Clear existing options except "All Tenants"
+                        tenantFilter.innerHTML = '<option value="all">All Tenants</option>';
+                        
+                        // Add dynamic tenant options
+                        data.data.forEach(tenant => {
+                            const option = document.createElement('option');
+                            option.value = tenant.id;
+                            option.textContent = `${tenant.name} (ID: ${tenant.id})`;
+                            tenantFilter.appendChild(option);
+                        });
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading tenant options:', error);
+            // Keep default options if API fails
+        }
+    }
+
+    async loadProviderOptions() {
+        try {
+            const response = await fetch('/v1/analytics/providers/list');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const providerFilter = document.getElementById('providerFilter');
+                    if (providerFilter) {
+                        // Clear existing options except "All Providers"
+                        providerFilter.innerHTML = '<option value="all">All Providers</option>';
+                        
+                        // Add dynamic provider options
+                        data.data.forEach(provider => {
+                            const option = document.createElement('option');
+                            option.value = provider.id;
+                            option.textContent = provider.name;
+                            providerFilter.appendChild(option);
+                        });
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading provider options:', error);
+            // Keep default options if API fails
+        }
+    }
+
+    buildFilterParams() {
+        const params = new URLSearchParams();
+        
+        Object.entries(this.currentFilters).forEach(([key, value]) => {
+            if (value && value !== 'all') {
+                params.append(key, value);
+            }
+        });
+
+        return params.toString();
+    }
+
+    async onFiltersChanged() {
+        // Show loading state
+        this.showLoadingState();
+        
+        // Reload data with new filters
+        await this.loadDashboardData();
+        await this.initCharts();
+        
+        // Hide loading state
+        this.hideLoadingState();
+    }
+
+    async refreshDashboard() {
+        const refreshButton = document.getElementById('refreshButton');
+        if (refreshButton) {
+            refreshButton.classList.add('loading');
+            refreshButton.disabled = true;
+        }
+
+        try {
+            await this.loadDashboardData();
+            await this.initCharts();
+            await this.loadProviderStatus();
+            await this.loadRecentActivity();
+        } finally {
+            if (refreshButton) {
+                refreshButton.classList.remove('loading');
+                refreshButton.disabled = false;
+            }
+        }
+    }
+
+    showLoadingState() {
+        // Add loading class to main stats
+        document.querySelectorAll('.stat-value').forEach(el => {
+            el.style.opacity = '0.5';
+        });
+    }
+
+    hideLoadingState() {
+        // Remove loading class from main stats
+        document.querySelectorAll('.stat-value').forEach(el => {
+            el.style.opacity = '1';
+        });
+    }
+
     async loadDashboardData() {
         try {
-            // Load dashboard stats from analytics API
-            const dashboardResponse = await fetch('/v1/analytics/dashboard?hours=24');
+            // Load dashboard stats from analytics API with filters
+            const filterParams = this.buildFilterParams();
+            const dashboardResponse = await fetch(`/v1/analytics/dashboard?${filterParams}`);
+            
             if (dashboardResponse.ok) {
                 const dashboardData = await dashboardResponse.json();
                 if (dashboardData.success) {
@@ -24,7 +201,7 @@ class GoPayAnalytics {
                 }
             }
 
-            // Load provider status and recent activity
+            // Load provider status and recent activity with filters
             await this.loadProviderStatus();
             await this.loadRecentActivity();
 
@@ -39,7 +216,10 @@ class GoPayAnalytics {
                 totalPaymentsChange: "+12.5% from yesterday",
                 successRateChange: "+0.8% from yesterday", 
                 totalVolumeChange: "+18.2% from yesterday",
-                avgResponseChange: "-15ms from yesterday"
+                avgResponseChange: "-15ms from yesterday",
+                activeTenants: 3,
+                activeProviders: 5,
+                environment: this.currentFilters.environment
             });
         }
     }
@@ -55,6 +235,30 @@ class GoPayAnalytics {
         document.getElementById('successRateChange').textContent = stats.successRateChange || '+0.8% from yesterday';
         document.getElementById('totalVolumeChange').textContent = stats.totalVolumeChange || '+18.2% from yesterday';
         document.getElementById('avgResponseTimeChange').textContent = stats.avgResponseChange || '-15ms from yesterday';
+
+        // Update title to show current filter context
+        this.updateDashboardTitle(stats);
+    }
+
+    updateDashboardTitle(stats) {
+        const subtitle = document.querySelector('.header-subtitle');
+        if (subtitle) {
+            let context = 'Multi-Tenant Payment Analytics Dashboard';
+            
+            if (this.currentFilters.tenant_id !== 'all') {
+                context += ` - Tenant ${this.currentFilters.tenant_id}`;
+            }
+            
+            if (this.currentFilters.provider_id !== 'all') {
+                context += ` - ${this.currentFilters.provider_id}`;
+            }
+            
+            if (this.currentFilters.environment !== 'all') {
+                context += ` - ${this.currentFilters.environment}`;
+            }
+            
+            subtitle.textContent = context;
+        }
     }
 
     async initCharts() {
@@ -72,7 +276,9 @@ class GoPayAnalytics {
         const trendsCtx = document.getElementById('paymentTrendsChart').getContext('2d');
         
         try {
-            const response = await fetch('/v1/analytics/trends?hours=24');
+            const filterParams = this.buildFilterParams();
+            const response = await fetch(`/v1/analytics/trends?${filterParams}`);
+            
             if (response.ok) {
                 const data = await response.json();
                 if (data.success && data.data.datasets) {
@@ -111,7 +317,9 @@ class GoPayAnalytics {
         const distributionCtx = document.getElementById('providerDistributionChart').getContext('2d');
         
         try {
-            const response = await fetch('/v1/analytics/providers');
+            const filterParams = this.buildFilterParams();
+            const response = await fetch(`/v1/analytics/providers?${filterParams}`);
+            
             if (response.ok) {
                 const data = await response.json();
                 if (data.success && data.data) {
@@ -133,7 +341,12 @@ class GoPayAnalytics {
                         },
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom'
+                                }
+                            }
                         }
                     });
                 } else {
@@ -181,12 +394,21 @@ class GoPayAnalytics {
     }
 
     createFallbackDistributionChart(ctx) {
+        // Filter providers based on current filter
+        let providers = ['İyzico', 'Stripe', 'OzanPay', 'Paycell', 'Others'];
+        let data = [35, 25, 20, 15, 5];
+        
+        if (this.currentFilters.provider_id !== 'all') {
+            providers = [this.currentFilters.provider_id];
+            data = [100];
+        }
+        
         this.distributionChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['İyzico', 'Stripe', 'OzanPay', 'Paycell', 'Others'],
+                labels: providers,
                 datasets: [{
-                    data: [35, 25, 20, 15, 5],
+                    data: data,
                     backgroundColor: [
                         '#667eea',
                         '#764ba2',
@@ -198,7 +420,12 @@ class GoPayAnalytics {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
             }
         });
     }
@@ -207,9 +434,10 @@ class GoPayAnalytics {
         const labels = [];
         const success = [];
         const failed = [];
+        const hours = parseInt(this.currentFilters.hours);
         
-        for (let i = 23; i >= 0; i--) {
-            labels.push(`${i}h ago`);
+        for (let i = hours - 1; i >= 0; i--) {
+            labels.push(i === 0 ? 'Now' : `${i}h ago`);
             success.push(Math.floor(Math.random() * 100) + 50);
             failed.push(Math.floor(Math.random() * 10) + 2);
         }
@@ -221,7 +449,9 @@ class GoPayAnalytics {
         const statusContainer = document.getElementById('providerStatus');
         
         try {
-            const response = await fetch('/v1/analytics/providers');
+            const filterParams = this.buildFilterParams();
+            const response = await fetch(`/v1/analytics/providers?${filterParams}`);
+            
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
@@ -231,8 +461,12 @@ class GoPayAnalytics {
                             <div class="provider-info">
                                 <div class="provider-status ${provider.status}"></div>
                                 <span class="provider-name">${provider.name}</span>
+                                ${provider.tenantCount ? `<span style="font-size: 0.8rem; opacity: 0.7; margin-left: 8px;">(${provider.tenantCount} tenants)</span>` : ''}
                             </div>
-                            <span class="provider-response">${provider.responseTime}</span>
+                            <div style="text-align: right;">
+                                <div class="provider-response">${provider.responseTime}</div>
+                                ${provider.environment && provider.environment !== 'all' ? `<div style="font-size: 0.7rem; opacity: 0.6;">${provider.environment}</div>` : ''}
+                            </div>
                         </div>
                     `).join('');
                     return;
@@ -243,21 +477,32 @@ class GoPayAnalytics {
         }
 
         // Fallback to static data
-        const providers = [
-            { name: 'İyzico', status: 'online', responseTime: '145ms' },
-            { name: 'Stripe', status: 'online', responseTime: '89ms' },
-            { name: 'OzanPay', status: 'online', responseTime: '203ms' },
-            { name: 'Paycell', status: 'degraded', responseTime: '456ms' },
-            { name: 'Papara', status: 'online', responseTime: '167ms' }
+        let providers = [
+            { name: 'İyzico', status: 'online', responseTime: '145ms', tenantCount: 3, environment: 'production' },
+            { name: 'Stripe', status: 'online', responseTime: '89ms', tenantCount: 5, environment: 'production' },
+            { name: 'OzanPay', status: 'online', responseTime: '203ms', tenantCount: 2, environment: 'production' },
+            { name: 'Paycell', status: 'degraded', responseTime: '456ms', tenantCount: 1, environment: 'sandbox' },
+            { name: 'Papara', status: 'online', responseTime: '167ms', tenantCount: 4, environment: 'production' }
         ];
+
+        // Filter providers if specific provider is selected
+        if (this.currentFilters.provider_id !== 'all') {
+            providers = providers.filter(p => 
+                p.name.toLowerCase().includes(this.currentFilters.provider_id.toLowerCase())
+            );
+        }
 
         statusContainer.innerHTML = providers.map(provider => `
             <div class="provider-item">
                 <div class="provider-info">
                     <div class="provider-status ${provider.status}"></div>
                     <span class="provider-name">${provider.name}</span>
+                    <span style="font-size: 0.8rem; opacity: 0.7; margin-left: 8px;">(${provider.tenantCount} tenants)</span>
                 </div>
-                <span class="provider-response">${provider.responseTime}</span>
+                <div style="text-align: right;">
+                    <div class="provider-response">${provider.responseTime}</div>
+                    <div style="font-size: 0.7rem; opacity: 0.6;">${provider.environment}</div>
+                </div>
             </div>
         `).join('');
     }
@@ -266,7 +511,9 @@ class GoPayAnalytics {
         const activityContainer = document.getElementById('recentActivity');
         
         try {
-            const response = await fetch('/v1/analytics/activity?limit=5');
+            const filterParams = this.buildFilterParams();
+            const response = await fetch(`/v1/analytics/activity?limit=5&${filterParams}`);
+            
             if (response.ok) {
                 const data = await response.json();
                 if (data.success) {
@@ -284,6 +531,7 @@ class GoPayAnalytics {
                                 <div class="activity-details">
                                     <h4>${activity.provider} ${activity.type}</h4>
                                     <p>${activity.amount}</p>
+                                    ${activity.tenantId ? `<p style="font-size: 0.8rem; opacity: 0.7;">Tenant: ${activity.tenantId} | ${activity.env || 'production'}</p>` : ''}
                                 </div>
                             </div>
                             <span class="activity-time">${activity.time}</span>
@@ -297,13 +545,28 @@ class GoPayAnalytics {
         }
 
         // Fallback to static data
-        const activities = [
-            { type: 'payment', provider: 'İyzico', amount: '₺150.00', status: 'success', time: '2 min ago' },
-            { type: 'refund', provider: 'Stripe', amount: '₺75.50', status: 'processed', time: '5 min ago' },
-            { type: 'payment', provider: 'OzanPay', amount: '₺300.00', status: 'success', time: '8 min ago' },
-            { type: 'payment', provider: 'Paycell', amount: '₺89.99', status: 'failed', time: '12 min ago' },
-            { type: 'payment', provider: 'Papara', amount: '₺250.00', status: 'success', time: '15 min ago' }
+        let activities = [
+            { type: 'payment', provider: 'İyzico', amount: '₺150.00', status: 'success', time: '2 min ago', tenantId: '1', env: 'production' },
+            { type: 'refund', provider: 'Stripe', amount: '₺75.50', status: 'processed', time: '5 min ago', tenantId: '2', env: 'production' },
+            { type: 'payment', provider: 'OzanPay', amount: '₺300.00', status: 'success', time: '8 min ago', tenantId: '1', env: 'sandbox' },
+            { type: 'payment', provider: 'Paycell', amount: '₺89.99', status: 'failed', time: '12 min ago', tenantId: '3', env: 'production' },
+            { type: 'payment', provider: 'Papara', amount: '₺250.00', status: 'success', time: '15 min ago', tenantId: '2', env: 'production' }
         ];
+
+        // Filter activities based on current filters
+        if (this.currentFilters.tenant_id !== 'all') {
+            activities = activities.filter(a => a.tenantId === this.currentFilters.tenant_id);
+        }
+        
+        if (this.currentFilters.provider_id !== 'all') {
+            activities = activities.filter(a => 
+                a.provider.toLowerCase().includes(this.currentFilters.provider_id.toLowerCase())
+            );
+        }
+        
+        if (this.currentFilters.environment !== 'all') {
+            activities = activities.filter(a => a.env === this.currentFilters.environment);
+        }
 
         activityContainer.innerHTML = activities.map(activity => `
             <div class="activity-item">
@@ -318,6 +581,7 @@ class GoPayAnalytics {
                     <div class="activity-details">
                         <h4>${activity.provider} ${activity.type}</h4>
                         <p>${activity.amount}</p>
+                        <p style="font-size: 0.8rem; opacity: 0.7;">Tenant: ${activity.tenantId} | ${activity.env}</p>
                     </div>
                 </div>
                 <span class="activity-time">${activity.time}</span>

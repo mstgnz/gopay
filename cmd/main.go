@@ -193,6 +193,19 @@ func main() {
 		r.Post("/validate", authHandler.ValidateToken)
 	})
 
+	// Public v1 analytics routes (no authentication required - for dashboard)
+	r.Route("/v1/analytics", func(r chi.Router) {
+		// Initialize analytics handler
+		analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
+
+		r.Get("/dashboard", analyticsHandler.GetDashboardStats)       // GET /v1/analytics/dashboard?hours=24
+		r.Get("/providers", analyticsHandler.GetProviderStats)        // GET /v1/analytics/providers
+		r.Get("/activity", analyticsHandler.GetRecentActivity)        // GET /v1/analytics/activity?limit=10
+		r.Get("/trends", analyticsHandler.GetPaymentTrends)           // GET /v1/analytics/trends?hours=24
+		r.Get("/tenants", analyticsHandler.GetActiveTenants)          // GET /v1/analytics/tenants
+		r.Get("/providers/list", analyticsHandler.GetActiveProviders) // GET /v1/analytics/providers/list
+	})
+
 	// Protected v1 routes with authentication
 	r.Route("/v1", func(r chi.Router) {
 		// Add JWT authentication middleware only to protected routes

@@ -17,7 +17,6 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
 	authHandler := handler.NewAuthHandler(tenantService, jwtService, validator)
-	analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
 	logsHandler := handler.NewLogsHandler(nil, postgresLogger)
 
 	// Protected auth endpoints (JWT authentication already applied in main.go)
@@ -41,13 +40,7 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Delete("/tenant", configHandler.DeleteTenantConfig)
 	})
 
-	// Analytics routes (JWT protected)
-	r.Route("/analytics", func(r chi.Router) {
-		r.Get("/dashboard", analyticsHandler.GetDashboardStats) // GET /v1/analytics/dashboard?hours=24
-		r.Get("/providers", analyticsHandler.GetProviderStats)  // GET /v1/analytics/providers
-		r.Get("/activity", analyticsHandler.GetRecentActivity)  // GET /v1/analytics/activity?limit=10
-		r.Get("/trends", analyticsHandler.GetPaymentTrends)     // GET /v1/analytics/trends?hours=24
-	})
+	// Analytics routes moved to public section in main.go
 
 	// Logs routes (JWT protected)
 	r.Route("/logs", func(r chi.Router) {
