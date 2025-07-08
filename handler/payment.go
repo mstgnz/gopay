@@ -19,12 +19,12 @@ import (
 
 // PaymentServiceInterface defines the interface for payment operations
 type PaymentServiceInterface interface {
-	CreatePayment(ctx context.Context, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
-	GetPaymentStatus(ctx context.Context, providerName, paymentID string) (*provider.PaymentResponse, error)
-	CancelPayment(ctx context.Context, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
-	RefundPayment(ctx context.Context, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
-	Complete3DPayment(ctx context.Context, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
-	ValidateWebhook(ctx context.Context, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
+	CreatePayment(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
+	GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
+	CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
+	RefundPayment(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
+	Complete3DPayment(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
+	ValidateWebhook(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
 }
 
 // PaymentHandler handles payment related HTTP requests
@@ -69,11 +69,14 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
-	// Add tenant ID to request for callback URL generation
-	req.TenantID = tenantID
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
+	}
 
 	// Process the payment
-	resp, err := h.paymentService.CreatePayment(ctx, providerName, req)
+	resp, err := h.paymentService.CreatePayment(ctx, environment, providerName, req)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Payment failed", err)
 		return
@@ -104,8 +107,14 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
+	}
+
 	// Get payment status
-	resp, err := h.paymentService.GetPaymentStatus(ctx, providerName, paymentID)
+	resp, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, paymentID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to get payment status", err)
 		return
@@ -136,6 +145,12 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
+	}
+
 	// Parse reason from request body
 	var req struct {
 		Reason string `json:"reason"`
@@ -146,7 +161,7 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cancel payment
-	resp, err := h.paymentService.CancelPayment(ctx, providerName, paymentID, req.Reason)
+	resp, err := h.paymentService.CancelPayment(ctx, environment, providerName, paymentID, req.Reason)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to cancel payment", err)
 		return
@@ -171,6 +186,12 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
+	}
+
 	// Parse refund request
 	var req provider.RefundRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -185,7 +206,7 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process refund
-	resp, err := h.paymentService.RefundPayment(ctx, providerName, req)
+	resp, err := h.paymentService.RefundPayment(ctx, environment, providerName, req)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to refund payment", err)
 		return
@@ -213,6 +234,12 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	if tenantID != "" && providerName != "" {
 		// Use tenant-specific provider: TENANT_provider
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	}
+
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
 	}
 
 	// Get conversationID and paymentID from query parameters
@@ -244,7 +271,7 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Complete 3D payment
-	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, paymentID, conversationID, callbackData)
+	resp, err := h.paymentService.Complete3DPayment(ctx, environment, providerName, paymentID, conversationID, callbackData)
 
 	// Enhanced redirect handling with better URL parsing
 	originalCallbackURL := r.URL.Query().Get("originalCallbackUrl")
@@ -363,6 +390,12 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 	}
 
+	environment := r.URL.Query().Get("environment")
+	if environment == "" {
+		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
+		return
+	}
+
 	// Parse webhook data based on content type
 	var webhookData map[string]string
 	contentType := r.Header.Get("Content-Type")
@@ -397,7 +430,7 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate webhook signature
-	isValid, paymentData, err := h.paymentService.ValidateWebhook(ctx, providerName, webhookData, headers)
+	isValid, paymentData, err := h.paymentService.ValidateWebhook(ctx, environment, providerName, webhookData, headers)
 	if err != nil {
 		// Log validation error but respond with 200 to prevent retries for invalid webhooks
 		h.logWebhookError(providerName, "validation_failed", err, webhookData)
@@ -412,7 +445,7 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process webhook asynchronously to respond quickly
-	go h.processWebhookAsync(providerName, paymentData, webhookData)
+	go h.processWebhookAsync(environment, providerName, paymentData, webhookData)
 
 	// Respond immediately with success
 	response.Success(w, http.StatusOK, "Webhook received and processing", map[string]string{
@@ -422,7 +455,7 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // Async webhook processing for better performance
-func (h *PaymentHandler) processWebhookAsync(providerName string, paymentData, rawWebhookData map[string]string) {
+func (h *PaymentHandler) processWebhookAsync(environment, providerName string, paymentData, rawWebhookData map[string]string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -433,7 +466,7 @@ func (h *PaymentHandler) processWebhookAsync(providerName string, paymentData, r
 	}
 
 	// Get current payment status from provider
-	currentStatus, err := h.paymentService.GetPaymentStatus(ctx, providerName, paymentID)
+	currentStatus, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, paymentID)
 	if err != nil {
 		h.logWebhookError(providerName, "status_check_failed", err, rawWebhookData)
 		return

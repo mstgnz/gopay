@@ -109,7 +109,7 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 // registerTenantProvider registers a tenant-specific provider in the payment service
 func (h *ConfigHandler) registerTenantProvider(tenantID, providerName string, config map[string]string) error {
 	// Create tenant-specific provider name
-	tenantProviderName := strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	/* tenantProviderName := strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
 
 	// Add GoPay base URL to config
 	config["gopayBaseURL"] = h.providerConfig.GetBaseURL()
@@ -117,7 +117,7 @@ func (h *ConfigHandler) registerTenantProvider(tenantID, providerName string, co
 	// Add provider to payment service
 	if err := h.paymentService.AddProvider(tenantProviderName, config); err != nil {
 		return err
-	}
+	} */
 
 	return nil
 }
