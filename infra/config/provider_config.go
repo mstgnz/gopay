@@ -10,7 +10,6 @@ import (
 // ProviderConfig manages payment provider configurations
 type ProviderConfig struct {
 	configs map[string]map[string]string
-	baseURL string
 	storage *PostgresStorage // PostgreSQL storage for persistence
 	mu      sync.RWMutex     // Thread-safe access
 }
@@ -19,7 +18,6 @@ type ProviderConfig struct {
 func NewProviderConfig() *ProviderConfig {
 	config := &ProviderConfig{
 		configs: make(map[string]map[string]string),
-		baseURL: GetEnv("APP_URL", "http://localhost:9999"),
 	}
 
 	// Initialize PostgreSQL storage using shared database connection
@@ -42,51 +40,6 @@ func NewProviderConfig() *ProviderConfig {
 	}
 
 	return config
-}
-
-// LoadFromEnv loads provider configurations from environment variables
-// using the pattern PROVIDER_NAME_KEY=value
-func (c *ProviderConfig) LoadFromEnv() {
-	// Load base URL configuration for callback URLs
-	c.baseURL = GetEnv("APP_URL", "http://localhost:9999")
-
-	// Load Iyzico configuration
-	c.loadProviderFromEnv("iyzico", []string{
-		"apiKey",
-		"secretKey",
-		"environment",
-	})
-
-	// Load OzanPay configuration
-	c.loadProviderFromEnv("ozanpay", []string{
-		"apiKey",
-		"secretKey",
-		"merchantId",
-		"environment",
-	})
-
-	// Load Paycell configuration
-	c.loadProviderFromEnv("paycell", []string{
-		"username",
-		"password",
-		"merchantId",
-		"terminalId",
-		"environment",
-	})
-
-	// Load Nkolay configuration
-	c.loadProviderFromEnv("nkolay", []string{
-		"apiKey",
-		"secretKey",
-		"merchantId",
-		"environment",
-	})
-
-	// Load Papara configuration
-	c.loadProviderFromEnv("papara", []string{
-		"apiKey",
-		"environment",
-	})
 }
 
 // loadFromPostgreSQL loads all tenant configurations from PostgreSQL storage
@@ -180,73 +133,6 @@ func (c *ProviderConfig) GetTenantConfig(tenantID, providerName string) (map[str
 	return configCopy, nil
 }
 
-// GetAvailableTenantsForProvider returns all tenants that have configuration for a specific provider
-func (c *ProviderConfig) GetAvailableTenantsForProvider(providerName string) []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var tenants []string
-	providerSuffix := "_" + strings.ToLower(providerName)
-
-	for key := range c.configs {
-		if strings.HasSuffix(key, providerSuffix) {
-			tenant := strings.TrimSuffix(key, providerSuffix)
-			tenants = append(tenants, strings.ToLower(tenant))
-		}
-	}
-
-	return tenants
-}
-
-// validateProviderConfig validates configuration based on provider requirements
-func (c *ProviderConfig) validateProviderConfig(providerName string, config map[string]string) error {
-	requiredKeys := make(map[string][]string)
-
-	// Define required keys for each provider (legacy fallback)
-	requiredKeys["papara"] = []string{"apiKey"}
-	requiredKeys["iyzico"] = []string{"apiKey", "secretKey"}
-	requiredKeys["nkolay"] = []string{"apiKey", "secretKey", "merchantId"}
-	requiredKeys["ozanpay"] = []string{"apiKey", "secretKey", "merchantId"}
-	requiredKeys["paycell"] = []string{"username", "password", "merchantId", "terminalId"}
-	requiredKeys["payu"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
-	requiredKeys["paytr"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
-	requiredKeys["stripe"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
-
-	required, exists := requiredKeys[strings.ToLower(providerName)]
-	if !exists {
-		return fmt.Errorf("unsupported provider: %s", providerName)
-	}
-
-	// Check if all required keys are present and not empty
-	for _, key := range required {
-		value, exists := config[key]
-		if !exists || strings.TrimSpace(value) == "" {
-			return fmt.Errorf("required key '%s' is missing or empty", key)
-		}
-	}
-
-	return nil
-}
-
-// loadProviderFromEnv loads a single provider's configuration from environment variables
-func (c *ProviderConfig) loadProviderFromEnv(providerName string, keys []string) {
-	config := make(map[string]string)
-	providerPrefix := strings.ToUpper(providerName) + "_"
-
-	for _, key := range keys {
-		envKey := providerPrefix + strings.ToUpper(key)
-		value := GetEnv(envKey, "")
-		if value != "" {
-			config[key] = value
-		}
-	}
-
-	// Only add if there are any values configured
-	if len(config) > 0 {
-		c.configs[providerName] = config
-	}
-}
-
 // GetConfig returns configuration for a specific provider (legacy method, for backward compatibility)
 func (c *ProviderConfig) GetConfig(providerName string) (map[string]string, error) {
 	c.mu.RLock()
@@ -274,19 +160,6 @@ func (c *ProviderConfig) GetAvailableProviders() []string {
 	return providers
 }
 
-// GetBaseURL returns the configured base URL for callback URLs
-func (c *ProviderConfig) GetBaseURL() string {
-	return c.baseURL
-}
-
-// Close closes the PostgreSQL storage connection
-func (c *ProviderConfig) Close() error {
-	if c.storage != nil {
-		return c.storage.Close()
-	}
-	return nil
-}
-
 // GetStats returns configuration and storage statistics
 func (c *ProviderConfig) GetStats() (map[string]any, error) {
 	stats := make(map[string]any)
@@ -296,7 +169,6 @@ func (c *ProviderConfig) GetStats() (map[string]any, error) {
 	c.mu.RUnlock()
 
 	stats["memory_configs"] = memoryConfigs
-	stats["base_url"] = c.baseURL
 
 	// Get PostgreSQL statistics if available
 	if c.storage != nil {

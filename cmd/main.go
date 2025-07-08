@@ -86,7 +86,6 @@ func main() {
 	paymentLogger := provider.NewDBPaymentLogger(config.App().DB)
 	paymentService := provider.NewPaymentService(paymentLogger)
 	providerConfig := config.NewProviderConfig()
-	providerConfig.LoadFromEnv()
 
 	// Initialize payment handler
 	validatorInstance := validator.New()
