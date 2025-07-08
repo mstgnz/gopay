@@ -75,7 +75,7 @@ if err != nil {
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/nkolay \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
@@ -100,7 +100,7 @@ curl -X POST http://localhost:9999/v1/payments/nkolay \
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/nkolay \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
@@ -128,14 +128,14 @@ curl -X POST http://localhost:9999/v1/payments/nkolay \
 
 ```bash
 curl -X GET http://localhost:9999/v1/payments/nkolay/{paymentID} \
-  -H "Authorization: Bearer your_api_key"
+  -H "Authorization: Bearer your_jwt_token"
 ```
 
 ### 4. Refund Payment
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/nkolay/refund \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "paymentId": "payment_123",
@@ -149,7 +149,7 @@ curl -X POST http://localhost:9999/v1/payments/nkolay/refund \
 
 ```bash
 curl -X DELETE http://localhost:9999/v1/payments/nkolay/{paymentID} \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "reason": "Customer cancellation"

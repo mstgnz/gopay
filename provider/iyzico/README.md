@@ -61,7 +61,7 @@ paymentService.SetDefaultProvider("iyzico")
 ```http
 POST /v1/payments/iyzico
 Content-Type: application/json
-Authorization: Bearer your_api_key
+Authorization: Bearer your_jwt_token
 
 {
   "amount": 100.50,
@@ -87,7 +87,7 @@ Authorization: Bearer your_api_key
 ```http
 POST /v1/payments/iyzico
 Content-Type: application/json
-Authorization: Bearer your_api_key
+Authorization: Bearer your_jwt_token
 
 {
   "amount": 250.75,
@@ -130,14 +130,14 @@ Authorization: Bearer your_api_key
 
 ```http
 GET /v1/payments/iyzico/{paymentId}
-Authorization: Bearer your_api_key
+Authorization: Bearer your_jwt_token
 ```
 
 #### Payment Cancellation
 
 ```http
 DELETE /v1/payments/iyzico/{paymentId}
-Authorization: Bearer your_api_key
+Authorization: Bearer your_jwt_token
 Content-Type: application/json
 
 {
@@ -149,7 +149,7 @@ Content-Type: application/json
 
 ```http
 POST /v1/payments/iyzico/refund
-Authorization: Bearer your_api_key
+Authorization: Bearer your_jwt_token
 Content-Type: application/json
 
 {

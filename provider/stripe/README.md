@@ -72,7 +72,7 @@ err := paymentService.AddProvider("stripe", stripeConfig)
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/stripe \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
@@ -104,7 +104,7 @@ curl -X POST http://localhost:9999/v1/payments/stripe \
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/stripe \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
@@ -142,14 +142,14 @@ curl -X POST http://localhost:9999/v1/payments/stripe \
 
 ```bash
 curl -X GET http://localhost:9999/v1/payments/stripe/pi_1234567890abcdef \
-  -H "Authorization: Bearer your_api_key"
+  -H "Authorization: Bearer your_jwt_token"
 ```
 
 ### 4. Cancel Payment
 
 ```bash
 curl -X DELETE http://localhost:9999/v1/payments/stripe/pi_1234567890abcdef \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "reason": "Customer requested cancellation"
@@ -160,7 +160,7 @@ curl -X DELETE http://localhost:9999/v1/payments/stripe/pi_1234567890abcdef \
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/stripe/refund \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "paymentId": "pi_1234567890abcdef",

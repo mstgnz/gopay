@@ -57,7 +57,7 @@ APP_URL=https://your-domain.com  # For GoPay callback URLs
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/papara \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 100.50,
@@ -76,7 +76,7 @@ curl -X POST http://localhost:9999/v1/payments/papara \
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/papara \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "amount": 250.00,
@@ -97,14 +97,14 @@ curl -X POST http://localhost:9999/v1/payments/papara \
 
 ```bash
 curl -X GET http://localhost:9999/v1/payments/papara/payment_id_here \
-  -H "Authorization: Bearer your_api_key"
+  -H "Authorization: Bearer your_jwt_token"
 ```
 
 ### 4. Refund Operation
 
 ```bash
 curl -X POST http://localhost:9999/v1/payments/papara/refund \
-  -H "Authorization: Bearer your_api_key" \
+  -H "Authorization: Bearer your_jwt_token" \
   -H "Content-Type: application/json" \
   -d '{
     "paymentId": "payment_id_here",
@@ -118,7 +118,7 @@ curl -X POST http://localhost:9999/v1/payments/papara/refund \
 
 ```bash
 curl -X DELETE http://localhost:9999/v1/payments/papara/payment_id_here \
-  -H "Authorization: Bearer your_api_key"
+  -H "Authorization: Bearer your_jwt_token"
 ```
 
 ## Usage with Go Code
