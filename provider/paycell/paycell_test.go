@@ -795,3 +795,208 @@ func TestPaycellProvider_ValidateWebhook(t *testing.T) {
 		})
 	}
 }
+
+func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*PaycellProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 5},
+		{"production environment", "production", 5},
+		{"test environment", "test", 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"username", "password", "merchantId", "terminalId", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestPaycellProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*PaycellProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_PROD",
+				"password":    "PAYCELL_PASS_PROD123456",
+				"merchantId":  "PRODMERCHANT123",
+				"terminalId":  "VPPROD123456",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing username",
+			config: map[string]string{
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'username' is missing",
+		},
+		{
+			name: "missing password",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'password' is missing",
+		},
+		{
+			name: "missing merchantId",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' is missing",
+		},
+		{
+			name: "missing terminalId",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'terminalId' is missing",
+		},
+		{
+			name: "empty username",
+			config: map[string]string{
+				"username":    "",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'username' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "username too short",
+			config: map[string]string{
+				"username":    "AB",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 3 characters",
+		},
+		{
+			name: "password too short",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "12345",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 6 characters",
+		},
+		{
+			name: "merchantId too short",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "ABCD",
+				"terminalId":  "VP123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 5 characters",
+		},
+		{
+			name: "terminalId too short",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"terminalId":  "ABCD",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 5 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
+				}
+			}
+		})
+	}
+}
