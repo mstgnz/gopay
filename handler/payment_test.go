@@ -128,7 +128,7 @@ func TestNewPaymentHandler(t *testing.T) {
 func TestPaymentHandler_ProcessPayment(t *testing.T) {
 	tests := []struct {
 		name           string
-		requestBody    interface{}
+		requestBody    any
 		environment    string
 		provider       string
 		expectedStatus int
@@ -353,7 +353,7 @@ func TestPaymentHandler_CancelPayment(t *testing.T) {
 func TestPaymentHandler_RefundPayment(t *testing.T) {
 	tests := []struct {
 		name           string
-		requestBody    interface{}
+		requestBody    any
 		environment    string
 		provider       string
 		expectedStatus int
