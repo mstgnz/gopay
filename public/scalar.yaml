@@ -115,8 +115,8 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: API_KEY
-      description: API key required for payment operations
+      bearerFormat: JWT
+      description: JWT token required for authentication
   
   schemas:
     # Authentication Schemas
@@ -1347,7 +1347,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -1399,7 +1399,7 @@ paths:
         '400':
           description: Invalid request or provider not supported
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -1433,7 +1433,7 @@ paths:
         '400':
           description: Invalid payment ID
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '404':
           description: Payment not found
         '500':
@@ -1473,7 +1473,7 @@ paths:
         '400':
           description: Invalid payment ID or payment cannot be cancelled
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '404':
           description: Payment not found
         '500':
@@ -1620,7 +1620,7 @@ paths:
         '400':
           description: Invalid refund request
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '404':
           description: Payment not found
         '500':
@@ -1665,7 +1665,7 @@ paths:
         '400':
           description: Invalid refund request
         '401':
-          description: Unauthorized - Invalid API key
+          description: Unauthorized - Invalid JWT token
         '404':
           description: Payment not found
         '500':
