@@ -3,10 +3,12 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/provider"
@@ -86,11 +88,30 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Convert tenantID to int for cache operations
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
 	// Save to DB (tenant_configs)
 	if err := h.providerConfig.SetTenantConfig(tenantID, req.Provider, configMap); err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to save configuration", err)
 		return
 	}
+
+	// Invalidate provider cache for this tenant-provider-environment combination
+	cache := provider.GetProviderCache()
+	cache.Delete(tenantIDInt, req.Provider, req.Environment)
+
+	logger.Info("Provider cache invalidated after config update", logger.LogContext{
+		Provider: req.Provider,
+		Fields: map[string]any{
+			"tenant_id":   tenantIDInt,
+			"environment": req.Environment,
+		},
+	})
 
 	responseData := map[string]any{
 		"tenantId": tenantID,
@@ -164,12 +185,30 @@ func (h *ConfigHandler) DeleteTenantConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Convert tenantID to int for cache operations
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid tenant ID", err)
+		return
+	}
+
 	// Delete configuration
-	err := h.providerConfig.DeleteTenantConfig(tenantID, providerName)
+	err = h.providerConfig.DeleteTenantConfig(tenantID, providerName)
 	if err != nil {
 		response.Error(w, http.StatusNotFound, "Failed to delete configuration", err)
 		return
 	}
+
+	// Invalidate provider cache for this tenant-provider combination (all environments)
+	cache := provider.GetProviderCache()
+	cache.DeleteByTenantAndProvider(tenantIDInt, providerName)
+
+	logger.Info("Provider cache invalidated after config deletion", logger.LogContext{
+		Provider: providerName,
+		Fields: map[string]any{
+			"tenant_id": tenantIDInt,
+		},
+	})
 
 	responseData := map[string]any{
 		"tenantId": tenantID,

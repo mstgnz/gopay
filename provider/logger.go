@@ -13,6 +13,31 @@ import (
 	"github.com/mstgnz/gopay/infra/logger"
 )
 
+// Global cache instance for provider instances
+var (
+	globalProviderCache ProviderCache
+	cacheOnce           sync.Once
+)
+
+// GetProviderCache returns the global provider cache instance
+func GetProviderCache() ProviderCache {
+	cacheOnce.Do(func() {
+		// Cache configuration: max 1000 entries, 1 hour TTL
+		globalProviderCache = NewProviderCache(1000, time.Hour)
+
+		// Start cleanup goroutine for expired entries
+		go func() {
+			ticker := time.NewTicker(15 * time.Minute) // Cleanup every 15 minutes
+			defer ticker.Stop()
+
+			for range ticker.C {
+				globalProviderCache.Cleanup()
+			}
+		}()
+	})
+	return globalProviderCache
+}
+
 // PaymentLogger handles database logging for payment operations
 type PaymentLogger interface {
 	LogRequest(ctx context.Context, tenantID int, providerName string, method, endpoint string, request any, userAgent, clientIP string) (int64, error)
@@ -193,6 +218,50 @@ func (l *DBPaymentLogger) getActualProviderName(providerName string) (string, er
 }
 
 func GetProvider(tenantID int, name, environment string) (PaymentProvider, error) {
+	cache := GetProviderCache()
+
+	// Try to get from cache first
+	if cachedProvider := cache.Get(tenantID, name, environment); cachedProvider != nil {
+		logger.Debug("Provider cache hit", logger.LogContext{
+			Provider: name,
+			Fields: map[string]any{
+				"tenant_id":   tenantID,
+				"environment": environment,
+			},
+		})
+		return cachedProvider, nil
+	}
+
+	// Cache miss - load from database and initialize
+	logger.Debug("Provider cache miss, loading from database", logger.LogContext{
+		Provider: name,
+		Fields: map[string]any{
+			"tenant_id":   tenantID,
+			"environment": environment,
+		},
+	})
+
+	provider, err := loadProviderFromDB(tenantID, name, environment)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in cache for future use
+	cache.Set(tenantID, name, environment, provider)
+
+	logger.Debug("Provider cached successfully", logger.LogContext{
+		Provider: name,
+		Fields: map[string]any{
+			"tenant_id":   tenantID,
+			"environment": environment,
+		},
+	})
+
+	return provider, nil
+}
+
+// loadProviderFromDB loads provider configuration from database and initializes it
+func loadProviderFromDB(tenantID int, name, environment string) (PaymentProvider, error) {
 	query := `
 		SELECT tc.tenant_id, p.name as provider_name, tc.environment, tc.key, tc.value 
 		FROM tenant_configs tc
@@ -208,8 +277,10 @@ func GetProvider(tenantID int, name, environment string) (PaymentProvider, error
 	defer rows.Close()
 
 	configs := make(map[string]string)
+	var foundRows bool
 
 	for rows.Next() {
+		foundRows = true
 		var tenantID int
 		var providerName, environment, key, value string
 		if err := rows.Scan(&tenantID, &providerName, &environment, &key, &value); err != nil {
@@ -223,14 +294,20 @@ func GetProvider(tenantID int, name, environment string) (PaymentProvider, error
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	providerFactory, err := Get(name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get provider: %w", err)
+	if !foundRows {
+		return nil, fmt.Errorf("no configuration found for tenant: %d, provider: %s, environment: %s", tenantID, name, environment)
 	}
 
+	// Get provider factory from registry
+	providerFactory, err := Get(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider factory for %s: %w", name, err)
+	}
+
+	// Create and initialize provider
 	provider := providerFactory()
 	if err := provider.Initialize(configs); err != nil {
-		return nil, fmt.Errorf("failed to initialize provider: %w", err)
+		return nil, fmt.Errorf("failed to initialize provider %s: %w", name, err)
 	}
 
 	return provider, nil
