@@ -1,7 +1,6 @@
 package middle
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -107,21 +106,6 @@ func loadTenantRateLimitConfig() *TenantRateLimitConfig {
 	cfg.DefaultRefundRate = getEnvInt("TENANT_REFUND_RATE_LIMIT", 20)     // 20/min refunds per tenant
 	cfg.DefaultStatusRate = getEnvInt("TENANT_STATUS_RATE_LIMIT", 200)    // 200/min status checks per tenant
 	cfg.UnauthenticatedRate = getEnvInt("UNAUTHENTICATED_RATE_LIMIT", 10) // 10/min per IP for unauthenticated
-
-	// Load premium tenants from environment
-	if premiumList := config.GetEnv("PREMIUM_TENANTS", ""); premiumList != "" {
-		for _, tenantID := range strings.Split(premiumList, ",") {
-			cfg.PremiumTenants[strings.TrimSpace(tenantID)] = true
-		}
-	}
-
-	// Load tenant-specific overrides from JSON config if available
-	if overrides := config.GetEnv("TENANT_RATE_OVERRIDES", ""); overrides != "" {
-		var overrideMap map[string]*TenantLimits
-		if err := json.Unmarshal([]byte(overrides), &overrideMap); err == nil {
-			cfg.TenantOverrides = overrideMap
-		}
-	}
 
 	return cfg
 }

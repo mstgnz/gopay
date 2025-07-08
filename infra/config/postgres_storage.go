@@ -224,6 +224,7 @@ func (s *PostgresStorage) LoadAllTenantConfigs() (map[string]map[string]string, 
 		SELECT tc.tenant_id, p.name as provider_name, tc.environment, tc.key, tc.value 
 		FROM tenant_configs tc
 		JOIN providers p ON tc.provider_id = p.id
+		WHERE p.active = true
 		ORDER BY tc.tenant_id, p.name, tc.key
 	`
 
