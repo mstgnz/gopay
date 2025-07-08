@@ -83,34 +83,10 @@ func main() {
 	})
 
 	// Initialize global services for callback handlers
-	paymentLogger := provider.NewDBPaymentLogger(config.App().DB.DB)
+	paymentLogger := provider.NewDBPaymentLogger(config.App().DB)
 	paymentService := provider.NewPaymentService(paymentLogger)
 	providerConfig := config.NewProviderConfig()
 	providerConfig.LoadFromEnv()
-
-	// Register providers (similar to v1 init)
-	for _, providerName := range providerConfig.GetAvailableProviders() {
-		providerCfg, err := providerConfig.GetConfig(providerName)
-		if err != nil {
-			logger.Error("Failed to get configuration for provider", err, logger.LogContext{
-				Provider: providerName,
-			})
-			continue
-		}
-		providerCfg["gopayBaseURL"] = providerConfig.GetBaseURL()
-		if err := paymentService.AddProvider(providerName, providerCfg); err != nil {
-			logger.Error("Failed to register provider", err, logger.LogContext{
-				Provider: providerName,
-			})
-			continue
-		}
-	}
-
-	// Set default provider
-	availableProviders := providerConfig.GetAvailableProviders()
-	if len(availableProviders) > 0 {
-		paymentService.SetDefaultProvider(availableProviders[0])
-	}
 
 	// Initialize payment handler
 	validatorInstance := validator.New()
