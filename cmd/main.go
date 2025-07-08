@@ -106,7 +106,7 @@ func main() {
 	tenantRateLimiter := middle.NewTenantRateLimiter()
 	r.Use(middle.SecurityHeadersMiddleware())
 	r.Use(middle.IPWhitelistMiddleware())
-	r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter))
+	//r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter))
 	r.Use(middle.RequestValidationMiddleware())
 
 	// PostgreSQL Logging Middleware (add before authentication to log all requests)

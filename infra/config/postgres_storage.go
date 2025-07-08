@@ -120,12 +120,18 @@ func (s *PostgresStorage) SaveTenantConfig(tenantID, providerName string, config
 	}
 	defer tx.Rollback()
 
+	// Determine environment from config or default to 'test'
+	environment := "test"
+	if env, exists := config["environment"]; exists {
+		environment = env
+	}
+
 	// Delete existing configs for this tenant-provider combination
 	deleteQuery := `
 		DELETE FROM tenant_configs 
-		WHERE tenant_id = $1 AND provider_id = $2
+		WHERE tenant_id = $1 AND provider_id = $2 AND environment = $3
 	`
-	_, err = tx.Exec(deleteQuery, tenantIDInt, providerID)
+	_, err = tx.Exec(deleteQuery, tenantIDInt, providerID, environment)
 	if err != nil {
 		return fmt.Errorf("failed to delete existing configs: %w", err)
 	}
@@ -135,12 +141,6 @@ func (s *PostgresStorage) SaveTenantConfig(tenantID, providerName string, config
 		INSERT INTO tenant_configs (tenant_id, provider_id, environment, key, value)
 		VALUES ($1, $2, $3, $4, $5)
 	`
-
-	// Determine environment from config or default to 'test'
-	environment := "test"
-	if env, exists := config["environment"]; exists {
-		environment = env
-	}
 
 	// Insert each key-value pair
 	for key, value := range config {

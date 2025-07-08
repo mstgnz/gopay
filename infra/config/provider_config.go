@@ -123,20 +123,13 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 		return fmt.Errorf("config cannot be empty")
 	}
 
-	// Skip validation for tenant-specific configs (new generic approach)
-	// Only validate for legacy provider configs (non-tenant-specific)
-	if !strings.Contains(tenantID, "_") && tenantID == strings.ToUpper(tenantID) {
-		// This is a legacy provider config, apply validation
-		if err := c.validateProviderConfig(providerName, config); err != nil {
-			return fmt.Errorf("invalid config for provider %s: %w", providerName, err)
-		}
+	// This is a legacy provider config, apply validation
+	if err := c.validateProviderConfig(providerName, config); err != nil {
+		return fmt.Errorf("invalid config for provider %s: %w", providerName, err)
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	// Create tenant-specific provider key
-	tenantProviderKey := fmt.Sprintf("%s_%s", strings.ToUpper(tenantID), strings.ToLower(providerName))
 
 	// Save to PostgreSQL if available
 	if c.storage != nil {
@@ -144,6 +137,9 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 			return fmt.Errorf("failed to save config to PostgreSQL: %w", err)
 		}
 	}
+
+	// Create tenant-specific provider key
+	tenantProviderKey := fmt.Sprintf("%s_%s", strings.ToUpper(tenantID), strings.ToLower(providerName))
 
 	// Update in-memory cache
 	c.configs[tenantProviderKey] = config
@@ -212,11 +208,14 @@ func (c *ProviderConfig) validateProviderConfig(providerName string, config map[
 	requiredKeys := make(map[string][]string)
 
 	// Define required keys for each provider
+	requiredKeys["papara"] = []string{"apiKey"}
 	requiredKeys["iyzico"] = []string{"apiKey", "secretKey"}
+	requiredKeys["nkolay"] = []string{"apiKey", "secretKey", "merchantId"}
 	requiredKeys["ozanpay"] = []string{"apiKey", "secretKey", "merchantId"}
 	requiredKeys["paycell"] = []string{"username", "password", "merchantId", "terminalId"}
-	requiredKeys["nkolay"] = []string{"apiKey", "secretKey", "merchantId"}
-	requiredKeys["papara"] = []string{"apiKey"}
+	requiredKeys["payu"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
+	requiredKeys["paytr"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
+	requiredKeys["stripe"] = []string{"apiKey", "secretKey", "merchantId", "terminalId"}
 
 	required, exists := requiredKeys[strings.ToLower(providerName)]
 	if !exists {
