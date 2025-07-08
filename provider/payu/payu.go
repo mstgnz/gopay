@@ -38,16 +38,6 @@ const (
 	statusRefunded   = "REFUNDED"
 	statusAuthorized = "AUTHORIZED"
 
-	// PayU Error Codes
-	errorCodeInsufficientFunds    = "INSUFFICIENT_FUNDS"
-	errorCodeInvalidCard          = "INVALID_CARD"
-	errorCodeExpiredCard          = "EXPIRED_CARD"
-	errorCodeFraudulent           = "FRAUDULENT_TRANSACTION"
-	errorCodeDeclined             = "CARD_DECLINED"
-	errorCodeSystemError          = "SYSTEM_ERROR"
-	errorCodeInvalidAmount        = "INVALID_AMOUNT"
-	errorCodeAuthenticationFailed = "3D_AUTHENTICATION_FAILED"
-
 	// Default Values
 	defaultCurrency = "TRY"
 	defaultTimeout  = 30 * time.Second

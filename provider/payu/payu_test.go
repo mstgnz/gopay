@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -737,5 +738,187 @@ func TestPayUProvider_Integration_GetPaymentStatus(t *testing.T) {
 
 	if response.PaymentID != "pay_test_123" {
 		t.Errorf("Expected paymentID 'pay_test_123', got %s", response.PaymentID)
+	}
+}
+
+func TestPayUProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*PayUProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 3},
+		{"production environment", "production", 3},
+		{"test environment", "test", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"merchantId", "secretKey", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestPayUProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*PayUProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"merchantId":  "654321",
+				"secretKey":   "PAYU_PROD_SECRET_KEY_789",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing merchantId",
+			config: map[string]string{
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' is missing",
+		},
+		{
+			name: "missing secretKey",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'secretKey' is missing",
+		},
+		{
+			name: "missing environment",
+			config: map[string]string{
+				"merchantId": "123456",
+				"secretKey":  "PAYU_SECRET_KEY_123",
+			},
+			expectError: true,
+			errorMsg:    "required field 'environment' is missing",
+		},
+		{
+			name: "empty merchantId",
+			config: map[string]string{
+				"merchantId":  "",
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' cannot be empty",
+		},
+		{
+			name: "empty secretKey",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"secretKey":   "",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'secretKey' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "merchantId too short",
+			config: map[string]string{
+				"merchantId":  "12",
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 3 characters",
+		},
+		{
+			name: "secretKey too short",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"secretKey":   "short",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+		{
+			name: "merchantId too long",
+			config: map[string]string{
+				"merchantId":  "12345678901234567890123456789012345",
+				"secretKey":   "PAYU_SECRET_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must not exceed 20 characters",
+		},
+		{
+			name: "secretKey too long",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"secretKey":   "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must not exceed 100 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
+				}
+			}
+		})
 	}
 }
