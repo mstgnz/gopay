@@ -14,6 +14,8 @@ import (
 	_ "github.com/mstgnz/gopay/provider/ozanpay"
 	_ "github.com/mstgnz/gopay/provider/papara"
 	_ "github.com/mstgnz/gopay/provider/paycell"
+	_ "github.com/mstgnz/gopay/provider/paytr"
+	_ "github.com/mstgnz/gopay/provider/payu"
 	_ "github.com/mstgnz/gopay/provider/stripe"
 )
 
