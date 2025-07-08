@@ -2,6 +2,7 @@ package paytr
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/mstgnz/gopay/provider"
@@ -752,6 +753,188 @@ func TestPayTRProvider_MapToPaymentResponse(t *testing.T) {
 			if errorCode, ok := tt.response["failed_reason_code"].(string); ok {
 				if result.ErrorCode != errorCode {
 					t.Errorf("Expected errorCode %s, got %s", errorCode, result.ErrorCode)
+				}
+			}
+		})
+	}
+}
+
+func TestPayTRProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*PayTRProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 4},
+		{"production environment", "production", 4},
+		{"test environment", "test", 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"merchantId", "merchantKey", "merchantSalt", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestPayTRProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*PayTRProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"merchantId":   "654321",
+				"merchantKey":  "PAYTR_PROD_MERCHANT_KEY_789",
+				"merchantSalt": "PAYTR_PROD_SALT_123",
+				"environment":  "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing merchantId",
+			config: map[string]string{
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' is missing",
+		},
+		{
+			name: "missing merchantKey",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantKey' is missing",
+		},
+		{
+			name: "missing merchantSalt",
+			config: map[string]string{
+				"merchantId":  "123456",
+				"merchantKey": "PAYTR_MERCHANT_KEY_123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantSalt' is missing",
+		},
+		{
+			name: "missing environment",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+			},
+			expectError: true,
+			errorMsg:    "required field 'environment' is missing",
+		},
+		{
+			name: "empty merchantId",
+			config: map[string]string{
+				"merchantId":   "",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "merchantId too short",
+			config: map[string]string{
+				"merchantId":   "12",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 3 characters",
+		},
+		{
+			name: "merchantKey too short",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantKey":  "short",
+				"merchantSalt": "PAYTR_SALT_456",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+		{
+			name: "merchantSalt too short",
+			config: map[string]string{
+				"merchantId":   "123456",
+				"merchantKey":  "PAYTR_MERCHANT_KEY_123",
+				"merchantSalt": "short",
+				"environment":  "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
 				}
 			}
 		})
