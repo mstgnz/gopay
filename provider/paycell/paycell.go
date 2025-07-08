@@ -154,9 +154,9 @@ func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.Confi
 			Key:         "environment",
 			Required:    true,
 			Type:        "string",
-			Description: "Environment setting (test or production)",
-			Example:     "test",
-			Pattern:     "^(test|production)$",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
 		},
 	}
 }

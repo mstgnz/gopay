@@ -186,7 +186,7 @@ CREATE TABLE "public"."tenant_configs" (
     "id" int4 NOT NULL DEFAULT nextval('tenant_configs_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
     "provider_id" int2 NOT NULL,
-    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['test'::character varying, 'prod'::character varying])::text[])),
+    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['sandbox'::character varying, 'production'::character varying])::text[])),
     "key" varchar NOT NULL,
     "value" varchar NOT NULL,
     "created_at" timestamp DEFAULT now(),

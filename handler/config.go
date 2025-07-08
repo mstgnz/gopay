@@ -63,8 +63,8 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 		response.Error(w, http.StatusBadRequest, "provider, environment and configs are required", nil)
 		return
 	}
-	if req.Environment != "test" && req.Environment != "prod" {
-		response.Error(w, http.StatusBadRequest, "environment must be 'test' or 'prod'", nil)
+	if req.Environment != "sandbox" && req.Environment != "production" {
+		response.Error(w, http.StatusBadRequest, "environment must be 'sandbox' or 'production'", nil)
 		return
 	}
 

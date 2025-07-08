@@ -663,23 +663,23 @@ components:
           description: Stripe environment
 
         # Paycell Configuration
-        PAYCELL_USERNAME:
+        username:
           type: string
           example: "paycell-user"
           description: Paycell username
-        PAYCELL_PASSWORD:
+        password:
           type: string
           example: "paycell-pass"
           description: Paycell password
-        PAYCELL_MERCHANT_ID:
+        merchantId:
           type: string
           example: "merchant456"
           description: Paycell merchant ID
-        PAYCELL_TERMINAL_ID:
+        terminalId:
           type: string
           example: "terminal789"
           description: Paycell terminal ID
-        PAYCELL_ENVIRONMENT:
+        environment:
           type: string
           enum: [sandbox, production]
           default: sandbox
@@ -1083,7 +1083,7 @@ paths:
                       key:
                         type: string
                         description: Configuration key
-                        example: PAYCELL_USERNAME
+                        example: username
                       value:
                         type: string
                         description: Configuration value
@@ -1095,13 +1095,13 @@ paths:
                   provider: paycell
                   environment: test
                   configs:
-                    - key: PAYCELL_USERNAME
+                    - key: username
                       value: "paycell-user"
-                    - key: PAYCELL_PASSWORD
+                    - key: password
                       value: "paycell-pass"
-                    - key: PAYCELL_MERCHANT_ID
+                    - key: merchantId
                       value: "merchant456"
-                    - key: PAYCELL_TERMINAL_ID
+                    - key: terminalId
                       value: "terminal789"
       responses:
         '200':
