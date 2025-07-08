@@ -1,14 +1,32 @@
+include .env
+
 # GoPay Makefile
 
-.PHONY: help test test-unit test-integration test-coverage build run clean lint format deps dev postgres-start postgres-stop postgres-status logs-query docker-build docker-run docker-stop docker-logs ci-test ci-build integration-help
+.PHONY: help test live test-unit test-integration test-coverage build run clean lint format deps dev postgres-start postgres-stop postgres-status logs-query docker-build docker-run docker-stop docker-logs ci-test ci-build integration-help
+
+.DEFAULT_GOAL:= run
 
 # Default target
-help: ## Show this help message
-	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+help: ## Display available commands
+	@echo ""
+	@echo "🚀 GoPay Development Commands"
+	@echo "============================="
+	@echo ""
+	@awk 'BEGIN {FS = ":.*##"; printf "\033[36m%-20s\033[0m %s\n", "Command", "Description"} /^[a-zA-Z_-]+:.*?##/ { printf "\033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@echo ""
+	@echo "Examples:"
+	@echo "  make dev                    # Run complete development workflow"
+	@echo "  make test-integration       # Run integration tests"
+	@echo "  make postgres-start         # Start PostgreSQL for logging"
+	@echo "  make logs-query PROVIDER=iyzico  # Query logs"
+	@echo "" 
 
 # Test commands
 test: test-unit ## Run all tests (unit tests only by default)
+
+## live: Go build and running
+live:
+	find . -type f \( -name '*.go' \) | entr -r sh -c 'go build -o /tmp/build ./cmd && /tmp/build'
 
 test-unit: ## Run unit tests
 	@echo "🧪 Running unit tests..."
@@ -24,7 +42,7 @@ test-integration: ## Run integration tests (requires credentials)
 		echo "  export IYZICO_TEST_SECRET_KEY=your_sandbox_secret_key"; \
 		exit 1; \
 	fi
-	@go test -v ./gateway/iyzico/ -run TestIntegration
+	@go test -v ./provider/iyzico/ -run TestIntegration
 
 test-coverage: ## Run tests with coverage report
 	@echo "📊 Running tests with coverage..."
@@ -38,11 +56,11 @@ test-benchmark: ## Run benchmark tests
 
 test-iyzico: ## Run all İyzico tests (unit + integration)
 	@echo "🏦 Running İyzico tests..."
-	@go test -v ./gateway/iyzico/
+	@go test -v ./provider/iyzico/
 
 test-iyzico-integration: ## Run İyzico integration tests only
 	@echo "🏦 Running İyzico integration tests..."
-	@go test -v ./gateway/iyzico/ -run TestIntegration
+	@go test -v ./provider/iyzico/ -run TestIntegration
 
 # Build commands
 build: ## Build the application
@@ -200,51 +218,3 @@ docker-stop: ## Stop Docker Compose services
 
 docker-logs: ## Show Docker logs
 	docker-compose logs -f
-
-# CI/CD helpers
-ci-test: ## Run tests in CI environment
-	@echo "Running CI tests..."
-	go test -race -coverprofile=coverage.out -covermode=atomic ./...
-
-ci-build: ## Build for CI/CD
-	@echo "Building for CI/CD..."
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-s -w" -o bin/gopay ./cmd/main.go
-
-# Integration test setup
-integration-help: ## Show integration test setup instructions
-	@echo ""
-	@echo "📋 Integration Test Setup"
-	@echo "========================="
-	@echo ""
-	@echo "To run integration tests, you need to set up provider credentials:"
-	@echo ""
-	@echo "1. İyzico Integration Tests:"
-	@echo "   export IYZICO_API_KEY=sandbox-your-api-key"
-	@echo "   export IYZICO_SECRET_KEY=sandbox-your-secret-key"
-	@echo "   export IYZICO_ENVIRONMENT=sandbox"
-	@echo ""
-	@echo "2. Enable test mode:"
-	@echo "   export IYZICO_TEST_ENABLED=true"
-	@echo ""
-	@echo "3. Run tests:"
-	@echo "   make test-integration"
-	@echo "   # or specific provider:"
-	@echo "   make test-iyzico"
-	@echo ""
-	@echo "⚠️  Note: These tests use real API endpoints (sandbox) and may incur charges"
-	@echo "   or count against your API rate limits."
-	@echo ""
-
-help: ## Display available commands
-	@echo ""
-	@echo "🚀 GoPay Development Commands"
-	@echo "============================="
-	@echo ""
-	@awk 'BEGIN {FS = ":.*##"; printf "\033[36m%-20s\033[0m %s\n", "Command", "Description"} /^[a-zA-Z_-]+:.*?##/ { printf "\033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
-	@echo ""
-	@echo "Examples:"
-	@echo "  make dev                    # Run complete development workflow"
-	@echo "  make test-integration       # Run integration tests"
-	@echo "  make postgres-start         # Start PostgreSQL for logging"
-	@echo "  make logs-query PROVIDER=iyzico  # Query logs"
-	@echo "" 
