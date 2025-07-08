@@ -200,29 +200,11 @@ func (h *HealthHandler) checkDatabaseHealth(ctx context.Context) *DatabaseHealth
 func (h *HealthHandler) checkProvidersHealth(ctx context.Context) map[string]*ProviderHealth {
 	providers := make(map[string]*ProviderHealth)
 
-	if h.providerConfig == nil {
-		return providers
-	}
-
-	// Get available providers
-	availableProviders := h.providerConfig.GetAvailableProviders()
+	// Get available providers from registry
+	availableProviders := provider.GetAvailableProviders()
 
 	for _, providerName := range availableProviders {
 		providers[providerName] = h.checkSingleProviderHealth(ctx, providerName)
-	}
-
-	// Add some common providers even if not configured
-	commonProviders := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
-	for _, providerName := range commonProviders {
-		if _, exists := providers[providerName]; !exists {
-			providers[providerName] = &ProviderHealth{
-				Status:     "not_configured",
-				Available:  false,
-				Configured: false,
-				LastCheck:  time.Now().UTC().Format(time.RFC3339),
-				Error:      "Provider not configured",
-			}
-		}
 	}
 
 	return providers
@@ -232,53 +214,25 @@ func (h *HealthHandler) checkProvidersHealth(ctx context.Context) map[string]*Pr
 func (h *HealthHandler) checkSingleProviderHealth(ctx context.Context, providerName string) *ProviderHealth {
 	health := &ProviderHealth{
 		Configured: true,
+		Available:  true,
 		LastCheck:  time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Get provider config
-	cfg, err := h.providerConfig.GetConfig(providerName)
+	// Check if provider is registered in the registry
+	_, err := provider.Get(providerName)
 	if err != nil {
-		health.Status = "not_configured"
+		health.Status = "not_available"
 		health.Available = false
 		health.Configured = false
 		health.Error = err.Error()
 		return health
 	}
 
-	// Check if provider has required configuration
-	if len(cfg) == 0 {
-		health.Status = "not_configured"
-		health.Available = false
-		health.Configured = false
-		health.Error = "No configuration found"
-		return health
-	}
-
-	// Simulate provider availability check
-	// In a real implementation, you might make actual API calls to check provider status
+	// Since provider is registered, it's available
 	start := time.Now()
-
-	// Simple availability check based on configuration completeness
-	requiredFields := getRequiredFieldsForProvider(providerName)
-	missingFields := []string{}
-
-	for _, field := range requiredFields {
-		if _, exists := cfg[field]; !exists {
-			missingFields = append(missingFields, field)
-		}
-	}
-
 	responseTime := time.Since(start)
 	health.ResponseTime = fmt.Sprintf("%.0fms", float64(responseTime.Nanoseconds())/1e6)
-
-	if len(missingFields) > 0 {
-		health.Status = "degraded"
-		health.Available = false
-		health.Error = fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", "))
-	} else {
-		health.Status = "healthy"
-		health.Available = true
-	}
+	health.Status = "healthy"
 
 	// Get error rate from PostgreSQL if available
 	if h.postgresLogger != nil {
@@ -442,29 +396,6 @@ func getEnvironment() string {
 		return env
 	}
 	return "development"
-}
-
-func getRequiredFieldsForProvider(providerName string) []string {
-	switch strings.ToLower(providerName) {
-	case "iyzico":
-		return []string{"apiKey", "secretKey", "environment"}
-	case "stripe":
-		return []string{"secretKey", "publicKey", "environment"}
-	case "ozanpay":
-		return []string{"apiKey", "secretKey", "merchantId", "environment"}
-	case "paycell":
-		return []string{"username", "password", "merchantId", "terminalId", "environment"}
-	case "papara":
-		return []string{"apiKey", "secretKey", "merchantId", "environment"}
-	case "nkolay":
-		return []string{"apiKey", "secretKey", "merchantId", "environment"}
-	case "paytr":
-		return []string{"merchantId", "merchantKey", "merchantSalt", "environment"}
-	case "payu":
-		return []string{"merchantId", "secretKey", "apiKey", "environment"}
-	default:
-		return []string{"apiKey", "secretKey"}
-	}
 }
 
 func formatBytes(bytes uint64) string {

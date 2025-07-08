@@ -245,15 +245,3 @@ func TestProviderConfig_GetStats(t *testing.T) {
 	// PostgreSQL stats will depend on whether storage is available
 	assert.Contains(t, stats, "postgres")
 }
-
-func TestProviderConfig_LegacyMethods(t *testing.T) {
-	config := NewProviderConfig()
-
-	// Test GetConfig (legacy method)
-	_, err := config.GetConfig("nonexistent")
-	assert.Error(t, err)
-
-	// Test GetAvailableProviders (legacy method)
-	providers := config.GetAvailableProviders()
-	assert.NotNil(t, providers)
-}

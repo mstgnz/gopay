@@ -133,33 +133,6 @@ func (c *ProviderConfig) GetTenantConfig(tenantID, providerName string) (map[str
 	return configCopy, nil
 }
 
-// GetConfig returns configuration for a specific provider (legacy method, for backward compatibility)
-func (c *ProviderConfig) GetConfig(providerName string) (map[string]string, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	config, exists := c.configs[providerName]
-	if !exists {
-		return nil, fmt.Errorf("no configuration found for provider: %s", providerName)
-	}
-	return config, nil
-}
-
-// GetAvailableProviders returns all providers that have configurations (legacy method)
-func (c *ProviderConfig) GetAvailableProviders() []string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	providers := make([]string, 0, len(c.configs))
-	for provider := range c.configs {
-		// Skip tenant-specific configs (they contain underscore)
-		if !strings.Contains(provider, "_") {
-			providers = append(providers, provider)
-		}
-	}
-	return providers
-}
-
 // GetStats returns configuration and storage statistics
 func (c *ProviderConfig) GetStats() (map[string]any, error) {
 	stats := make(map[string]any)

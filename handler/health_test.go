@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http/httptest"
 	"testing"
+
+	"github.com/mstgnz/gopay/provider"
 )
 
 func TestNewHealthHandler(t *testing.T) {
@@ -79,30 +81,21 @@ func TestGetEnvironment(t *testing.T) {
 	}
 }
 
-func TestGetRequiredFieldsForProvider(t *testing.T) {
-	tests := []struct {
-		provider      string
-		expectedCount int
-	}{
-		{"iyzico", 3},
-		{"stripe", 3},
-		{"ozanpay", 4},
-		{"paycell", 5},
-		{"papara", 4},
-		{"nkolay", 4},
-		{"paytr", 4},
-		{"payu", 4},
-		{"unknown", 2}, // default case
+func TestProviderRegistryIntegration(t *testing.T) {
+	// Test that the health handler works with provider registry
+	providers := provider.GetAvailableProviders()
+
+	// Should be able to get available providers without error
+	if providers == nil {
+		t.Error("GetAvailableProviders should not return nil")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.provider, func(t *testing.T) {
-			fields := getRequiredFieldsForProvider(tt.provider)
-			if len(fields) != tt.expectedCount {
-				t.Errorf("Expected %d fields for %s, got %d: %v",
-					tt.expectedCount, tt.provider, len(fields), fields)
-			}
-		})
+	// Each provider should be retrievable from registry
+	for _, providerName := range providers {
+		_, err := provider.Get(providerName)
+		if err != nil {
+			t.Errorf("Provider %s should be available in registry: %v", providerName, err)
+		}
 	}
 }
 

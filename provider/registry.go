@@ -38,6 +38,19 @@ func (r *ProviderRegistry) Get(name string) (ProviderFactory, error) {
 	return factory, nil
 }
 
+// GetAvailableProviders returns all registered provider names
+func (r *ProviderRegistry) GetAvailableProviders() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	providers := make([]string, 0, len(r.providers))
+	for name := range r.providers {
+		providers = append(providers, name)
+	}
+
+	return providers
+}
+
 // DefaultRegistry is the global default provider registry
 var DefaultRegistry = NewProviderRegistry()
 
@@ -49,4 +62,9 @@ func Register(name string, factory ProviderFactory) {
 // Get retrieves a provider factory from the default registry
 func Get(name string) (ProviderFactory, error) {
 	return DefaultRegistry.Get(name)
+}
+
+// GetAvailableProviders returns all registered provider names from the default registry
+func GetAvailableProviders() []string {
+	return DefaultRegistry.GetAvailableProviders()
 }
