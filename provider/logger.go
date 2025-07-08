@@ -2,13 +2,14 @@ package provider
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/conn"
 	"github.com/mstgnz/gopay/infra/logger"
 )
 
@@ -21,14 +22,14 @@ type PaymentLogger interface {
 
 // DBPaymentLogger implements PaymentLogger interface using SQL database
 type DBPaymentLogger struct {
-	db *sql.DB
+	db *conn.DB
 	// Track which provider table each log ID belongs to for efficient updates
 	logProviderMap map[int64]string
 	mapMutex       sync.RWMutex
 }
 
 // NewDBPaymentLogger creates a new database payment logger
-func NewDBPaymentLogger(db *sql.DB) PaymentLogger {
+func NewDBPaymentLogger(db *conn.DB) PaymentLogger {
 	return &DBPaymentLogger{
 		db:             db,
 		logProviderMap: make(map[int64]string),
@@ -53,7 +54,10 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 	}
 
 	// Clean provider name to get actual table name (remove tenant prefix if present)
-	tableName := l.getActualProviderName(providerName)
+	tableName, err := l.getActualProviderName(providerName)
+	if err != nil {
+		return 0, fmt.Errorf("invalid provider name: %w", err)
+	}
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (tenant_id, request, request_at, method, endpoint, payment_id, transaction_id, user_agent, client_ip)
@@ -162,56 +166,72 @@ func (l *DBPaymentLogger) LogError(ctx context.Context, logID int64, errorCode, 
 	return l.LogResponse(ctx, logID, errorResponse, processingMs)
 }
 
-// getActualProviderName extracts the actual provider name from tenant-specific provider names
-func (l *DBPaymentLogger) getActualProviderName(providerName string) string {
-	// Handle tenant-specific provider names like "TENANT1_paycell"
-	if providerName == "" {
-		return "default"
+// getActualProviderName extracts the actual provider name from providers table
+func (l *DBPaymentLogger) getActualProviderName(providerName string) (string, error) {
+	query := `
+		SELECT name FROM providers WHERE active = true AND name = $1
+	`
+
+	stmt, err := l.db.Prepare(query)
+	if err != nil {
+		return providerName, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(providerName)
+	if err != nil {
+		return providerName, err
 	}
 
-	// Split by underscore and take the last part (actual provider name)
-	parts := make([]string, 0)
-	temp := ""
-	for _, char := range providerName {
-		if char == '_' {
-			if temp != "" {
-				parts = append(parts, temp)
-				temp = ""
-			}
-		} else {
-			temp += string(char)
+	defer rows.Close()
+
+	if !rows.Next() {
+		return providerName, errors.New("provider not found")
+	}
+
+	return providerName, nil
+}
+
+func GetProvider(tenantID int, name, environment string) (PaymentProvider, error) {
+	query := `
+		SELECT tc.tenant_id, p.name as provider_name, tc.environment, tc.key, tc.value 
+		FROM tenant_configs tc
+		JOIN providers p ON tc.provider_id = p.id
+		WHERE p.active = true AND p.name = $1 AND tc.environment = $2 AND tc.tenant_id = $3
+		ORDER BY tc.tenant_id, p.name, tc.key
+	`
+
+	rows, err := config.App().DB.Query(query, name, environment, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tenant configs: %w", err)
+	}
+	defer rows.Close()
+
+	configs := make(map[string]string)
+
+	for rows.Next() {
+		var tenantID int
+		var providerName, environment, key, value string
+		if err := rows.Scan(&tenantID, &providerName, &environment, &key, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-	}
-	if temp != "" {
-		parts = append(parts, temp)
+
+		configs[key] = value
 	}
 
-	var actualProvider string
-	if len(parts) > 1 {
-		actualProvider = parts[len(parts)-1] // Return the last part (actual provider name)
-	} else {
-		actualProvider = providerName
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	// SECURITY FIX: Validate against whitelist to prevent SQL injection
-	allowedProviders := map[string]bool{
-		"iyzico":  true,
-		"ozanpay": true,
-		"paycell": true,
-		"stripe":  true,
-		"papara":  true,
-		"nkolay":  true,
-		"paytr":   true,
-		"payu":    true,
-		"shopier": true,
+	providerFactory, err := Get(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider: %w", err)
 	}
 
-	// Convert to lowercase for case-insensitive comparison
-	actualProviderLower := strings.ToLower(actualProvider)
-	if allowedProviders[actualProviderLower] {
-		return actualProviderLower
+	provider := providerFactory()
+	if err := provider.Initialize(configs); err != nil {
+		return nil, fmt.Errorf("failed to initialize provider: %w", err)
 	}
 
-	// Default fallback for invalid provider names
-	return "default"
+	return provider, nil
 }

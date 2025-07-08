@@ -360,17 +360,17 @@ func (p *PayTRProvider) getTestMode() string {
 	return "1"
 }
 
-func (p *PayTRProvider) getCallbackURL(originalURL, status, tenantID string) string {
+func (p *PayTRProvider) getCallbackURL(originalURL, status string, tenantID int) string {
 	if originalURL != "" {
 		callbackURL := fmt.Sprintf("%s/v1/callback/paytr?originalCallbackUrl=%s&status=%s", p.gopayBaseURL, url.QueryEscape(originalURL), status)
-		if tenantID != "" {
-			callbackURL += fmt.Sprintf("&tenantId=%s", tenantID)
+		if tenantID != 0 {
+			callbackURL += fmt.Sprintf("&tenantId=%d", tenantID)
 		}
 		return callbackURL
 	}
 	callbackURL := fmt.Sprintf("%s/v1/callback/paytr?status=%s", p.gopayBaseURL, status)
-	if tenantID != "" {
-		callbackURL += fmt.Sprintf("&tenantId=%s", tenantID)
+	if tenantID != 0 {
+		callbackURL += fmt.Sprintf("&tenantId=%d", tenantID)
 	}
 	return callbackURL
 }

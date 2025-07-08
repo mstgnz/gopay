@@ -38,29 +38,6 @@ func (r *ProviderRegistry) Get(name string) (ProviderFactory, error) {
 	return factory, nil
 }
 
-// CreateProvider creates a new instance of a payment provider
-func (r *ProviderRegistry) CreateProvider(name string) (PaymentProvider, error) {
-	factory, err := r.Get(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return factory(), nil
-}
-
-// GetProviderNames returns a list of all registered provider names
-func (r *ProviderRegistry) GetProviderNames() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	names := make([]string, 0, len(r.providers))
-	for name := range r.providers {
-		names = append(names, name)
-	}
-
-	return names
-}
-
 // DefaultRegistry is the global default provider registry
 var DefaultRegistry = NewProviderRegistry()
 
@@ -72,9 +49,4 @@ func Register(name string, factory ProviderFactory) {
 // Get retrieves a provider factory from the default registry
 func Get(name string) (ProviderFactory, error) {
 	return DefaultRegistry.Get(name)
-}
-
-// CreateProvider creates a provider instance from the default registry
-func CreateProvider(name string) (PaymentProvider, error) {
-	return DefaultRegistry.CreateProvider(name)
 }

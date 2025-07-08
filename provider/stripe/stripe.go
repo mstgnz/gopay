@@ -290,8 +290,8 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 		}
 
 		// Add tenant ID to return URL if available
-		if request.TenantID != "" {
-			returnURL := fmt.Sprintf("%s/v1/callback/stripe?tenantId=%s", p.gopayBaseURL, request.TenantID)
+		if request.TenantID != 0 {
+			returnURL := fmt.Sprintf("%s/v1/callback/stripe?tenantId=%d", p.gopayBaseURL, request.TenantID)
 			confirmParams.ReturnURL = stripe.String(returnURL)
 		}
 
@@ -308,12 +308,12 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 		// Add custom return URL for 3D Secure if provided
 		if request.CallbackURL != "" {
 			returnURL := fmt.Sprintf("%s/v1/callback/stripe?originalCallbackUrl=%s", p.gopayBaseURL, request.CallbackURL)
-			if request.TenantID != "" {
-				returnURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
+			if request.TenantID != 0 {
+				returnURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
 			}
 			updateParams.ReturnURL = stripe.String(returnURL)
-		} else if request.TenantID != "" {
-			returnURL := fmt.Sprintf("%s/v1/callback/stripe?tenantId=%s", p.gopayBaseURL, request.TenantID)
+		} else if request.TenantID != 0 {
+			returnURL := fmt.Sprintf("%s/v1/callback/stripe?tenantId=%d", p.gopayBaseURL, request.TenantID)
 			updateParams.ReturnURL = stripe.String(returnURL)
 		}
 

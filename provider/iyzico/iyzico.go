@@ -437,15 +437,15 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 				p.gopayBaseURL,
 				request.CallbackURL)
 			// Add tenant ID to callback URL for proper tenant identification
-			if request.TenantID != "" {
-				gopayCallbackURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
 			}
 			req["callbackUrl"] = gopayCallbackURL
 		} else {
 			// If no callback URL provided, use GoPay's callback without redirect
 			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/iyzico", p.gopayBaseURL)
-			if request.TenantID != "" {
-				gopayCallbackURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
 			}
 			req["callbackUrl"] = gopayCallbackURL
 		}

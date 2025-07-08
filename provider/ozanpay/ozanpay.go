@@ -413,15 +413,15 @@ func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, f
 				p.gopayBaseURL,
 				request.CallbackURL)
 			// Add tenant ID to callback URL for proper tenant identification
-			if request.TenantID != "" {
-				gopayCallbackURL += fmt.Sprintf("&tenantId=%s", request.TenantID)
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
 			}
 			paymentReq["returnUrl"] = gopayCallbackURL
 		} else {
 			// If no callback URL provided, use GoPay's callback without redirect
 			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/ozanpay", p.gopayBaseURL)
-			if request.TenantID != "" {
-				gopayCallbackURL += fmt.Sprintf("?tenantId=%s", request.TenantID)
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
 			}
 			paymentReq["returnUrl"] = gopayCallbackURL
 		}
