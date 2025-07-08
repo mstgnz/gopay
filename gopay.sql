@@ -58,6 +58,7 @@ CREATE SEQUENCE IF NOT EXISTS providers_id_seq;
 CREATE TABLE "public"."providers" (
     "id" int2 NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
     "name" varchar NOT NULL,
+    "active" boolean NOT NULL DEFAULT false,
     PRIMARY KEY ("id")
 );
 
