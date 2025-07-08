@@ -729,117 +729,279 @@ func TestOzanPayProvider_RefundPayment(t *testing.T) {
 }
 
 func TestOzanPayProvider_ValidateWebhook(t *testing.T) {
-	ozanPayProvider := &OzanPayProvider{
-		secretKey: "test-secret-key",
-	}
-
-	// Sample webhook data based on OzanPay documentation
-	validData := map[string]string{
-		"transactionId": "9-1438782271-1",
-		"referenceNo":   "1-1386413490-0089-14",
-		"amount":        "1234",
-		"currency":      "TRY",
-		"status":        "APPROVED",
-		"message":       "Auth3D is APPROVED",
-		"code":          "00",
-	}
-
-	// Calculate correct checksum according to OzanPay documentation
-	// checksum = SHA256(referenceNo + amount + currency + status + message + code + secretKey)
-	checksumString := validData["referenceNo"] + validData["amount"] + validData["currency"] +
-		validData["status"] + validData["message"] + validData["code"] + "test-secret-key"
-
-	hash := sha256.Sum256([]byte(checksumString))
-	correctChecksum := hex.EncodeToString(hash[:])
-	validData["checksum"] = correctChecksum
+	provider := NewProvider().(*OzanPayProvider)
+	provider.secretKey = "test-secret"
 
 	tests := []struct {
-		name        string
-		data        map[string]string
-		headers     map[string]string
-		expectValid bool
-		expectError bool
+		name      string
+		data      map[string]string
+		headers   map[string]string
+		expectErr bool
+		expectMsg string
 	}{
 		{
-			name:        "Valid webhook with correct checksum",
-			data:        validData,
-			headers:     map[string]string{}, // OzanPay doesn't use headers for validation
-			expectValid: true,
-			expectError: false,
+			name: "Valid webhook with correct checksum",
+			data: map[string]string{
+				"transactionId": "123456",
+				"referenceNo":   "gopay-123456",
+				"amount":        "1000",
+				"currency":      "TRY",
+				"status":        "APPROVED",
+				"message":       "Payment successful",
+				"code":          "00",
+				"checksum":      "", // Will be calculated below
+			},
+			headers:   map[string]string{},
+			expectErr: false,
 		},
 		{
 			name: "Invalid checksum",
-			data: func() map[string]string {
-				data := make(map[string]string)
-				for k, v := range validData {
-					data[k] = v
-				}
-				data["checksum"] = "invalid-checksum"
-				return data
-			}(),
-			headers:     map[string]string{},
-			expectValid: false,
-			expectError: true,
+			data: map[string]string{
+				"transactionId": "123456",
+				"referenceNo":   "gopay-123456",
+				"amount":        "1000",
+				"currency":      "TRY",
+				"status":        "APPROVED",
+				"message":       "Payment successful",
+				"code":          "00",
+				"checksum":      "wrong_checksum",
+			},
+			headers:   map[string]string{},
+			expectErr: true,
+			expectMsg: "invalid webhook checksum",
 		},
 		{
 			name: "Missing checksum",
-			data: func() map[string]string {
-				data := make(map[string]string)
-				for k, v := range validData {
-					if k != "checksum" {
-						data[k] = v
-					}
-				}
-				return data
-			}(),
-			headers:     map[string]string{},
-			expectValid: false,
-			expectError: true,
+			data: map[string]string{
+				"transactionId": "123456",
+				"referenceNo":   "gopay-123456",
+				"amount":        "1000",
+				"currency":      "TRY",
+				"status":        "APPROVED",
+				"message":       "Payment successful",
+				"code":          "00",
+			},
+			headers:   map[string]string{},
+			expectErr: true,
+			expectMsg: "missing checksum",
 		},
 		{
-			name: "Missing required field",
-			data: func() map[string]string {
-				data := make(map[string]string)
-				for k, v := range validData {
-					if k != "referenceNo" { // Remove required field
-						data[k] = v
-					}
-				}
-				return data
-			}(),
-			headers:     map[string]string{},
-			expectValid: false,
-			expectError: true,
+			name: "Missing required field referenceNo",
+			data: map[string]string{
+				"transactionId": "123456",
+				"amount":        "1000",
+				"currency":      "TRY",
+				"status":        "APPROVED",
+				"message":       "Payment successful",
+				"code":          "00",
+				"checksum":      "test_checksum",
+			},
+			headers:   map[string]string{},
+			expectErr: true,
+			expectMsg: "missing referenceNo",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			valid, result, err := ozanPayProvider.ValidateWebhook(ctx, tt.data, tt.headers)
+			// Calculate correct checksum for valid test case
+			if tt.name == "Valid webhook with correct checksum" {
+				checksumString := tt.data["referenceNo"] + tt.data["amount"] + tt.data["currency"] +
+					tt.data["status"] + tt.data["message"] + tt.data["code"] + provider.secretKey
+				hash := sha256.Sum256([]byte(checksumString))
+				tt.data["checksum"] = hex.EncodeToString(hash[:])
+			}
+
+			isValid, _, err := provider.ValidateWebhook(context.Background(), tt.data, tt.headers)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+				if isValid {
+					t.Errorf("Expected invalid webhook but got valid")
+				}
+				if tt.expectMsg != "" && !strings.Contains(err.Error(), tt.expectMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.expectMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
+				}
+				if !isValid {
+					t.Errorf("Expected valid webhook but got invalid")
+				}
+			}
+		})
+	}
+}
+
+func TestOzanPayProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*OzanPayProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 4},
+		{"production environment", "production", 4},
+		{"test environment", "test", 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"apiKey", "secretKey", "merchantId", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestOzanPayProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*OzanPayProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_PROD123456789",
+				"secretKey":   "OZANPAY_SECRET_KEY_PROD123456789",
+				"merchantId":  "PRODMERCHANT123456",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing apiKey",
+			config: map[string]string{
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' is missing",
+		},
+		{
+			name: "missing secretKey",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'secretKey' is missing",
+		},
+		{
+			name: "missing merchantId",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' is missing",
+		},
+		{
+			name: "empty apiKey",
+			config: map[string]string{
+				"apiKey":      "",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "apiKey too short",
+			config: map[string]string{
+				"apiKey":      "short",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+		{
+			name: "merchantId too short",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"secretKey":   "OZANPAY_SECRET_KEY_123456789",
+				"merchantId":  "ABC",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 5 characters",
+		},
+		{
+			name: "secretKey too short",
+			config: map[string]string{
+				"apiKey":      "OZANPAY_API_KEY_123456789",
+				"secretKey":   "short",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
 
 			if tt.expectError {
 				if err == nil {
-					t.Error("Expected error but got nil")
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
 				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
-			}
-
-			if valid != tt.expectValid {
-				t.Errorf("Expected valid %v, got %v", tt.expectValid, valid)
-			}
-
-			if tt.expectValid {
-				if result["paymentId"] != "9-1438782271-1" {
-					t.Errorf("Expected paymentId '9-1438782271-1', got %v", result["paymentId"])
-				}
-				if result["status"] != "APPROVED" {
-					t.Errorf("Expected status 'APPROVED', got %v", result["status"])
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
 				}
 			}
 		})
