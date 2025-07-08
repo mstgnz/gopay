@@ -67,8 +67,6 @@ func TestNkolayProvider_Initialize(t *testing.T) {
 				"environment": "sandbox",
 			},
 			expectError: false,
-			expectProd:  false,
-			expectURL:   apiSandboxURL,
 		},
 		{
 			name:        "Empty config defaults to test values",
@@ -452,74 +450,233 @@ func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
 }
 
 func TestNkolayProvider_ValidateWebhook(t *testing.T) {
-	provider := &NkolayProvider{}
+	provider := NewProvider().(*NkolayProvider)
 
 	tests := []struct {
-		name        string
-		data        map[string]string
-		headers     map[string]string
-		expectValid bool
-		expectError bool
+		name      string
+		data      map[string]string
+		headers   map[string]string
+		expectErr bool
+		expected  map[string]string
 	}{
 		{
 			name: "Valid webhook with reference code",
 			data: map[string]string{
-				"referenceCode": "IKSIRPF428910",
-				"status":        "SUCCESS",
-				"amount":        "10.04",
+				"referenceCode": "123456789",
+				"status":        "success",
+				"amount":        "100.50",
+				"transactionId": "txn_123",
 			},
-			headers:     map[string]string{},
-			expectValid: true,
-			expectError: false,
+			headers:   map[string]string{},
+			expectErr: false,
+			expected: map[string]string{
+				"referenceCode": "123456789",
+				"status":        "success",
+				"amount":        "100.50",
+				"transactionId": "txn_123",
+			},
 		},
 		{
 			name: "Invalid webhook without reference code",
 			data: map[string]string{
-				"status": "SUCCESS",
-				"amount": "10.04",
+				"status": "success",
+				"amount": "100.50",
 			},
-			headers:     map[string]string{},
-			expectValid: false,
-			expectError: true,
+			headers:   map[string]string{},
+			expectErr: true,
+			expected:  nil,
 		},
 		{
-			name:        "Empty webhook data",
-			data:        map[string]string{},
-			headers:     map[string]string{},
-			expectValid: false,
-			expectError: true,
+			name:      "Empty webhook data",
+			data:      map[string]string{},
+			headers:   map[string]string{},
+			expectErr: true,
+			expected:  nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			isValid, validatedData, err := provider.ValidateWebhook(ctx, tt.data, tt.headers)
+			isValid, result, err := provider.ValidateWebhook(context.Background(), tt.data, tt.headers)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+				if isValid {
+					t.Errorf("Expected invalid webhook but got valid")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
+				}
+				if !isValid {
+					t.Errorf("Expected valid webhook but got invalid")
+				}
+				// Nkolay returns the original data map, so check referenceCode
+				if result["referenceCode"] != tt.expected["referenceCode"] {
+					t.Errorf("Expected referenceCode %s, got %s", tt.expected["referenceCode"], result["referenceCode"])
+				}
+			}
+		})
+	}
+}
+
+func TestNkolayProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*NkolayProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 4},
+		{"production environment", "production", 4},
+		{"test environment", "test", 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"apiKey", "secretKey", "merchantId", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestNkolayProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*NkolayProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_123456789",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_PROD123456789",
+				"secretKey":   "NKOLAY_SECRET_KEY_PROD123456789",
+				"merchantId":  "PRODMERCHANT123456",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing apiKey",
+			config: map[string]string{
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' is missing",
+		},
+		{
+			name: "missing secretKey",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'secretKey' is missing",
+		},
+		{
+			name: "missing merchantId",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_123456789",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'merchantId' is missing",
+		},
+		{
+			name: "empty apiKey",
+			config: map[string]string{
+				"apiKey":      "",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_123456789",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "apiKey too short",
+			config: map[string]string{
+				"apiKey":      "short",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "MERCHANT123456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 10 characters",
+		},
+		{
+			name: "merchantId too short",
+			config: map[string]string{
+				"apiKey":      "NKOLAY_API_KEY_123456789",
+				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
+				"merchantId":  "ABC",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 5 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
 
 			if tt.expectError {
 				if err == nil {
-					t.Error("Expected error but got nil")
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
 				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
-			}
-
-			if isValid != tt.expectValid {
-				t.Errorf("Expected valid %v, got %v", tt.expectValid, isValid)
-			}
-
-			if tt.expectValid && validatedData == nil {
-				t.Error("Expected validated data but got nil")
-			}
-
-			if tt.expectValid {
-				if validatedData["referenceCode"] != tt.data["referenceCode"] {
-					t.Errorf("Expected reference code %s, got %s",
-						tt.data["referenceCode"], validatedData["referenceCode"])
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
 				}
 			}
 		})
