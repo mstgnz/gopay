@@ -358,6 +358,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		Message:      response.Message,
 		ErrorCode:    response.ErrorCode,
 		SystemTime:   &now,
+		RawResponse:  response,
 	}, nil
 }
 
@@ -560,16 +561,17 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 	now := time.Now()
 	// Return 3D redirect information
 	return &provider.PaymentResponse{
-		Success:       true,
-		Status:        provider.StatusPending,
-		PaymentID:     threeDSession.ThreeDSessionId,
-		TransactionID: threeDSession.ResponseHeader.TransactionID,
-		Amount:        request.Amount,
-		Currency:      request.Currency,
-		RedirectURL:   p.paymentManagementURL + endpointThreeDSecure,
-		HTML:          p.generate3DForm(threeDSession.ThreeDSessionId, request.CallbackURL),
-		Message:       "3D secure authentication required",
-		SystemTime:    &now,
+		Success:          true,
+		Status:           provider.StatusPending,
+		PaymentID:        threeDSession.ThreeDSessionId,
+		TransactionID:    threeDSession.ResponseHeader.TransactionID,
+		Amount:           request.Amount,
+		Currency:         request.Currency,
+		RedirectURL:      p.paymentManagementURL + endpointThreeDSecure,
+		HTML:             p.generate3DForm(threeDSession.ThreeDSessionId, request.CallbackURL),
+		Message:          "3D secure authentication required",
+		SystemTime:       &now,
+		ProviderResponse: threeDSession,
 	}, nil
 }
 
@@ -698,15 +700,16 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 
 	now := time.Now()
 	return &provider.PaymentResponse{
-		Success:       success,
-		Status:        status,
-		PaymentID:     paycellResp.ResponseHeader.TransactionID,
-		TransactionID: paycellResp.ResponseHeader.TransactionID,
-		Amount:        amount,
-		Currency:      defaultCurrency,
-		Message:       paycellResp.ResponseHeader.ResponseDescription,
-		ErrorCode:     paycellResp.ResponseHeader.ResponseCode,
-		SystemTime:    &now,
+		Success:          success,
+		Status:           status,
+		PaymentID:        paycellResp.ResponseHeader.TransactionID,
+		TransactionID:    paycellResp.ResponseHeader.TransactionID,
+		Amount:           amount,
+		Currency:         defaultCurrency,
+		Message:          paycellResp.ResponseHeader.ResponseDescription,
+		ErrorCode:        paycellResp.ResponseHeader.ResponseCode,
+		SystemTime:       &now,
+		ProviderResponse: paycellResp,
 	}
 }
 

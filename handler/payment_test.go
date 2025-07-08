@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -665,7 +666,7 @@ func TestPaymentHandler_TenantSpecificProvider(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	// Simulate tenant ID from JWT context
-	ctx := context.WithValue(req.Context(), "tenant_id", "tenant123")
+	ctx := context.WithValue(req.Context(), middle.TenantIDKey, "tenant123")
 	req = req.WithContext(ctx)
 
 	// Add chi URL params

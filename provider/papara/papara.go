@@ -200,14 +200,15 @@ func (p *PaparaProvider) CancelPayment(ctx context.Context, paymentID, reason st
 
 	// Convert refund response to payment response
 	return &provider.PaymentResponse{
-		Success:    refundResp.Success,
-		Status:     provider.StatusCancelled,
-		Message:    refundResp.Message,
-		ErrorCode:  refundResp.ErrorCode,
-		PaymentID:  paymentID,
-		Amount:     refundResp.RefundAmount,
-		Currency:   paymentResp.Currency,
-		SystemTime: refundResp.SystemTime,
+		Success:          refundResp.Success,
+		Status:           provider.StatusCancelled,
+		Message:          refundResp.Message,
+		ErrorCode:        refundResp.ErrorCode,
+		PaymentID:        paymentID,
+		Amount:           refundResp.RefundAmount,
+		Currency:         paymentResp.Currency,
+		SystemTime:       refundResp.SystemTime,
+		ProviderResponse: refundResp.RawResponse,
 	}, nil
 }
 

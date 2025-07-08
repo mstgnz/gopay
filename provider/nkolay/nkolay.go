@@ -194,11 +194,12 @@ func (p *NkolayProvider) Complete3DPayment(ctx context.Context, paymentID, conve
 	}
 
 	response := &provider.PaymentResponse{
-		PaymentID:     paymentID,
-		TransactionID: data["referenceCode"],
-		Success:       status == statusSuccess,
-		Message:       data["message"],
-		SystemTime:    timePtr(time.Now()),
+		PaymentID:        paymentID,
+		TransactionID:    data["referenceCode"],
+		Success:          status == statusSuccess,
+		Message:          data["message"],
+		SystemTime:       timePtr(time.Now()),
+		ProviderResponse: data,
 	}
 
 	// Map status
