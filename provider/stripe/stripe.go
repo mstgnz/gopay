@@ -34,6 +34,65 @@ func NewProvider() provider.PaymentProvider {
 	return &StripeProvider{}
 }
 
+// GetRequiredConfig returns the configuration fields required for Stripe
+func (p *StripeProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "secretKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Stripe Secret Key (sk_test_... for test, sk_live_... for production)",
+			Example:     "sk_test_4eC39HqLyjWDarjtT1zdp7dc",
+			MinLength:   107,
+			MaxLength:   108,
+			Pattern:     "^sk_(test|live)_[A-Za-z0-9]+$",
+		},
+		{
+			Key:         "publicKey",
+			Required:    false,
+			Type:        "string",
+			Description: "Stripe Publishable Key (pk_test_... for test, pk_live_... for production)",
+			Example:     "pk_test_TYooMQauvdEDq54NiTphI7jx",
+			MinLength:   107,
+			MaxLength:   108,
+			Pattern:     "^pk_(test|live)_[A-Za-z0-9]+$",
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against Stripe requirements
+func (p *StripeProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+
+	// Use common validation
+	if err := provider.ValidateConfigFields("stripe", config, requiredFields); err != nil {
+		return err
+	}
+
+	// Additional Stripe-specific validation
+	if secretKey, exists := config["secretKey"]; exists {
+		if !strings.HasPrefix(secretKey, "sk_test_") && !strings.HasPrefix(secretKey, "sk_live_") {
+			return fmt.Errorf("stripe: secret key must start with 'sk_test_' or 'sk_live_'")
+		}
+	}
+
+	if publicKey, exists := config["publicKey"]; exists && publicKey != "" {
+		if !strings.HasPrefix(publicKey, "pk_test_") && !strings.HasPrefix(publicKey, "pk_live_") {
+			return fmt.Errorf("stripe: public key must start with 'pk_test_' or 'pk_live_'")
+		}
+	}
+
+	return nil
+}
+
 // Initialize sets up the Stripe payment provider with authentication credentials
 func (p *StripeProvider) Initialize(conf map[string]string) error {
 	secretKey := conf["secretKey"]

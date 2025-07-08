@@ -32,22 +32,6 @@ const (
 	endpointInstallmentRate = "/odeme/api/installment-rates"
 	endpointBINQuery        = "/odeme/api/bin-detail"
 
-	// PayTR Status Codes
-	statusSuccess   = "success"
-	statusFailed    = "failed"
-	statusWaiting   = "waiting"
-	statusPending   = "pending"
-	statusCancelled = "cancelled"
-	statusRefunded  = "refunded"
-
-	// PayTR Error Codes
-	errorCodeInsufficientFunds = "YETERSIZ_BAKIYE"
-	errorCodeInvalidCard       = "GECERSIZ_KART"
-	errorCodeExpiredCard       = "SURESI_GECMIS_KART"
-	errorCodeFraudulent        = "SAHTEKARLIK_SUPTESI"
-	errorCodeDeclined          = "KART_REDDEDILDI"
-	errorCodeSystemError       = "SISTEM_HATASI"
-
 	// Default Values
 	defaultCurrency = "TL"
 	defaultTimeout  = 30 * time.Second
@@ -72,6 +56,53 @@ func NewProvider() provider.PaymentProvider {
 			Timeout: defaultTimeout,
 		},
 	}
+}
+
+// GetRequiredConfig returns the configuration fields required for PayTR
+func (p *PayTRProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "merchantId",
+			Required:    true,
+			Type:        "string",
+			Description: "PayTR Merchant ID (provided by PayTR)",
+			Example:     "123456",
+			MinLength:   3,
+			MaxLength:   20,
+		},
+		{
+			Key:         "merchantKey",
+			Required:    true,
+			Type:        "string",
+			Description: "PayTR Merchant Key (provided by PayTR)",
+			Example:     "PAYTR_MERCHANT_KEY_123",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "merchantSalt",
+			Required:    true,
+			Type:        "string",
+			Description: "PayTR Merchant Salt (provided by PayTR)",
+			Example:     "PAYTR_SALT_456",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against PayTR requirements
+func (p *PayTRProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("paytr", config, requiredFields)
 }
 
 // Initialize sets up the PayTR payment provider with authentication credentials
@@ -249,7 +280,7 @@ func (p *PayTRProvider) ValidateWebhook(ctx context.Context, data, headers map[s
 }
 
 // processDirectPayment handles direct payment (Non-3D)
-func (p *PayTRProvider) processDirectPayment(ctx context.Context, request provider.PaymentRequest, force3D bool) (*provider.PaymentResponse, error) {
+func (p *PayTRProvider) processDirectPayment(ctx context.Context, request provider.PaymentRequest, _ bool) (*provider.PaymentResponse, error) {
 	// PayTR Direct API requires different implementation
 	// For now, we'll redirect to 3D secure as PayTR primarily uses iFrame
 	return p.processIFramePayment(ctx, request)

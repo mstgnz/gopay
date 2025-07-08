@@ -73,6 +73,44 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for PayU Turkey
+func (p *PayUProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "merchantId",
+			Required:    true,
+			Type:        "string",
+			Description: "PayU Merchant ID (provided by PayU)",
+			Example:     "123456",
+			MinLength:   3,
+			MaxLength:   20,
+		},
+		{
+			Key:         "secretKey",
+			Required:    true,
+			Type:        "string",
+			Description: "PayU Secret Key (provided by PayU)",
+			Example:     "PAYU_SECRET_KEY_123",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against PayU Turkey requirements
+func (p *PayUProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("payu", config, requiredFields)
+}
+
 // Initialize sets up the PayU Turkey payment provider with authentication credentials
 func (p *PayUProvider) Initialize(conf map[string]string) error {
 	p.merchantID = conf["merchantId"]

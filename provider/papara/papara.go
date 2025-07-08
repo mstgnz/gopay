@@ -59,6 +59,35 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for Papara
+func (p *PaparaProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "apiKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Papara API Key (provided by Papara)",
+			Example:     "12345678-1234-1234-1234-123456789012",
+			MinLength:   32,
+			MaxLength:   50,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against Papara requirements
+func (p *PaparaProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("papara", config, requiredFields)
+}
+
 // Initialize sets up the Papara payment provider with authentication credentials
 func (p *PaparaProvider) Initialize(conf map[string]string) error {
 	p.apiKey = conf["apiKey"]

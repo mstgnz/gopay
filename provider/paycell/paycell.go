@@ -111,6 +111,62 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for Paycell
+func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "username",
+			Required:    true,
+			Type:        "string",
+			Description: "Paycell API Username (provided by Paycell)",
+			Example:     "PAYCELL_USERNAME",
+			MinLength:   3,
+			MaxLength:   50,
+		},
+		{
+			Key:         "password",
+			Required:    true,
+			Type:        "string",
+			Description: "Paycell API Password (provided by Paycell)",
+			Example:     "PAYCELL_PASSWORD",
+			MinLength:   6,
+			MaxLength:   100,
+		},
+		{
+			Key:         "merchantId",
+			Required:    true,
+			Type:        "string",
+			Description: "Paycell Merchant ID (provided by Paycell)",
+			Example:     "123456789",
+			MinLength:   5,
+			MaxLength:   20,
+		},
+		{
+			Key:         "terminalId",
+			Required:    true,
+			Type:        "string",
+			Description: "Paycell Terminal ID (provided by Paycell)",
+			Example:     "VP123456",
+			MinLength:   5,
+			MaxLength:   20,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (test or production)",
+			Example:     "test",
+			Pattern:     "^(test|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against Paycell requirements
+func (p *PaycellProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("paycell", config, requiredFields)
+}
+
 // Initialize sets up the Paycell payment provider with authentication credentials
 func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.username = conf["username"]

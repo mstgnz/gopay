@@ -73,6 +73,53 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for Nkolay
+func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "apiKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Nkolay API Key (provided by Nkolay)",
+			Example:     "NKOLAY_API_KEY_123",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "secretKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Nkolay Secret Key (provided by Nkolay)",
+			Example:     "NKOLAY_SECRET_KEY_456",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "merchantId",
+			Required:    true,
+			Type:        "string",
+			Description: "Nkolay Merchant ID (provided by Nkolay)",
+			Example:     "MERCHANT123456",
+			MinLength:   5,
+			MaxLength:   50,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against Nkolay requirements
+func (p *NkolayProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("nkolay", config, requiredFields)
+}
+
 // Initialize sets up the Nkolay payment provider with authentication credentials
 func (p *NkolayProvider) Initialize(conf map[string]string) error {
 	// For real API, use provided credentials. For testing, use test values

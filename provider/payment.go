@@ -26,6 +26,18 @@ type Address struct {
 	Description string `json:"description,omitempty"`
 }
 
+// ConfigField represents a required configuration field for a payment provider
+type ConfigField struct {
+	Key         string `json:"key"`
+	Required    bool   `json:"required"`
+	Type        string `json:"type"` // "string", "number", "url", "email", "boolean"
+	Description string `json:"description"`
+	Example     string `json:"example"`
+	Pattern     string `json:"pattern,omitempty"`   // regex pattern for validation
+	MinLength   int    `json:"minLength,omitempty"` // minimum length for string fields
+	MaxLength   int    `json:"maxLength,omitempty"` // maximum length for string fields
+}
+
 // Customer represents the buyer information
 type Customer struct {
 	ID          string   `json:"id"`
@@ -125,6 +137,12 @@ type RefundResponse struct {
 type PaymentProvider interface {
 	// Initialize sets up the payment provider with authentication and configuration
 	Initialize(config map[string]string) error
+
+	// GetRequiredConfig returns the configuration fields required for this provider
+	GetRequiredConfig(environment string) []ConfigField
+
+	// ValidateConfig validates the provided configuration against provider requirements
+	ValidateConfig(config map[string]string) error
 
 	// CreatePayment makes a non-3D payment request
 	CreatePayment(ctx context.Context, request PaymentRequest) (*PaymentResponse, error)

@@ -61,6 +61,53 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for OzanPay
+func (p *OzanPayProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "apiKey",
+			Required:    true,
+			Type:        "string",
+			Description: "OzanPay API Key (provided by OzanPay)",
+			Example:     "OZANPAY_API_KEY_123",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "secretKey",
+			Required:    true,
+			Type:        "string",
+			Description: "OzanPay Secret Key (provided by OzanPay)",
+			Example:     "OZANPAY_SECRET_KEY_456",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
+			Key:         "merchantId",
+			Required:    true,
+			Type:        "string",
+			Description: "OzanPay Merchant ID (provided by OzanPay)",
+			Example:     "MERCHANT123456",
+			MinLength:   5,
+			MaxLength:   50,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against OzanPay requirements
+func (p *OzanPayProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("ozanpay", config, requiredFields)
+}
+
 // Initialize sets up the OzanPay payment provider with authentication credentials
 func (p *OzanPayProvider) Initialize(config map[string]string) error {
 	p.apiKey = config["apiKey"]

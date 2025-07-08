@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,6 +86,12 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 	}
 	if len(configMap) <= 1 { // only environment
 		response.Error(w, http.StatusBadRequest, "At least one config key/value required", nil)
+		return
+	}
+
+	// Dynamic provider validation using provider's own validation method
+	if err := h.validateConfigWithProvider(req.Provider, configMap); err != nil {
+		response.Error(w, http.StatusBadRequest, fmt.Sprintf("Invalid configuration: %v", err), err)
 		return
 	}
 
@@ -229,4 +236,45 @@ func (h *ConfigHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, http.StatusOK, "Statistics retrieved", stats)
+}
+
+// validateConfigWithProvider validates configuration using provider's own validation method
+func (h *ConfigHandler) validateConfigWithProvider(providerName string, config map[string]string) error {
+	// Get provider factory from registry
+	providerFactory, err := provider.Get(providerName)
+	if err != nil {
+		// If provider is not registered, use basic validation
+		logger.Warn("Provider not found in registry, using basic validation", logger.LogContext{
+			Provider: providerName,
+			Fields: map[string]any{
+				"error": err.Error(),
+			},
+		})
+		return h.basicValidateConfig(providerName, config)
+	}
+
+	// Create provider instance
+	providerInstance := providerFactory()
+
+	// Use provider's own validation
+	if err := providerInstance.ValidateConfig(config); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// basicValidateConfig provides basic validation as fallback
+func (h *ConfigHandler) basicValidateConfig(providerName string, config map[string]string) error {
+	// Basic validation: check environment is present
+	if environment, exists := config["environment"]; !exists || environment == "" {
+		return fmt.Errorf("environment is required")
+	}
+
+	// Basic validation: check at least one other config key
+	if len(config) < 2 {
+		return fmt.Errorf("at least one configuration parameter is required besides environment")
+	}
+
+	return nil
 }

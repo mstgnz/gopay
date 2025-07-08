@@ -123,11 +123,6 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 		return fmt.Errorf("config cannot be empty")
 	}
 
-	// This is a legacy provider config, apply validation
-	if err := c.validateProviderConfig(providerName, config); err != nil {
-		return fmt.Errorf("invalid config for provider %s: %w", providerName, err)
-	}
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -207,7 +202,7 @@ func (c *ProviderConfig) GetAvailableTenantsForProvider(providerName string) []s
 func (c *ProviderConfig) validateProviderConfig(providerName string, config map[string]string) error {
 	requiredKeys := make(map[string][]string)
 
-	// Define required keys for each provider
+	// Define required keys for each provider (legacy fallback)
 	requiredKeys["papara"] = []string{"apiKey"}
 	requiredKeys["iyzico"] = []string{"apiKey", "secretKey"}
 	requiredKeys["nkolay"] = []string{"apiKey", "secretKey", "merchantId"}

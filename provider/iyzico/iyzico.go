@@ -70,6 +70,44 @@ func NewProvider() provider.PaymentProvider {
 	}
 }
 
+// GetRequiredConfig returns the configuration fields required for Iyzico
+func (p *IyzicoProvider) GetRequiredConfig(environment string) []provider.ConfigField {
+	return []provider.ConfigField{
+		{
+			Key:         "apiKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Iyzico API Key (found in Iyzico merchant panel)",
+			Example:     "sandbox-BIOoONNaqF8UZZmP3...",
+			MinLength:   20,
+			MaxLength:   200,
+		},
+		{
+			Key:         "secretKey",
+			Required:    true,
+			Type:        "string",
+			Description: "Iyzico Secret Key (found in Iyzico merchant panel)",
+			Example:     "sandbox-NjQwOTRkMDBkZmE1...",
+			MinLength:   20,
+			MaxLength:   200,
+		},
+		{
+			Key:         "environment",
+			Required:    true,
+			Type:        "string",
+			Description: "Environment setting (sandbox or production)",
+			Example:     "sandbox",
+			Pattern:     "^(sandbox|production)$",
+		},
+	}
+}
+
+// ValidateConfig validates the provided configuration against Iyzico requirements
+func (p *IyzicoProvider) ValidateConfig(config map[string]string) error {
+	requiredFields := p.GetRequiredConfig(config["environment"])
+	return provider.ValidateConfigFields("iyzico", config, requiredFields)
+}
+
 // Initialize sets up the Iyzico payment provider with authentication credentials
 func (p *IyzicoProvider) Initialize(conf map[string]string) error {
 	p.apiKey = conf["apiKey"]
