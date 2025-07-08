@@ -101,11 +101,11 @@ func loadTenantRateLimitConfig() *TenantRateLimitConfig {
 	}
 
 	// Load from environment with defaults
-	cfg.DefaultGlobalRate = getEnvInt("TENANT_GLOBAL_RATE_LIMIT", 100)    // 100/min per tenant
-	cfg.DefaultPaymentRate = getEnvInt("TENANT_PAYMENT_RATE_LIMIT", 50)   // 50/min payments per tenant
-	cfg.DefaultRefundRate = getEnvInt("TENANT_REFUND_RATE_LIMIT", 20)     // 20/min refunds per tenant
-	cfg.DefaultStatusRate = getEnvInt("TENANT_STATUS_RATE_LIMIT", 200)    // 200/min status checks per tenant
-	cfg.UnauthenticatedRate = getEnvInt("UNAUTHENTICATED_RATE_LIMIT", 10) // 10/min per IP for unauthenticated
+	cfg.DefaultGlobalRate = config.GetIntEnv("TENANT_GLOBAL_RATE_LIMIT", 100)    // 100/min per tenant
+	cfg.DefaultPaymentRate = config.GetIntEnv("TENANT_PAYMENT_RATE_LIMIT", 50)   // 50/min payments per tenant
+	cfg.DefaultRefundRate = config.GetIntEnv("TENANT_REFUND_RATE_LIMIT", 20)     // 20/min refunds per tenant
+	cfg.DefaultStatusRate = config.GetIntEnv("TENANT_STATUS_RATE_LIMIT", 200)    // 200/min status checks per tenant
+	cfg.UnauthenticatedRate = config.GetIntEnv("UNAUTHENTICATED_RATE_LIMIT", 10) // 10/min per IP for unauthenticated
 
 	return cfg
 }
@@ -482,16 +482,6 @@ func (trl *TenantRateLimiter) GetTenantRateLimitStats(tenantID string) map[strin
 }
 
 // Helper functions
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := config.GetEnv(key, ""); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
-		}
-	}
-	return defaultValue
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
