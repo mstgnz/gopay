@@ -3,7 +3,6 @@ package iyzico
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -732,32 +731,166 @@ func TestSortAndConcatRequest(t *testing.T) {
 
 func TestParseFloat(t *testing.T) {
 	tests := []struct {
+		name     string
 		input    string
 		expected float64
 		hasError bool
 	}{
-		{"100.50", 100.50, false},
-		{"100,50", 100.50, false},
-		{"1000.99", 1000.99, false},
-		{"1000,99", 1000.99, false},
-		{"invalid", 0, true},
-		{"", 0, true},
+		{"input 100.50", "100.50", 100.50, false},
+		{"input 100,50", "100,50", 100.50, false},
+		{"input 1000.99", "1000.99", 1000.99, false},
+		{"input 1000,99", "1000,99", 1000.99, false},
+		{"input invalid", "invalid", 0.0, true},
+		{"input ", "", 0.0, true},
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input_%s", tt.input), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			result, err := parseFloat(tt.input)
 
 			if tt.hasError {
 				if err == nil {
-					t.Error("Expected error but got nil")
+					t.Errorf("Expected error but got none")
 				}
 			} else {
 				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
+					t.Errorf("Expected no error but got: %s", err.Error())
 				}
 				if result != tt.expected {
-					t.Errorf("Expected %f, got %f", tt.expected, result)
+					t.Errorf("parseFloat(%s) = %f, want %f", tt.input, result, tt.expected)
+				}
+			}
+		})
+	}
+}
+
+func TestIyzicoProvider_GetRequiredConfig(t *testing.T) {
+	provider := NewProvider().(*IyzicoProvider)
+
+	tests := []struct {
+		name        string
+		environment string
+		expected    int
+	}{
+		{"sandbox environment", "sandbox", 3},
+		{"production environment", "production", 3},
+		{"test environment", "test", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.GetRequiredConfig(tt.environment)
+			if len(result) != tt.expected {
+				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+			}
+
+			// Check required fields
+			expectedFields := []string{"apiKey", "secretKey", "environment"}
+			for i, field := range result {
+				if field.Key != expectedFields[i] {
+					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
+				}
+				if !field.Required {
+					t.Errorf("Field %s should be required", field.Key)
+				}
+				if field.Type != "string" {
+					t.Errorf("Field %s should be string type", field.Key)
+				}
+			}
+		})
+	}
+}
+
+func TestIyzicoProvider_ValidateConfig(t *testing.T) {
+	provider := NewProvider().(*IyzicoProvider)
+
+	tests := []struct {
+		name        string
+		config      map[string]string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid sandbox config",
+			config: map[string]string{
+				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
+				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
+				"environment": "sandbox",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid production config",
+			config: map[string]string{
+				"apiKey":      "production-BIOoONNaqF8UZZmP3real123",
+				"secretKey":   "production-NjQwOTRkMDBkZmE1real456",
+				"environment": "production",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing apiKey",
+			config: map[string]string{
+				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' is missing",
+		},
+		{
+			name: "missing secretKey",
+			config: map[string]string{
+				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'secretKey' is missing",
+		},
+		{
+			name: "empty apiKey",
+			config: map[string]string{
+				"apiKey":      "",
+				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "required field 'apiKey' cannot be empty",
+		},
+		{
+			name: "invalid environment",
+			config: map[string]string{
+				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
+				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
+				"environment": "invalid_env",
+			},
+			expectError: true,
+			errorMsg:    "environment must be one of",
+		},
+		{
+			name: "apiKey too short",
+			config: map[string]string{
+				"apiKey":      "short",
+				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
+				"environment": "sandbox",
+			},
+			expectError: true,
+			errorMsg:    "must be at least 20 characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := provider.ValidateConfig(tt.config)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %s", err.Error())
 				}
 			}
 		})
