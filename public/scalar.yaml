@@ -78,7 +78,7 @@ info:
 
     ### Setup Flow
     1. **Authenticate**: Get JWT token via login
-    2. **Configure**: `POST /v1/set-env` - Configure payment provider (tenant automatically detected from JWT token)
+    2. **Configure**: `POST /v1/config/tenant` - Configure payment provider (tenant automatically detected from JWT token)
     3. **Process**: Use payment endpoints with JWT token - Automatically uses tenant-specific configuration
 
     ### JWT Token Authentication
@@ -1030,7 +1030,7 @@ security:
 
 paths:
   # Configuration Operations
-  /v1/set-env:
+  /v1/config/tenant:
     post:
       summary: Configure payment provider for authenticated tenant
       description: |
@@ -1123,8 +1123,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
-
-  /v1/config/tenant-config:
     get:
       summary: Get tenant configuration for provider
       description: |

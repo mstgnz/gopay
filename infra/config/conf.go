@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/mstgnz/gopay/infra/conn"
 )
 
@@ -38,7 +37,8 @@ func App() *Config {
 			DB:        &conn.DB{},
 			Validator: validator.New(),
 			// the secret key will change every time the application is restarted.
-			SecretKey: uuid.New().String(),
+			SecretKey: GetEnv("SECRET_KEY", "default-secret-key"),
+			//SecretKey: uuid.New().String(), // every time the application is restarted, the secret key will change.
 		}
 		instance.DB.ConnectDatabase()
 	}

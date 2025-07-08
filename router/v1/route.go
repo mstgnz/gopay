@@ -36,14 +36,9 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 
 	// Configuration routes (JWT protected)
 	r.Route("/config", func(r chi.Router) {
-		r.Post("/tenant-config", configHandler.SetEnv)
-		r.Get("/tenant-config", configHandler.GetTenantConfig)
-		r.Delete("/tenant-config", configHandler.DeleteTenantConfig)
-	})
-
-	// Legacy routes for backward compatibility (JWT protected)
-	r.Route("/set-env", func(r chi.Router) {
-		r.Post("/", configHandler.SetEnv)
+		r.Post("/tenant", configHandler.PostTenantConfig)
+		r.Get("/tenant", configHandler.GetTenantConfig)
+		r.Delete("/tenant", configHandler.DeleteTenantConfig)
 	})
 
 	// Analytics routes (JWT protected)

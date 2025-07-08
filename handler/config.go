@@ -39,7 +39,7 @@ type SetEnvRequest struct {
 }
 
 // SetEnv handles setting environment variables for a tenant
-func (h *ConfigHandler) SetEnv(w http.ResponseWriter, r *http.Request) {
+func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request) {
 	// Get tenant ID from JWT context
 	tenantID := middle.GetTenantIDFromContext(r.Context())
 	if tenantID == "" {
@@ -60,12 +60,9 @@ func (h *ConfigHandler) SetEnv(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "provider, environment and configs are required", nil)
 		return
 	}
-	if req.Environment != "test" && req.Environment != "prod" && req.Environment != "production" {
+	if req.Environment != "test" && req.Environment != "prod" {
 		response.Error(w, http.StatusBadRequest, "environment must be 'test' or 'prod'", nil)
 		return
-	}
-	if req.Environment == "production" {
-		req.Environment = "prod"
 	}
 
 	// Validate provider existence using DB (providers table)
