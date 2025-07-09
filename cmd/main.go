@@ -167,16 +167,13 @@ func main() {
 	// Auth routes are now handled in v1.Routes()
 
 	// Callback routes for payment providers (no auth required)
-	r.Route("/callback", func(r chi.Router) {
-		// General callback route (uses default provider)
-		r.HandleFunc("/", paymentHandler.HandleCallback)
-
-		// Provider-specific callback routes
+	r.Route("/v1/callback", func(r chi.Router) {
+		// Provider-specific callback routes (provider is required)
 		r.HandleFunc("/{provider}", paymentHandler.HandleCallback)
 	})
 
 	// Webhook routes for payment notifications (no auth required)
-	r.Route("/webhooks", func(r chi.Router) {
+	r.Route("/v1/webhooks", func(r chi.Router) {
 		// Provider-specific webhook routes
 		r.Post("/{provider}", paymentHandler.HandleWebhook)
 	})

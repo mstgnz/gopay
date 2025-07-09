@@ -223,17 +223,9 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
-
-	// Get tenant ID from query parameter first, then from JWT context (for better callback handling)
-	tenantID := r.URL.Query().Get("tenantId")
-	if tenantID == "" {
-		tenantID = middle.GetTenantIDFromContext(r.Context())
-	}
-
-	// Construct tenant-specific provider name if tenant ID is present
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	if providerName == "" {
+		response.Error(w, http.StatusBadRequest, "Provider parameter is required", nil)
+		return
 	}
 
 	environment := r.URL.Query().Get("environment")
@@ -377,17 +369,9 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
-
-	// Get tenant ID from query parameter first, then from JWT context (for webhook reliability)
-	tenantID := r.URL.Query().Get("tenantId")
-	if tenantID == "" {
-		tenantID = middle.GetTenantIDFromContext(r.Context())
-	}
-
-	// Construct tenant-specific provider name if tenant ID is present
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
+	if providerName == "" {
+		response.Error(w, http.StatusBadRequest, "Provider parameter is required", nil)
+		return
 	}
 
 	environment := r.URL.Query().Get("environment")
@@ -445,7 +429,7 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process webhook asynchronously to respond quickly
-	go h.processWebhookAsync(environment, providerName, paymentData, webhookData)
+	go h.processWebhookAsync(ctx, environment, providerName, paymentData, webhookData)
 
 	// Respond immediately with success
 	response.Success(w, http.StatusOK, "Webhook received and processing", map[string]string{
@@ -455,8 +439,8 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // Async webhook processing for better performance
-func (h *PaymentHandler) processWebhookAsync(environment, providerName string, paymentData, rawWebhookData map[string]string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+func (h *PaymentHandler) processWebhookAsync(ctx context.Context, environment, providerName string, paymentData, rawWebhookData map[string]string) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	paymentID := paymentData["paymentId"]
