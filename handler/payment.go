@@ -70,9 +70,8 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	}
 
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Process the payment
