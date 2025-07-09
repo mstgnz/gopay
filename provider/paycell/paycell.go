@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -557,8 +558,29 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		return nil, fmt.Errorf("failed to get 3D session: %w", err)
 	}
 
+	// Build callback URL through GoPay (like other providers)
+	gopayCallbackURL := fmt.Sprintf("%s/v1/callback/paycell", p.gopayBaseURL)
+	if request.CallbackURL != "" {
+		gopayCallbackURL += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL)
+		// Add tenant ID to callback URL for proper tenant identification
+		if request.TenantID != 0 {
+			gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
+		}
+	} else {
+		// Add tenant ID to callback URL for proper tenant identification
+		if request.TenantID != 0 {
+			gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
+		}
+	}
+
+	// Instead of returning HTML form to app, GoPay submits form internally and gets redirect URL
+	redirectURL, err := p.submit3DForm(ctx, threeDSession.ThreeDSessionId, gopayCallbackURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit 3D form: %w", err)
+	}
+
 	now := time.Now()
-	// Return 3D redirect information
+	// Return only redirect URL (like other providers)
 	return &provider.PaymentResponse{
 		Success:          true,
 		Status:           provider.StatusPending,
@@ -566,8 +588,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		TransactionID:    threeDSession.ResponseHeader.TransactionID,
 		Amount:           request.Amount,
 		Currency:         request.Currency,
-		RedirectURL:      p.paymentManagementURL + endpointThreeDSecure,
-		HTML:             p.generate3DForm(threeDSession.ThreeDSessionId, request.CallbackURL),
+		RedirectURL:      redirectURL,
 		Message:          "3D secure authentication required",
 		SystemTime:       &now,
 		ProviderResponse: threeDSession,
@@ -643,6 +664,47 @@ func (p *PaycellProvider) generate3DForm(threeDSessionID, callbackURL string) st
     </script>
 </body>
 </html>`, p.paymentManagementURL, endpointThreeDSecure, threeDSessionID, callbackURL)
+}
+
+// submit3DForm submits the 3D secure form to Paycell and returns the redirect URL
+func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, callbackURL string) (string, error) {
+	formData := url.Values{}
+	formData.Set("threeDSessionId", threeDSessionID)
+	formData.Set("callbackurl", callbackURL)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.paymentManagementURL+endpointThreeDSecure, bytes.NewBufferString(formData.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("failed to create 3D form submission request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to submit 3D form: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read 3D form response: %v", err)
+	}
+
+	fmt.Printf("3D Form Submission Response: %s\n", string(body))
+
+	var paycellResp PaycellProvisionResponse
+	if err := json.Unmarshal(body, &paycellResp); err != nil {
+		return "", fmt.Errorf("failed to unmarshal 3D form response: %v", err)
+	}
+
+	// Check for success
+	if paycellResp.ResponseHeader.ResponseCode != "0" {
+		return "", fmt.Errorf("3D form submission error: %s - %s", paycellResp.ResponseHeader.ResponseCode, paycellResp.ResponseHeader.ResponseDescription)
+	}
+
+	// Return the redirect URL from the response
+	return p.paymentManagementURL + endpointThreeDSecure, nil
 }
 
 // sendProvisionRequest sends request to Paycell provision API
