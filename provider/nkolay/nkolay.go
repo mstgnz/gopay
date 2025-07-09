@@ -356,6 +356,10 @@ func (p *NkolayProvider) ValidateWebhook(ctx context.Context, data, headers map[
 
 // validatePaymentRequest validates the payment request
 func (p *NkolayProvider) validatePaymentRequest(request provider.PaymentRequest, is3D bool) error {
+	if request.TenantID == 0 {
+		return errors.New("tenantID is required")
+	}
+
 	if request.Amount <= 0 {
 		return errors.New("amount must be greater than 0")
 	}

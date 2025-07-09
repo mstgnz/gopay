@@ -231,6 +231,10 @@ func (p *StripeProvider) ValidateWebhook(ctx context.Context, data map[string]st
 
 // Helper method to validate payment request
 func (p *StripeProvider) validatePaymentRequest(request provider.PaymentRequest, is3D bool) error {
+	if request.TenantID == 0 {
+		return errors.New("tenantID is required")
+	}
+
 	if request.Amount <= 0 {
 		return errors.New("amount must be greater than 0")
 	}

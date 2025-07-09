@@ -608,8 +608,8 @@ components:
       type: object
       properties:
         tenantId:
-          type: string
-          example: "abc_project"
+          type: integer
+          example: 1
           description: Tenant identifier
         configuredProviders:
           type: array
@@ -626,8 +626,8 @@ components:
       type: object
       properties:
         tenantId:
-          type: string
-          example: "abc_project"
+          type: integer
+          example: 1
           description: Tenant identifier
         provider:
           type: string
@@ -1030,8 +1030,8 @@ paths:
                         type: object
                         properties:
                           tenantId:
-                            type: string
-                            example: "abc_project"
+                            type: integer
+                            example: 1
                           provider:
                             type: string
                             example: "iyzico"
@@ -1288,7 +1288,7 @@ paths:
           example: iyzico
         - name: tenantId
           in: query
-          required: false
+          required: true
           schema:
             type: string
           description: Tenant identifier for multi-tenant callback routing (optional)
@@ -1360,11 +1360,11 @@ paths:
           example: iyzico
         - name: tenantId
           in: query
-          required: false
+          required: true
           schema:
-            type: string
+            type: integer
           description: Tenant identifier for multi-tenant callback routing (optional)
-          example: abc_project
+          example: 1
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -1442,11 +1442,11 @@ paths:
           example: iyzico
         - name: tenantId
           in: query
-          required: false
+          required: true
           schema:
-            type: string
+            type: integer
           description: Tenant identifier for multi-tenant webhook routing (optional)
-          example: abc_project
+          example: 1
       requestBody:
         required: true
         content:
@@ -2015,8 +2015,8 @@ paths:
                         type: object
                         properties:
                           tenantId:
-                            type: string
-                            example: "tenant123"
+                            type: integer
+                            example: 1
                           provider:
                             type: string
                             example: "iyzico"
@@ -2100,8 +2100,8 @@ paths:
                         type: object
                         properties:
                           tenantId:
-                            type: string
-                            example: "tenant123"
+                            type: integer
+                            example: 1
                           provider:
                             type: string
                             example: "iyzico"
@@ -2179,8 +2179,8 @@ paths:
                         type: object
                         properties:
                           tenantId:
-                            type: string
-                            example: "tenant123"
+                            type: integer
+                            example: 1
                           provider:
                             type: string
                             example: "iyzico"
@@ -2250,8 +2250,8 @@ paths:
                         type: object
                         properties:
                           tenantId:
-                            type: string
-                            example: "tenant123"
+                            type: integer
+                            example: 1
                           provider:
                             type: string
                             example: "iyzico"
