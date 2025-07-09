@@ -71,48 +71,6 @@ func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Hand
 	}
 }
 
-// LegacyAPIKeyMiddleware validates API key authentication (for backward compatibility)
-func LegacyAPIKeyMiddleware() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get API key from environment
-			expectedAPIKey := "gopay-api-key-2024" // Fixed API key for now
-
-			// Get Authorization header
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				response.Error(w, http.StatusUnauthorized, "Authorization header required", nil)
-				return
-			}
-
-			// Check Bearer token format
-			if !strings.HasPrefix(authHeader, "Bearer ") {
-				response.Error(w, http.StatusUnauthorized, "Invalid authorization format. Use: Bearer <api_key>", nil)
-				return
-			}
-
-			// Extract API key
-			apiKey := strings.TrimPrefix(authHeader, "Bearer ")
-			if apiKey == "" {
-				response.Error(w, http.StatusUnauthorized, "API key required", nil)
-				return
-			}
-
-			// Validate API key
-			if apiKey != expectedAPIKey {
-				response.Error(w, http.StatusUnauthorized, "Invalid API key", nil)
-				return
-			}
-
-			// Add default tenant information to request context for legacy compatibility
-			ctx := context.WithValue(r.Context(), TenantIDKey, "legacy")
-
-			// Continue to next handler
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-}
-
 // GetTenantIDFromContext extracts tenant ID from request context
 func GetTenantIDFromContext(ctx context.Context) string {
 	if tenantID, ok := ctx.Value(TenantIDKey).(string); ok {

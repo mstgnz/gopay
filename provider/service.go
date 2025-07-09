@@ -2,10 +2,28 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/mstgnz/gopay/infra/logger"
+	"github.com/mstgnz/gopay/infra/middle"
 )
+
+// getTenantIDFromContext extracts and validates tenant ID from context
+func getTenantIDFromContext(ctx context.Context) (int, error) {
+	tenantIDStr, ok := ctx.Value(middle.TenantIDKey).(string)
+	if !ok || tenantIDStr == "" {
+		return 0, fmt.Errorf("tenant ID not found in context")
+	}
+
+	tenantID, err := strconv.Atoi(tenantIDStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid tenant ID format '%s': %v", tenantIDStr, err)
+	}
+
+	return tenantID, nil
+}
 
 // PaymentService manages payment operations through various providers
 type PaymentService struct {
@@ -21,7 +39,11 @@ func NewPaymentService(logger PaymentLogger) *PaymentService {
 
 // CreatePayment processes a payment using the specified provider
 func (s *PaymentService) CreatePayment(ctx context.Context, environment, providerName string, request PaymentRequest) (*PaymentResponse, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	request.TenantID = tenantID
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
@@ -91,7 +113,10 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*PaymentResponse, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
 		return nil, err
@@ -144,7 +169,10 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, pro
 
 // GetPaymentStatus retrieves the current status of a payment
 func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*PaymentResponse, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
 		return nil, err
@@ -197,7 +225,10 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 
 // CancelPayment cancels a payment
 func (s *PaymentService) CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*PaymentResponse, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
 		return nil, err
@@ -251,7 +282,10 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 
 // RefundPayment issues a refund for a payment
 func (s *PaymentService) RefundPayment(ctx context.Context, environment, providerName string, request RefundRequest) (*RefundResponse, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
 		return nil, err
@@ -304,7 +338,10 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 
 // ValidateWebhook validates an incoming webhook notification
 func (s *PaymentService) ValidateWebhook(ctx context.Context, environment, providerName string, data, headers map[string]string) (bool, map[string]string, error) {
-	tenantID := ctx.Value("tenantID").(int)
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return false, nil, err
+	}
 	provider, err := GetProvider(tenantID, environment, providerName)
 	if err != nil {
 		return false, nil, err
