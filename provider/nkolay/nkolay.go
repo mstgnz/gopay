@@ -77,31 +77,40 @@ func NewProvider() provider.PaymentProvider {
 func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{
 		{
-			Key:         "apiKey",
-			Required:    true,
+			Key:         "sx",
+			Required:    false,
 			Type:        "string",
-			Description: "Nkolay API Key (provided by Nkolay)",
-			Example:     "NKOLAY_API_KEY_123",
+			Description: "Nkolay SX token for payment operations (optional, uses test value if not provided)",
+			Example:     "118591467|bScbGDYCtPf7SS1N...",
 			MinLength:   10,
-			MaxLength:   100,
+			MaxLength:   500,
+		},
+		{
+			Key:         "sxList",
+			Required:    false,
+			Type:        "string",
+			Description: "Nkolay SX token for listing operations (optional, uses test value if not provided)",
+			Example:     "118591467|bScbGDYCtPf7SS1N...|3hJpHVF2cqvcCZ4q6F7rcA==",
+			MinLength:   10,
+			MaxLength:   500,
+		},
+		{
+			Key:         "sxCancel",
+			Required:    false,
+			Type:        "string",
+			Description: "Nkolay SX token for cancel/refund operations (optional, uses test value if not provided)",
+			Example:     "118591467|bScbGDYCtPf7SS1N...|yDUZaCk6rsoHZJWI3d471A/+TJA7C81X",
+			MinLength:   10,
+			MaxLength:   500,
 		},
 		{
 			Key:         "secretKey",
-			Required:    true,
+			Required:    false,
 			Type:        "string",
-			Description: "Nkolay Secret Key (provided by Nkolay)",
-			Example:     "NKOLAY_SECRET_KEY_456",
-			MinLength:   10,
-			MaxLength:   100,
-		},
-		{
-			Key:         "merchantId",
-			Required:    true,
-			Type:        "string",
-			Description: "Nkolay Merchant ID (provided by Nkolay)",
-			Example:     "MERCHANT123456",
+			Description: "Nkolay Secret Key (optional, uses test value if not provided)",
+			Example:     "_YckdxUbv4vrnMUZ6VQsr",
 			MinLength:   5,
-			MaxLength:   50,
+			MaxLength:   100,
 		},
 		{
 			Key:         "environment",
@@ -147,12 +156,7 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 		p.secretKey = testSecretKey
 	}
 
-	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := conf["gopayBaseURL"]; ok && gopayBaseURL != "" {
-		p.gopayBaseURL = gopayBaseURL
-	} else {
-		p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
-	}
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {

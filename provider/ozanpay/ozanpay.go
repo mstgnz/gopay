@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -109,23 +110,18 @@ func (p *OzanPayProvider) ValidateConfig(config map[string]string) error {
 }
 
 // Initialize sets up the OzanPay payment provider with authentication credentials
-func (p *OzanPayProvider) Initialize(config map[string]string) error {
-	p.apiKey = config["apiKey"]
-	p.secretKey = config["secretKey"]
-	p.providerKey = config["providerKey"]
+func (p *OzanPayProvider) Initialize(conf map[string]string) error {
+	p.apiKey = conf["apiKey"]
+	p.secretKey = conf["secretKey"]
+	p.providerKey = conf["providerKey"]
 
 	if p.apiKey == "" {
 		return errors.New("ozanpay: apiKey is required")
 	}
 
-	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := config["gopayBaseURL"]; ok && gopayBaseURL != "" {
-		p.gopayBaseURL = gopayBaseURL
-	} else {
-		p.gopayBaseURL = "http://localhost:9999" // Default fallback
-	}
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
-	p.isProduction = config["environment"] == "production"
+	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
 	} else {

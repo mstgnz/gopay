@@ -115,12 +115,7 @@ func (p *PayTRProvider) Initialize(conf map[string]string) error {
 		return errors.New("paytr: merchantId, merchantKey and merchantSalt are required")
 	}
 
-	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := conf["gopayBaseURL"]; ok && gopayBaseURL != "" {
-		p.gopayBaseURL = gopayBaseURL
-	} else {
-		p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
-	}
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	p.isProduction = conf["environment"] == "production"
 	// PayTR uses the same base URL for both sandbox and production

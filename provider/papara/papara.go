@@ -96,12 +96,7 @@ func (p *PaparaProvider) Initialize(conf map[string]string) error {
 		return errors.New("papara: apiKey is required")
 	}
 
-	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := conf["gopayBaseURL"]; ok && gopayBaseURL != "" {
-		p.gopayBaseURL = gopayBaseURL
-	} else {
-		p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
-	}
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {

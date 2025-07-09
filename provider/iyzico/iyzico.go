@@ -117,19 +117,9 @@ func (p *IyzicoProvider) Initialize(conf map[string]string) error {
 		return errors.New("iyzico: apiKey and secretKey are required")
 	}
 
-	// Set GoPay base URL for callbacks
-	if gopayBaseURL, ok := conf["gopayBaseURL"]; ok && gopayBaseURL != "" {
-		p.gopayBaseURL = gopayBaseURL
-	} else {
-		p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999") // Default fallback
-	}
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
-	environment := conf["environment"]
-	if environment != "production" && environment != "sandbox" {
-		environment = "sandbox" // Default to sandbox
-	}
-
-	p.isProduction = environment == "production"
+	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
 	} else {
