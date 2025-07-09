@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -88,6 +89,46 @@ const (
 	testMerchantCode    = "9998"
 	testEulaID          = "17"
 )
+
+type TestCard struct {
+	CardNumber  string
+	ExpireMonth string
+	ExpireYear  string
+	CVV         string
+}
+
+var testCards = []TestCard{
+	{
+		CardNumber:  "4355084355084358",
+		ExpireMonth: "12",
+		ExpireYear:  "26",
+		CVV:         "000",
+	},
+	{
+		CardNumber:  "5571135571135575",
+		ExpireMonth: "12",
+		ExpireYear:  "26",
+		CVV:         "000",
+	},
+	{
+		CardNumber:  "4546711234567894",
+		ExpireMonth: "12",
+		ExpireYear:  "26",
+		CVV:         "000",
+	},
+	{
+		CardNumber:  "4508034508034509",
+		ExpireMonth: "12",
+		ExpireYear:  "26",
+		CVV:         "000",
+	},
+	{
+		CardNumber:  "5528790000000008",
+		ExpireMonth: "12",
+		ExpireYear:  "26",
+		CVV:         "001",
+	},
+}
 
 // PaycellProvider implements the provider.PaymentProvider interface for Paycell
 type PaycellProvider struct {
@@ -442,7 +483,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 			TransactionDateTime string `json:"transactionDateTime"`
 			TransactionID       string `json:"transactionId"`
 		}{
-			ApplicationName:     testApplicationName,
+			ApplicationName:     p.username,
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
@@ -498,14 +539,14 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	return cardTokenResp.CardToken, nil
 }
 
-// generateHashData generates hash data for requests using test constants
+// generateHashData generates hash data for requests using configured credentials
 func (p *PaycellProvider) generateHashData(transactionID, transactionDateTime string) string {
 	// Stage 1: SecurityData = hash(applicationPwd + applicationName)
-	securityDataInput := testApplicationPwd + testApplicationName
+	securityDataInput := p.password + p.username
 	securityData := p.generateHash(securityDataInput)
 
 	// Stage 2: HashData = hash(applicationName + transactionId + transactionDateTime + secureCode + securityData)
-	hashDataInput := testApplicationName + transactionID + transactionDateTime + testSecureCode + securityData
+	hashDataInput := p.username + transactionID + transactionDateTime + p.secureCode + securityData
 	return p.generateHash(hashDataInput)
 }
 
@@ -611,43 +652,25 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 
 	paycellReq := PaycellGetThreeDSessionRequest{
 		RequestHeader: PaycellRequestHeader{
-			ApplicationName:     p.username,
-			ApplicationPwd:      p.password,
+			ApplicationName:     p.username, // Use configured credentials
+			ApplicationPwd:      p.password, // Use configured credentials
 			ClientIPAddress:     "127.0.0.1",
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
 		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
 		CardToken:        cardToken,
-		InstallmentCount: 0,
-		MerchantCode:     p.merchantID,
+		InstallmentCount: 1,            // Changed from 0 to 1 as per docs
+		MerchantCode:     p.merchantID, // Use configured merchant ID
 		Msisdn:           msisdn,
-		ReferenceNumber:  p.generateReferenceNumber(),
-		Target:           "AUTH",
-		TransactionType:  "SALE",
+		ReferenceNumber:  " ",        // Changed to space as per docs
+		Target:           "MERCHANT", // Changed from "AUTH" to "MERCHANT" as per docs
+		TransactionType:  "AUTH",     // Changed from "SALE" to "AUTH" as per docs
 	}
 
-	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
-	if err != nil {
-		return nil, err
-	}
+	log.Printf("getThreeDSession Request: %+v\n", paycellReq)
 
-	// Convert response to 3D session response
-	return &PaycellGetThreeDSessionResponse{
-		ResponseHeader: struct {
-			TransactionID       string `json:"transactionId"`
-			ResponseDateTime    string `json:"responseDateTime"`
-			ResponseCode        string `json:"responseCode"`
-			ResponseDescription string `json:"responseDescription"`
-		}{
-			TransactionID:       response.TransactionID,
-			ResponseDateTime:    time.Now().Format("20060102150405000"),
-			ResponseCode:        "0",
-			ResponseDescription: "Success",
-		},
-		ExtraParameters: nil,
-		ThreeDSessionId: response.PaymentID,
-	}, nil
+	return p.sendGetThreeDSessionRequest(ctx, endpoint, paycellReq)
 }
 
 // generate3DForm generates HTML form for 3D secure authentication
@@ -745,6 +768,61 @@ func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint str
 	}
 
 	return p.mapProvisionToPaymentResponse(paycellResp), nil
+}
+
+// sendGetThreeDSessionRequest sends request to Paycell getThreeDSession API
+func (p *PaycellProvider) sendGetThreeDSessionRequest(ctx context.Context, endpoint string, data PaycellGetThreeDSessionRequest) (*PaycellGetThreeDSessionResponse, error) {
+	url := p.baseURL + endpoint
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	fmt.Printf("getThreeDSession Request: %s\n", string(body))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	fmt.Printf("getThreeDSession Response: %s\n", string(respBody))
+
+	// Check if response body is empty
+	if len(respBody) == 0 {
+		return nil, fmt.Errorf("empty response body from getThreeDSession API")
+	}
+
+	// Check HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("getThreeDSession API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var paycellResp PaycellGetThreeDSessionResponse
+	if err := json.Unmarshal(respBody, &paycellResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response (body: %s): %w", string(respBody), err)
+	}
+
+	// Check for success
+	if paycellResp.ResponseHeader.ResponseCode != "0" {
+		return nil, fmt.Errorf("getThreeDSession error: %s - %s", paycellResp.ResponseHeader.ResponseCode, paycellResp.ResponseHeader.ResponseDescription)
+	}
+
+	return &paycellResp, nil
 }
 
 // mapProvisionToPaymentResponse maps Paycell provision response to standard payment response

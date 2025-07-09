@@ -3,6 +3,7 @@ package paycell
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ func TestPaycellProvider_RealAPI_CreatePayment(t *testing.T) {
 
 	p := setupRealTestProvider()
 
+	card := testCards[rand.Intn(len(testCards))]
 	request := provider.PaymentRequest{
 		TenantID: 1,
 		Amount:   1.00,
@@ -50,10 +52,10 @@ func TestPaycellProvider_RealAPI_CreatePayment(t *testing.T) {
 			PhoneNumber: "5551234567", // 10 digit format without country code
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:     "5528790000000008", // HalkBank test Mastercard (highlighted in docs)
-			ExpireMonth:    "12",
-			ExpireYear:     "26",  // 2-digit format as per docs
-			CVV:            "001", // Correct test CVV
+			CardNumber:     card.CardNumber,
+			ExpireMonth:    card.ExpireMonth,
+			ExpireYear:     card.ExpireYear,
+			CVV:            card.CVV,
 			CardHolderName: "Test Customer",
 		},
 		Description:    "Test payment",
@@ -176,6 +178,7 @@ func TestPaycellProvider_RealAPI_GetPaymentStatus(t *testing.T) {
 	p := setupRealTestProvider()
 	ctx := context.Background()
 
+	card := testCards[rand.Intn(len(testCards))]
 	// Önce bir payment oluşturalım
 	paymentRequest := provider.PaymentRequest{
 		TenantID: 1,
@@ -188,10 +191,10 @@ func TestPaycellProvider_RealAPI_GetPaymentStatus(t *testing.T) {
 			PhoneNumber: "5551234567",
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:     "5528790000000008",
-			ExpireMonth:    "12",
-			ExpireYear:     "26",
-			CVV:            "001",
+			CardNumber:     card.CardNumber,
+			ExpireMonth:    card.ExpireMonth,
+			ExpireYear:     card.ExpireYear,
+			CVV:            card.CVV,
 			CardHolderName: "TEST USER",
 		},
 		Description:    "GoPay Status Test",
