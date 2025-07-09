@@ -604,168 +604,6 @@ components:
           description: Cancellation reason
 
     # Configuration Schemas
-    SetEnvRequest:
-      type: object
-      description: |
-        Configuration request for setting up payment provider credentials for a tenant.
-        At least one provider configuration must be provided.
-      properties:
-        # İyzico Configuration
-        IYZICO_API_KEY:
-          type: string
-          example: "sandbox-api-key"
-          description: İyzico API key
-        IYZICO_SECRET_KEY:
-          type: string
-          example: "sandbox-secret-key"
-          description: İyzico secret key
-        IYZICO_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: İyzico environment
-
-        # OzanPay Configuration
-        OZANPAY_API_KEY:
-          type: string
-          example: "ozanpay-api-key"
-          description: OzanPay API key
-        OZANPAY_SECRET_KEY:
-          type: string
-          example: "ozanpay-secret-key"
-          description: OzanPay secret key
-        OZANPAY_MERCHANT_ID:
-          type: string
-          example: "merchant123"
-          description: OzanPay merchant ID
-        OZANPAY_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: OzanPay environment
-
-        # Stripe Configuration
-        STRIPE_SECRET_KEY:
-          type: string
-          example: "sk_test_123..."
-          description: Stripe secret key
-        STRIPE_PUBLIC_KEY:
-          type: string
-          example: "pk_test_123..."
-          description: Stripe public key
-        STRIPE_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: Stripe environment
-
-        # Paycell Configuration
-        username:
-          type: string
-          example: "paycell-user"
-          description: Paycell username
-        password:
-          type: string
-          example: "paycell-pass"
-          description: Paycell password
-        merchantId:
-          type: string
-          example: "merchant456"
-          description: Paycell merchant ID
-        terminalId:
-          type: string
-          example: "terminal789"
-          description: Paycell terminal ID
-        environment:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: Paycell environment
-
-        # Papara Configuration
-        PAPARA_API_KEY:
-          type: string
-          example: "papara-api-key"
-          description: Papara API key
-        PAPARA_SECRET_KEY:
-          type: string
-          example: "papara-secret-key"
-          description: Papara secret key
-        PAPARA_MERCHANT_ID:
-          type: string
-          example: "papara-merchant-123"
-          description: Papara merchant ID
-        PAPARA_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: Papara environment
-
-        # Nkolay Configuration
-        NKOLAY_API_KEY:
-          type: string
-          example: "nkolay-api-key"
-          description: Nkolay API key
-        NKOLAY_SECRET_KEY:
-          type: string
-          example: "nkolay-secret-key"
-          description: Nkolay secret key
-        NKOLAY_MERCHANT_ID:
-          type: string
-          example: "nkolay-merchant-123"
-          description: Nkolay merchant ID
-        NKOLAY_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: Nkolay environment
-
-        # PayTR Configuration
-        PAYTR_MERCHANT_ID:
-          type: string
-          example: "paytr-merchant-123"
-          description: PayTR merchant ID
-        PAYTR_MERCHANT_KEY:
-          type: string
-          example: "paytr-merchant-key"
-          description: PayTR merchant key
-        PAYTR_MERCHANT_SALT:
-          type: string
-          example: "paytr-merchant-salt"
-          description: PayTR merchant salt
-        PAYTR_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: PayTR environment
-
-        # PayU Configuration
-        PAYU_MERCHANT_ID:
-          type: string
-          example: "payu-merchant-123"
-          description: PayU merchant ID
-        PAYU_SECRET_KEY:
-          type: string
-          example: "payu-secret-key"
-          description: PayU secret key
-        PAYU_API_KEY:
-          type: string
-          example: "payu-api-key"
-          description: PayU API key
-        PAYU_ENVIRONMENT:
-          type: string
-          enum: [sandbox, production]
-          default: sandbox
-          example: "sandbox"
-          description: PayU environment
-
     SetEnvResponse:
       type: object
       properties:
@@ -1138,7 +976,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, paycell]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
       responses:
@@ -1175,7 +1013,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, paycell]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
       responses:
@@ -1233,124 +1071,6 @@ paths:
           description: Internal server error
 
   # Payment Operations
-  /v1/payments:
-    post:
-      summary: Process payment with default provider
-      description: |
-        Processes a payment using the default configured payment provider.
-        
-        **For 3D Secure payments:**
-        - Set `use3D: true` in the request
-        - Provide `callbackUrl` for redirect after authentication
-        - Handle the callback at your specified URL
-        
-        **Test Cards by Provider:**
-        
-        **İyzico:**
-        - Success: `5528790000000008` (12/2030, CVV: 123)
-        - Insufficient funds: `5528790000000016`
-        - Invalid card: `5528790000000032`
-        
-        **Stripe:**
-        - Success: `4242424242424242` (any future date, any CVV)
-        - 3D Secure: `4000000000003220`
-        - Insufficient funds: `4000000000009995`
-        - Invalid card: `4000000000000127`
-        
-        **OzanPay/Nkolay:**
-        - Success: `4111111111111111` or `5555555555554444`
-        - Insufficient funds: `4000000000000002`
-        - Invalid card: `4000000000000127`
-        
-        **Paycell:**
-        - Success: `5528790000000008` (12/26, CVV: 001)
-        - 3D Secure: `4355084355084358` (12/26, CVV: 000)
-        
-        **PayTR:**
-        - Success: `4355084355084358` or `5406675406675403`
-        - Any future expiry date, any 3-digit CVV
-        
-        **Papara/PayU:**
-        - Success: `5528790000000008` (12/30, CVV: 123)
-        - Declined: `5555555555554444`
-      tags: [Payments]
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PaymentRequest'
-            examples:
-              regular_payment:
-                summary: Regular Payment
-                value:
-                  amount: 100.50
-                  currency: "TRY"
-                  customer:
-                    name: "John"
-                    surname: "Doe"
-                    email: "john@example.com"
-                    address:
-                      city: "Istanbul"
-                      country: "Turkey"
-                      address: "Test Address 123"
-                      zipCode: "34000"
-                  cardInfo:
-                    cardHolderName: "John Doe"
-                    cardNumber: "5528790000000008"
-                    expireMonth: "12"
-                    expireYear: "2030"
-                    cvv: "123"
-                  description: "Test payment"
-                  use3D: false
-              threeds_payment:
-                summary: 3D Secure Payment
-                value:
-                  amount: 250.00
-                  currency: "TRY"
-                  customer:
-                    name: "Jane"
-                    surname: "Smith"
-                    email: "jane@example.com"
-                    address:
-                      city: "Ankara"
-                      country: "Turkey"
-                      address: "Test Address 456"
-                      zipCode: "06000"
-                  cardInfo:
-                    cardHolderName: "Jane Smith"
-                    cardNumber: "5528790000000008"
-                    expireMonth: "12"
-                    expireYear: "2030"
-                    cvv: "123"
-                  description: "3D Secure payment"
-                  use3D: true
-                  callbackUrl: "https://yoursite.com/payment-callback"
-      responses:
-        '200':
-          description: Payment processed successfully
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized - Invalid JWT token
-        '500':
-          description: Internal server error
-
   /v1/payments/{provider}:
     post:
       summary: Process payment with specific provider
@@ -1375,7 +1095,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
       requestBody:
@@ -1403,82 +1123,6 @@ paths:
         '500':
           description: Internal server error
 
-  /v1/payments/{paymentID}:
-    get:
-      summary: Get payment status with default provider
-      description: Retrieves the current status of a payment using the default provider
-      tags: [Payments]
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: paymentID
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Payment ID to check
-          example: payment123
-      responses:
-        '200':
-          description: Payment status retrieved successfully
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '400':
-          description: Invalid payment ID
-        '401':
-          description: Unauthorized - Invalid JWT token
-        '404':
-          description: Payment not found
-        '500':
-          description: Internal server error
-    
-    delete:
-      summary: Cancel payment with default provider
-      description: Cancels a payment using the default provider
-      tags: [Payments]
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: paymentID
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Payment ID to cancel
-          example: payment123
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CancelRequest'
-      responses:
-        '200':
-          description: Payment cancelled successfully
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '400':
-          description: Invalid payment ID or payment cannot be cancelled
-        '401':
-          description: Unauthorized - Invalid JWT token
-        '404':
-          description: Payment not found
-        '500':
-          description: Internal server error
-
   /v1/payments/{provider}/{paymentID}:
     get:
       summary: Get payment status with specific provider
@@ -1494,7 +1138,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
         - name: paymentID
@@ -1537,7 +1181,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
         - name: paymentID
@@ -1572,60 +1216,6 @@ paths:
           description: Internal server error
 
   # Refund Operations
-  /v1/payments/refund:
-    post:
-      summary: Refund payment with default provider
-      description: |
-        Processes a refund using the default provider.
-        
-        **Refund Types:**
-        - **Full Refund**: Don't specify `refundAmount`
-        - **Partial Refund**: Specify `refundAmount` less than original amount
-      tags: [Refunds]
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefundRequest'
-            examples:
-              full_refund:
-                summary: Full Refund
-                value:
-                  paymentId: "payment123"
-                  reason: "Customer request"
-                  description: "Customer requested full refund"
-              partial_refund:
-                summary: Partial Refund
-                value:
-                  paymentId: "payment123"
-                  refundAmount: 50.00
-                  reason: "Partial refund"
-                  description: "Customer requested partial refund"
-                  currency: "TRY"
-      responses:
-        '200':
-          description: Refund processed successfully
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/RefundResponse'
-        '400':
-          description: Invalid refund request
-        '401':
-          description: Unauthorized - Invalid JWT token
-        '404':
-          description: Payment not found
-        '500':
-          description: Internal server error
-
   /v1/payments/{provider}/refund:
     post:
       summary: Refund payment with specific provider
@@ -1641,7 +1231,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
       requestBody:
@@ -1672,99 +1262,6 @@ paths:
           description: Internal server error
 
   # 3D Secure Callbacks
-  /v1/callback:
-    get:
-      summary: Handle 3D Secure callback (GET) with default provider
-      description: |
-        Handles 3D Secure authentication callback from the bank using GET method with default provider.
-        This endpoint is called by the bank after user completes 3D authentication.
-      tags: [3D Secure]
-      parameters:
-        - name: paymentId
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Payment ID from initial 3D request
-        - name: conversationId
-          in: query
-          schema:
-            type: string
-          description: Conversation ID for tracking
-        - name: successUrl
-          in: query
-          schema:
-            type: string
-            format: uri
-          description: URL to redirect on success
-        - name: errorUrl
-          in: query
-          schema:
-            type: string
-            format: uri
-          description: URL to redirect on error
-      responses:
-        '200':
-          description: 3D Secure authentication completed
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '302':
-          description: Redirect to success/error URL
-        '400':
-          description: Invalid callback data
-        '500':
-          description: Internal server error
-    
-    post:
-      summary: Handle 3D Secure callback (POST) with default provider
-      description: |
-        Handles 3D Secure authentication callback from the bank using POST method with default provider.
-        This endpoint is called by the bank after user completes 3D authentication.
-      tags: [3D Secure]
-      requestBody:
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              properties:
-                paymentId:
-                  type: string
-                  description: Payment ID
-                conversationId:
-                  type: string
-                  description: Conversation ID
-                status:
-                  type: string
-                  description: 3D authentication status
-                mdStatus:
-                  type: string
-                  description: 3D authentication result
-      responses:
-        '200':
-          description: 3D Secure authentication completed
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '302':
-          description: Redirect to success/error URL
-        '400':
-          description: Invalid callback data
-        '500':
-          description: Internal server error
-
   /v1/callback/{provider}:
     get:
       summary: Handle 3D Secure callback (GET) with specific provider
@@ -1782,7 +1279,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
         - name: tenantId
@@ -1850,7 +1347,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
         - name: tenantId
@@ -1921,7 +1418,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
         - name: tenantId
