@@ -79,15 +79,7 @@ func (s *PostgresStorage) getProviderID(providerName string) (int, error) {
 	query := `SELECT id FROM providers WHERE name = $1`
 	err := s.db.QueryRow(query, providerName).Scan(&id)
 
-	if err == sql.ErrNoRows {
-		// Create new provider
-		insertQuery := `INSERT INTO providers (name) VALUES ($1) RETURNING id`
-		err = s.db.QueryRow(insertQuery, providerName).Scan(&id)
-		if err != nil {
-			return 0, fmt.Errorf("failed to create provider: %w", err)
-		}
-		log.Printf("Created new provider: %s with ID: %d", providerName, id)
-	} else if err != nil {
+	if err != nil {
 		return 0, fmt.Errorf("failed to query provider: %w", err)
 	}
 
