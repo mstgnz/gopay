@@ -1042,8 +1042,10 @@ func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _
 
 // mapToPaymentResponse converts Paycell response to standard payment response (for backward compatibility)
 func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *provider.PaymentResponse {
-	// Parse amount from string
+	// Parse amount from string - Paycell returns amount in kuruş
 	amount, _ := strconv.ParseFloat(paycellResp.Amount, 64)
+	// Convert from kuruş to TRY (divide by 100)
+	amount = amount / 100
 
 	// Use OrderID as PaymentID if PaymentID is empty
 	paymentID := paycellResp.PaymentID
@@ -1105,22 +1107,31 @@ func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *pro
 		responseCode = paycellResp.Header.ResponseCode
 	}
 
-	if responseCode == responseCodeSuccess {
+	// Add 3D secure information if present
+	if paycellResp.RedirectURL != "" {
+		response.RedirectURL = paycellResp.RedirectURL
+		response.Status = provider.StatusPending
+		response.Success = true // Pending is still successful initiation
+		// Also preserve HTML if provided
+		if paycellResp.HTML != "" {
+			response.HTML = paycellResp.HTML
+		}
+	} else if paycellResp.HTML != "" {
+		response.HTML = paycellResp.HTML
+		response.Status = provider.StatusPending
+		response.Success = true // Pending is still successful initiation
+	} else if paycellResp.Status == statusPending {
+		response.Status = provider.StatusPending
+		response.Success = false // Pending without redirect means waiting
+	} else if paycellResp.Status == statusCancelled {
+		response.Status = provider.StatusCancelled
+		response.Success = false
+	} else if responseCode == responseCodeSuccess {
 		response.Success = true
 		response.Status = provider.StatusSuccessful
 	} else {
 		response.Success = false
 		response.Status = provider.StatusFailed
-	}
-
-	// Add 3D secure information if present
-	if paycellResp.RedirectURL != "" {
-		response.RedirectURL = paycellResp.RedirectURL
-		response.Status = provider.StatusPending
-	}
-
-	if paycellResp.HTML != "" {
-		response.HTML = paycellResp.HTML
 	}
 
 	return response

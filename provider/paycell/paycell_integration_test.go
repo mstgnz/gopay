@@ -40,6 +40,7 @@ func TestPaycellProvider_RealAPI_CreatePayment(t *testing.T) {
 	p := setupRealTestProvider()
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   1.00,
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -105,6 +106,7 @@ func TestPaycellProvider_RealAPI_Create3DPayment(t *testing.T) {
 	ctx := context.Background()
 
 	request := provider.PaymentRequest{
+		TenantID:    1,
 		Amount:      1.00, // Minimum test amount
 		Currency:    "TRY",
 		CallbackURL: "https://test.gopay.com/callback",
@@ -176,6 +178,7 @@ func TestPaycellProvider_RealAPI_GetPaymentStatus(t *testing.T) {
 
 	// Önce bir payment oluşturalım
 	paymentRequest := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   1.00,
 		Currency: "TRY",
 		Customer: provider.Customer{
