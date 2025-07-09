@@ -1,0 +1,49 @@
+<div id="paymentContainer">
+  <div id="paymentInfoContainer">
+    <app-payment-info [state]="state.paymentInfoState"></app-payment-info>
+    <table>
+      <tr>
+        <td>
+          <button mat-raised-button type="button" color="primary" (click)="provisionSale()">Satış</button>
+        </td>
+        <td>
+          <button mat-raised-button type="button" color="primary" (click)="provisionPreauth()">Ön Satış</button>
+        </td>
+        <td>
+          <button mat-raised-button type="button" color="primary" (click)="provisionPostauth()">Ön Satış Onay</button>
+        </td>
+      </tr>
+    </table>
+
+
+
+  </div>
+  <div id="paymentMethodContainer">
+    <mat-radio-group aria-labelledby="Ödeme Tipi" [(ngModel)]="state.selectedPaymentMethod">
+      <mat-radio-button [value]="'CUSTOM_CARD'">
+        Kayıtsız Kart ile Ödeme
+      </mat-radio-button>
+      <mat-radio-button [disabled]="!isCardsAvailable()" [value]="'CARD'">
+        Kayıtlı Kart ile Ödeme
+      </mat-radio-button>
+      <mat-radio-button [disabled]="!isMobilePaymentAvailable()" [value]="'MOBILE'">
+        Mobil Ödeme
+      </mat-radio-button>
+    </mat-radio-group>
+    <button mat-raised-button type="button" color="secondary" (click)="refreshPaymentMethods()">Yenile</button>
+    <div *ngIf="isCustomCardPaymentSelected()">
+      <app-custom-card-payment [webCallMethod]="webCallMethod" [state]="state.customCardPaymentState">
+      </app-custom-card-payment>
+    </div>
+    <div *ngIf="isCardPaymentSelected()">
+      <app-card-payment [msisdn]="msisdn" [webCallMethod]="webCallMethod" [state]="state.cardPaymentState">
+      </app-card-payment>
+    </div>
+    <div *ngIf="isMobilePaymentSelected()">
+      <app-otp-validation [msisdn]="msisdn" [mobilePayment]="state.mobilePayment"
+        [amount]="state.paymentInfoState.amount" [state]="state.otpValidationState" [webCallMethod]="webCallMethod"
+        (onOtpValidated)="onOtpValidated($event)">
+      </app-otp-validation>
+    </div>
+  </div>
+</div>

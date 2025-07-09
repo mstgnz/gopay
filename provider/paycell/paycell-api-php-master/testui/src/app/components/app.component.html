@@ -1,0 +1,31 @@
+<app-web-call-method-picker [state]="state"></app-web-call-method-picker>
+
+<div id="query-contaier" *ngIf="!state.msisdn">
+  <app-query [state]="state"></app-query>
+</div>
+<div *ngIf="state.msisdn">
+  <mat-tab-group>
+    <mat-tab label="Müşteri Ödeme">
+      <app-payment [msisdn]="state.msisdn" [webCallMethod]="state.webCallMethod" [state]="state.paymentState">
+      </app-payment>
+    </mat-tab>
+    <mat-tab label="Müşteri Ödeme Sorgulama">
+      <app-payment-inquiry [msisdn]="state.msisdn" [webCallMethod]="state.webCallMethod"
+        [state]="state.paymentInquiryState">
+      </app-payment-inquiry>
+    </mat-tab>
+    <mat-tab label="Müşteri Kart Yönetim">
+      <app-card-management [msisdn]="state.msisdn" [webCallMethod]="state.webCallMethod"
+        [state]="state.cardManagementState">
+      </app-card-management>
+    </mat-tab>
+    <mat-tab label="Üye İş Yeri Ödeme Geçmişi">
+      <app-provision-history [webCallMethod]="state.webCallMethod" [state]="state.provisionHistoryState">
+      </app-provision-history>
+    </mat-tab>
+    <mat-tab label="Üye İş Yeri Mutabakat">
+      <app-summary-reconciliation [state]="state.summaryReconciliationState" [webCallMethod]="state.webCallMethod">
+      </app-summary-reconciliation>
+    </mat-tab>
+  </mat-tab-group>
+</div>

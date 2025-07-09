@@ -1,0 +1,15 @@
+table, button {
+  width: 100%;
+}
+
+mat-form-field {
+  width: 50%;
+}
+
+.full-width {
+  width: 100% !important;
+}
+
+td {
+  vertical-align: top;
+}

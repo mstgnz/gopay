@@ -1,0 +1,6 @@
+<form ngNoForm target="formresponse" #threeDSecureForm
+  action="https://omccstb.turkcell.com.tr/paymentmanagement/rest/threeDSecure" method="POST">
+  <input hidden="true" #threeDSessionId type="text" name="threeDSessionId" />
+</form>
+
+<iframe name="formresponse" height="600" width="1000"></iframe>

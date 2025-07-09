@@ -1,0 +1,30 @@
+<table>
+  <tr *ngIf="isEulaAgreementRequired()">
+    <td colspan="2">
+      <mat-checkbox [(ngModel)]="state.eulaIsSigned">Sözleşmeyi okudum ve onaylıyorum.</mat-checkbox>
+      <button mat-raised-button color="primary" type="button" (click)="showEula()">Sözleşmeyi Göster</button>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <label>{{getValidationStatusLabel()}}</label>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="primary" (click)="sendOtp()" [disabled]="isSendOtpDisabled()">
+        Kod Gönder
+      </button>
+    </td>
+  </tr>
+  <tr *ngIf="isValidationEnabled()">
+    <td>
+      <mat-form-field>
+        <input matNativeControl type="text" [(ngModel)]="state.otp" />
+      </mat-form-field>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="primary" (click)="validateOtp()">
+        Kontrol Et
+      </button>
+    </td>
+  </tr>
+</table>

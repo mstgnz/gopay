@@ -1,0 +1,8 @@
+table, input, mat-form-field {
+  width: 100%;
+}
+
+#payment-info-container {
+  width: 90%;
+  margin: auto;
+}

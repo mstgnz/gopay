@@ -1,0 +1,44 @@
+<form [formGroup]="updateCardForm" (ngSubmit)="updateCard()">
+  <table id="updateCardForm">
+    <tr>
+      <td colspan="3">
+        <mat-form-field>
+          <input matInput placeholder="Kart Adı" type="text" maxlength="20" formControlName="alias">
+        </mat-form-field>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <mat-checkbox formControlName="isDefault">Öntanımlı Olarak Ayarla</mat-checkbox>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <mat-checkbox formControlName="isThreeDValidated" [disabled]="!isChangeThreeDEnabled()">3D
+          Güvenlikli</mat-checkbox>
+      </td>
+    </tr>
+    <tr *ngIf="isTermsOfServiceAgreementRequired()">
+      <td>
+        <mat-checkbox formControlName="isTermsOfServiceAgreed">Sözleşmeyi kabul ediyorum.</mat-checkbox>
+        <button mat-button type="button" color="accent" (click)="displayTermsOfService()">
+          Sözleşmeyi göster
+        </button>
+      </td>
+    </tr>
+  </table>
+  <table id="actionPanel">
+    <tr>
+      <td>
+        <button mat-raised-button type="button" color="secondary" (click)="hide()">
+          İptal
+        </button>
+      </td>
+      <td>
+        <button mat-raised-button type="submit" color="primary">
+          Kaydet
+        </button>
+      </td>
+    </tr>
+  </table>
+</form>

@@ -1,0 +1,21 @@
+<app-card-list [cards]="state.cards" [selectedCard]="state.selectedCard" (onCardSelected)="selectCard($event)">
+</app-card-list>
+<table>
+  <tr>
+    <td>
+      <button mat-raised-button type="button" color="secondary" (click)="addCard()" [disabled]="!isAddCardEnabled()">
+        Kart Ekle
+      </button>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="secondary" (click)="editCard()" [disabled]="!isEditCardEnabled()">
+        Düzenle
+      </button>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="warn" (click)="removeCard()" [disabled]="!isEditCardEnabled()">
+        Sil
+      </button>
+    </td>
+  </tr>
+</table>

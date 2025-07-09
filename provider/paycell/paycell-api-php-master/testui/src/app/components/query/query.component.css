@@ -1,0 +1,17 @@
+#queryForm{
+  width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#queryForm td{
+  padding-right: 15px;
+}
+
+.mat-form-field {
+  width: 100%;
+}
+
+button {
+  width: 100%;
+}

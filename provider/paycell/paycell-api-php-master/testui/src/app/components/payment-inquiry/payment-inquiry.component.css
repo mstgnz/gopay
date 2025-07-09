@@ -1,0 +1,7 @@
+table, mat-form-field, button {
+  width: 100%;
+}
+
+td {
+  vertical-align: top;
+}

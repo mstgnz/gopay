@@ -1,0 +1,134 @@
+<table>
+  <tr>
+    <td>
+      <form [formGroup]="form">
+        <mat-form-field class="full-width">
+          <input matInput [matDatepicker]="reconciliationDate" formControlName="reconciliationDate"
+            placeholder="Mutabakat Tarihi">
+          <mat-datepicker-toggle matSuffix [for]="reconciliationDate"></mat-datepicker-toggle>
+          <mat-datepicker #reconciliationDate></mat-datepicker>
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPostAuthAmount" placeholder="Toplam Ön Satış Onay Miktarı"
+            type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPostAuthCount" placeholder="Toplam Ön Satış Onay Sayısı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPostAuthReverseAmount" placeholder="Toplam Ön Satış Onay İptal Miktarı"
+            type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPostAuthReverseCount" placeholder="Toplam Ön Satış Onay İptal Sayısı"
+            type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPreAuthAmount" placeholder="Toplam Ön Satış Miktarı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPreAuthCount" placeholder="Toplam Ön Satış Sayısı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPreAuthReverseAmount" placeholder="Toplam Ön Satış İptal Miktarı"
+            type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalPreAuthReverseCount" placeholder="Toplam Ön Satış İptal Sayısı"
+            type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalRefundAmount" placeholder="Toplam İade Miktarı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalRefundCount" placeholder="Toplam İade Sayısı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalReverseAmount" placeholder="Toplam İptal Miktarı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalReverseCount" placeholder="Toplam İptal Sayısı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalSaleAmount" placeholder="Toplam Satış Miktarı" type="text" />
+        </mat-form-field>
+        <mat-form-field>
+          <input matInput formControlName="totalSaleCount" placeholder="Toplam Satış Sayısı" type="text" />
+        </mat-form-field>
+      </form>
+    </td>
+    <td>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.reconciliationDate" placeholder="Mutabakat Tarihi" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.reconciliationResult" placeholder="Mutabakat Sonucu" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPostAuthAmount" placeholder="Toplam Ön Satış Onayı Miktarı"
+          type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPostAuthCount" placeholder="Toplam Ön Satış Onayı Sayısı"
+          type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPostAuthReverseAmount"
+          placeholder="Toplam Ön Satış Onayı İptal Miktarı" type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPostAuthReverseCount"
+          placeholder="Toplam Ön Satış Onayı İptal Sayısı" type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPreAuthAmount" placeholder="Toplam Ön Satış Miktarı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPreAuthCount" placeholder="Toplam Ön Satış Sayısı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPreAuthReverseAmount"
+          placeholder="Toplam Ön Satış İptal Miktarı" type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalPreAuthReverseCount" placeholder="Toplam Ön Satış İptal Sayısı"
+          type="text" disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalRefundAmount" placeholder="Toplam İade Miktarı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalRefundCount" placeholder="Toplam İade Sayısı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalReverseAmount" placeholder="Toplam İptal Miktarı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalReverseCount" placeholder="Toplam İptal Sayısı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalSaleAmount" placeholder="Toplam Satış Miktarı" type="text"
+          disabled />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl [(ngModel)]="state.totalSaleCount" placeholder="Toplam Satış Sayısı" type="text"
+          disabled />
+      </mat-form-field>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <button mat-raised-button type="button" color="primary" (click)="sendReconciliation()">
+        Kontrol Et
+      </button>
+    </td>
+  </tr>
+</table>

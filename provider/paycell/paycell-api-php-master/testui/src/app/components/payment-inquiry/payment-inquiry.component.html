@@ -1,0 +1,141 @@
+<table>
+  <tr>
+    <td>
+      <form [formGroup]="inquiryForm">
+        <table>
+          <tr>
+            <td>
+              <mat-form-field>
+                <input matInput placeholder="Referans No" type="text" formControlName="originalReferenceNumber">
+              </mat-form-field>
+            </td>
+            <td>
+              <button mat-raised-button type="button" color="primary" (click)="inquireCard()">
+                Kart Sorgula
+              </button>
+            </td>
+            <td>
+              <button mat-raised-button type="button" color="primary" (click)="inquireMobile()">
+                Mobil Sorgula
+              </button>
+            </td>
+          </tr>
+        </table>
+      </form>
+      <mat-form-field>
+        <input matNativeControl type="text" disabled placeholder="Alıcı Banka Kodu"
+          [(ngModel)]="state.acquirerBankCode" />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl type="text" disabled placeholder="Emir No" [(ngModel)]="state.orderId" />
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl type="text" disabled placeholder="Durumu" [(ngModel)]="state.status" />
+      </mat-form-field>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="secondary" (click)="reverse()">
+        İptal
+      </button>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="İptal Referans No" type="text"
+          [(ngModel)]="state.paymentReverseState.reverseReferenceNumber">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Onay Kodu" type="text"
+          [(ngModel)]="state.paymentReverseState.approvalCode">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Mutabakat Tarihi" type="text"
+          [(ngModel)]="state.paymentReverseState.reconciliationDate">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Tekrar Deneme Durum Kodu" type="text"
+          [(ngModel)]="state.paymentReverseState.retryStatusCode">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Tekrar Deneme Durum Açıklaması" type="text"
+          [(ngModel)]="state.paymentReverseState.retryStatusDescription">
+      </mat-form-field>
+    </td>
+    <td>
+      <button mat-raised-button type="button" color="secondary" (click)="refundCard()">
+        Kart İade
+      </button>
+      <button mat-raised-button type="button" color="secondary" (click)="refundMobile()">
+        Mobil İade
+      </button>
+      <mat-form-field>
+        <input matNativeControl placeholder="İade Miktarı" type="text" [(ngModel)]="state.paymentRefundState.amount">
+      </mat-form-field>
+      <mat-form-field>
+        <input matNativeControl placeholder="İade Puan Miktarı" type="text"
+          [(ngModel)]="state.paymentRefundState.pointAmount">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="İade Referans No" type="text"
+          [(ngModel)]="state.paymentRefundState.reverseReferenceNumber">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Onay Kodu" type="text"
+          [(ngModel)]="state.paymentRefundState.approvalCode">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Mutabakat Tarihi" type="text"
+          [(ngModel)]="state.paymentRefundState.reconciliationDate">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Tekrar Deneme Durum Kodu" type="text"
+          [(ngModel)]="state.paymentRefundState.retryStatusCode">
+      </mat-form-field>
+      <mat-form-field>
+        <input disabled matNativeControl placeholder="Tekrar Deneme Durum Açıklaması" type="text"
+          [(ngModel)]="state.paymentRefundState.retryStatusDescription">
+      </mat-form-field>
+    </td>
+  </tr>
+</table>
+<table mat-table [dataSource]="state.provisionList" class="mat-elevation-z8">
+  <ng-container matColumnDef="amount">
+    <th mat-header-cell *matHeaderCellDef> Miktarı </th>
+    <td mat-cell *matCellDef="let element"> {{element.amount}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="approvalCode">
+    <th mat-header-cell *matHeaderCellDef> Onay Kodu </th>
+    <td mat-cell *matCellDef="let element"> {{element.approvalCode}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="dateTime">
+    <th mat-header-cell *matHeaderCellDef> İşlem Tarihi </th>
+    <td mat-cell *matCellDef="let element"> {{element.dateTime}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="provisionType">
+    <th mat-header-cell *matHeaderCellDef> İşlem Tipi </th>
+    <td mat-cell *matCellDef="let element"> {{element.provisionType}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="reconciliationDate">
+    <th mat-header-cell *matHeaderCellDef> Mutabakat Tarihi </th>
+    <td mat-cell *matCellDef="let element"> {{element.reconciliationDate}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="responseCode">
+    <th mat-header-cell *matHeaderCellDef> Sonuç Kodu </th>
+    <td mat-cell *matCellDef="let element"> {{element.responseCode}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="responseDescription">
+    <th mat-header-cell *matHeaderCellDef> Sonuç Açıklaması </th>
+    <td mat-cell *matCellDef="let element"> {{element.responseDescription}} </td>
+  </ng-container>
+
+  <ng-container matColumnDef="transactionId">
+    <th mat-header-cell *matHeaderCellDef> İşlem No </th>
+    <td mat-cell *matCellDef="let element"> {{element.transactionId}} </td>
+  </ng-container>
+
+  <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+  <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+</table>

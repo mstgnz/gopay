@@ -1,0 +1,7 @@
+table, mat-paginator {
+  width: 100%;
+}
+
+.selected {
+  background-color: lightyellow;
+}
