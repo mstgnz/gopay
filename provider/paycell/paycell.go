@@ -22,7 +22,7 @@ import (
 
 const (
 	// API URLs
-	apiSandboxURL    = "https://tpay-test.turkcell.com.tr"
+	apiSandboxURL    = "https://tpay-test.turkcell.com.tr:443"
 	apiProductionURL = "https://tpay.turkcell.com.tr"
 
 	// Payment Management URLs (different domain for 3D secure)
