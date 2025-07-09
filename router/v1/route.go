@@ -40,8 +40,6 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Delete("/tenant", configHandler.DeleteTenantConfig)
 	})
 
-	// Analytics routes moved to public section in main.go
-
 	// Logs routes (JWT protected)
 	r.Route("/logs", func(r chi.Router) {
 		r.Get("/{provider}", logsHandler.ListLogs)                           // GET /v1/logs/{provider}?status=success&hours=24
