@@ -11,6 +11,7 @@ import (
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/conn"
 	"github.com/mstgnz/gopay/infra/logger"
+	"github.com/mstgnz/gopay/infra/postgres"
 )
 
 // Global cache instance for provider instances
@@ -63,9 +64,24 @@ func NewDBPaymentLogger(db *conn.DB) PaymentLogger {
 
 // LogRequest logs the payment request to the appropriate provider table
 func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, providerName string, method, endpoint string, request any, userAgent, clientIP string) (int64, error) {
-	requestJSON, err := json.Marshal(request)
+	// Convert request to map[string]any for sanitization
+	var requestMap map[string]any
+	requestBytes, err := json.Marshal(request)
 	if err != nil {
 		return 0, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	if err := json.Unmarshal(requestBytes, &requestMap); err != nil {
+		return 0, fmt.Errorf("failed to unmarshal request to map: %w", err)
+	}
+
+	// Sanitize sensitive data before logging
+	sanitizedRequest := postgres.SanitizeForLog(requestMap)
+
+	// Marshal sanitized request
+	requestJSON, err := json.Marshal(sanitizedRequest)
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal sanitized request: %w", err)
 	}
 
 	// Generate payment ID and transaction ID from request if available
@@ -115,9 +131,24 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 
 // LogResponse logs the payment response and updates the existing record
 func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response any, processingMs int64) error {
-	responseJSON, err := json.Marshal(response)
+	// Convert response to map[string]any for sanitization
+	var responseMap map[string]any
+	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	if err := json.Unmarshal(responseBytes, &responseMap); err != nil {
+		return fmt.Errorf("failed to unmarshal response to map: %w", err)
+	}
+
+	// Sanitize sensitive data before logging
+	sanitizedResponse := postgres.SanitizeForLog(responseMap)
+
+	// Marshal sanitized response
+	responseJSON, err := json.Marshal(sanitizedResponse)
+	if err != nil {
+		return fmt.Errorf("failed to marshal sanitized response: %w", err)
 	}
 
 	// Extract status and other fields from response if it's a PaymentResponse

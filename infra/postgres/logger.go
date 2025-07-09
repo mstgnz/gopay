@@ -403,37 +403,115 @@ func (l *Logger) getProviderTableName(provider string) string {
 
 // SanitizeForLog removes sensitive information from data before logging
 func SanitizeForLog(data map[string]any) map[string]any {
+	result := sanitizeRecursive(data)
+	if sanitizedMap, ok := result.(map[string]any); ok {
+		return sanitizedMap
+	}
+	return data // fallback to original data if type assertion fails
+}
+
+// sanitizeRecursive recursively sanitizes nested objects and arrays
+func sanitizeRecursive(data any) any {
+	switch v := data.(type) {
+	case map[string]any:
+		return sanitizeMap(v)
+	case []any:
+		return sanitizeSlice(v)
+	case []map[string]any:
+		result := make([]any, len(v))
+		for i, item := range v {
+			result[i] = sanitizeRecursive(item)
+		}
+		return result
+	default:
+		return v
+	}
+}
+
+// sanitizeMap sanitizes a map of string to any
+func sanitizeMap(data map[string]any) map[string]any {
 	sanitized := make(map[string]any)
 
+	// Define sensitive field patterns
 	sensitiveFields := []string{
-		"cardNumber", "card_number", "cvv", "cvc", "cardHolderName", "card_holder_name",
-		"apiKey", "api_key", "secretKey", "secret_key", "password", "token",
-		"authorization", "x-api-key", "x-secret-key",
+		"cardnumber", "card_number", "cvv", "cvc", "cardholdername", "card_holder_name",
+		"apikey", "api_key", "secretkey", "secret_key", "password", "token",
+		"authorization", "x-api-key", "x-secret-key", "expiremonth", "expire_month",
+		"expireyear", "expire_year",
 	}
 
 	for key, value := range data {
-		shouldSanitize := false
 		keyLower := strings.ToLower(key)
+		shouldSanitize := false
+		isCardNumber := false
+		isCVV := false
 
+		// Check if field should be sanitized
 		for _, sensitiveField := range sensitiveFields {
-			if strings.Contains(keyLower, strings.ToLower(sensitiveField)) {
+			if strings.Contains(keyLower, sensitiveField) {
 				shouldSanitize = true
+				if strings.Contains(keyLower, "cardnumber") || strings.Contains(keyLower, "card_number") {
+					isCardNumber = true
+				}
+				if strings.Contains(keyLower, "cvv") || strings.Contains(keyLower, "cvc") {
+					isCVV = true
+				}
 				break
 			}
 		}
 
 		if shouldSanitize {
-			if strValue, ok := value.(string); ok && len(strValue) > 4 {
-				sanitized[key] = strValue[:2] + "***" + strValue[len(strValue)-2:]
+			if strValue, ok := value.(string); ok {
+				if isCardNumber {
+					sanitized[key] = maskCardNumber(strValue)
+				} else if isCVV {
+					sanitized[key] = "***"
+				} else {
+					sanitized[key] = maskGenericSensitive(strValue)
+				}
 			} else {
 				sanitized[key] = "***REDACTED***"
 			}
 		} else {
-			sanitized[key] = value
+			// Recursively sanitize nested objects
+			sanitized[key] = sanitizeRecursive(value)
 		}
 	}
 
 	return sanitized
+}
+
+// sanitizeSlice sanitizes a slice of any type
+func sanitizeSlice(data []any) []any {
+	sanitized := make([]any, len(data))
+	for i, item := range data {
+		sanitized[i] = sanitizeRecursive(item)
+	}
+	return sanitized
+}
+
+// maskCardNumber masks a card number showing only first 4 and last 4 digits
+func maskCardNumber(cardNumber string) string {
+	if len(cardNumber) <= 8 {
+		return "****"
+	}
+
+	// Remove any spaces or dashes
+	cleaned := strings.ReplaceAll(strings.ReplaceAll(cardNumber, " ", ""), "-", "")
+
+	if len(cleaned) <= 8 {
+		return "****"
+	}
+
+	return cleaned[:4] + "********" + cleaned[len(cleaned)-4:]
+}
+
+// maskGenericSensitive masks generic sensitive data
+func maskGenericSensitive(value string) string {
+	if len(value) <= 4 {
+		return "***REDACTED***"
+	}
+	return value[:2] + "***" + value[len(value)-2:]
 }
 
 // GetPaymentStatsComparison retrieves payment statistics comparison between two periods
