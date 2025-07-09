@@ -8,6 +8,16 @@ import (
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/provider"
+
+	// Import for side-effect registration
+	_ "github.com/mstgnz/gopay/provider/iyzico"
+	_ "github.com/mstgnz/gopay/provider/nkolay"
+	_ "github.com/mstgnz/gopay/provider/ozanpay"
+	_ "github.com/mstgnz/gopay/provider/papara"
+	_ "github.com/mstgnz/gopay/provider/paycell"
+	_ "github.com/mstgnz/gopay/provider/paytr"
+	_ "github.com/mstgnz/gopay/provider/payu"
+	_ "github.com/mstgnz/gopay/provider/stripe"
 )
 
 // Routes defines all v1 API routes

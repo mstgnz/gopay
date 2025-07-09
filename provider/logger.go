@@ -217,13 +217,13 @@ func (l *DBPaymentLogger) getActualProviderName(providerName string) (string, er
 	return providerName, nil
 }
 
-func GetProvider(tenantID int, name, environment string) (PaymentProvider, error) {
+func GetProvider(tenantID int, providerName, environment string) (PaymentProvider, error) {
 	cache := GetProviderCache()
 
 	// Try to get from cache first
-	if cachedProvider := cache.Get(tenantID, name, environment); cachedProvider != nil {
+	if cachedProvider := cache.Get(tenantID, providerName, environment); cachedProvider != nil {
 		logger.Debug("Provider cache hit", logger.LogContext{
-			Provider: name,
+			Provider: providerName,
 			Fields: map[string]any{
 				"tenant_id":   tenantID,
 				"environment": environment,
@@ -234,23 +234,23 @@ func GetProvider(tenantID int, name, environment string) (PaymentProvider, error
 
 	// Cache miss - load from database and initialize
 	logger.Debug("Provider cache miss, loading from database", logger.LogContext{
-		Provider: name,
+		Provider: providerName,
 		Fields: map[string]any{
 			"tenant_id":   tenantID,
 			"environment": environment,
 		},
 	})
 
-	provider, err := loadProviderFromDB(tenantID, name, environment)
+	provider, err := loadProviderFromDB(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
 
 	// Store in cache for future use
-	cache.Set(tenantID, name, environment, provider)
+	cache.Set(tenantID, providerName, environment, provider)
 
 	logger.Debug("Provider cached successfully", logger.LogContext{
-		Provider: name,
+		Provider: providerName,
 		Fields: map[string]any{
 			"tenant_id":   tenantID,
 			"environment": environment,
@@ -261,7 +261,7 @@ func GetProvider(tenantID int, name, environment string) (PaymentProvider, error
 }
 
 // loadProviderFromDB loads provider configuration from database and initializes it
-func loadProviderFromDB(tenantID int, name, environment string) (PaymentProvider, error) {
+func loadProviderFromDB(tenantID int, providerName, environment string) (PaymentProvider, error) {
 	query := `
 		SELECT tc.tenant_id, p.name as provider_name, tc.environment, tc.key, tc.value 
 		FROM tenant_configs tc
@@ -270,7 +270,7 @@ func loadProviderFromDB(tenantID int, name, environment string) (PaymentProvider
 		ORDER BY tc.tenant_id, p.name, tc.key
 	`
 
-	rows, err := config.App().DB.Query(query, name, environment, tenantID)
+	rows, err := config.App().DB.Query(query, providerName, environment, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tenant configs: %w", err)
 	}
@@ -295,19 +295,19 @@ func loadProviderFromDB(tenantID int, name, environment string) (PaymentProvider
 	}
 
 	if !foundRows {
-		return nil, fmt.Errorf("no configuration found for tenant: %d, provider: %s, environment: %s", tenantID, name, environment)
+		return nil, fmt.Errorf("no configuration found for tenant: %d, provider: %s, environment: %s", tenantID, providerName, environment)
 	}
 
 	// Get provider factory from registry
-	providerFactory, err := Get(name)
+	providerFactory, err := Get(providerName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get provider factory for %s: %w", name, err)
+		return nil, fmt.Errorf("failed to get provider factory for %s: %w", providerName, err)
 	}
 
 	// Create and initialize provider
 	provider := providerFactory()
 	if err := provider.Initialize(configs); err != nil {
-		return nil, fmt.Errorf("failed to initialize provider %s: %w", name, err)
+		return nil, fmt.Errorf("failed to initialize provider %s: %w", providerName, err)
 	}
 
 	return provider, nil

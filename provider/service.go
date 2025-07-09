@@ -45,7 +45,7 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 	}
 
 	request.TenantID = tenantID
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}

@@ -62,13 +62,6 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	// Get provider name from URL path parameter (or empty for default)
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from JWT context and construct tenant-specific provider name if present
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
-	}
-
 	environment := r.URL.Query().Get("environment")
 	if environment != "production" {
 		environment = "sandbox"
