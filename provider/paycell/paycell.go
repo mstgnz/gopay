@@ -723,6 +723,13 @@ func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, cal
 		return "", fmt.Errorf("failed to read 3D form response: %v", err)
 	}
 
+	// Check if response is HTML (3D secure page)
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") || strings.HasPrefix(string(body), "<") {
+		// This is normal for 3D secure - return the 3D secure URL
+		return p.paymentManagementURL + endpointThreeDSecure, nil
+	}
+
+	// Try to parse as JSON if it's not HTML
 	var paycellResp PaycellProvisionResponse
 	if err := json.Unmarshal(body, &paycellResp); err != nil {
 		return "", fmt.Errorf("failed to unmarshal 3D form response: %v", err)
