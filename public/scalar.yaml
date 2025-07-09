@@ -401,11 +401,6 @@ components:
           minimum: 0.01
           example: 100.50
           description: Payment amount
-        environment:
-          type: string
-          enum: [sandbox, production]
-          example: "sandbox"
-          description: Payment environment default is sandbox
         customer:
           $ref: '#/components/schemas/Customer'
         cardInfo:
@@ -1103,6 +1098,13 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+          description: Payment environment default is sandbox
       requestBody:
         required: true
         content:
