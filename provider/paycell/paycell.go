@@ -152,6 +152,15 @@ func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.Confi
 			MaxLength:   20,
 		},
 		{
+			Key:         "secureCode",
+			Required:    true,
+			Type:        "string",
+			Description: "Paycell Secure Code (provided by Paycell)",
+			Example:     "PAYCELL12345",
+			MinLength:   10,
+			MaxLength:   100,
+		},
+		{
 			Key:         "environment",
 			Required:    true,
 			Type:        "string",
@@ -176,13 +185,8 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.terminalID = conf["terminalId"]
 	p.secureCode = conf["secureCode"]
 
-	if p.username == "" || p.password == "" || p.merchantID == "" || p.terminalID == "" {
-		return errors.New("paycell: username, password, merchantId and terminalId are required")
-	}
-
-	// Set default secure code if not provided
-	if p.secureCode == "" {
-		p.secureCode = "PAYCELL12345" // Default test secure code
+	if p.username == "" || p.password == "" || p.merchantID == "" || p.terminalID == "" || p.secureCode == "" {
+		return errors.New("paycell: username, password, merchantId, terminalId and secureCode are required")
 	}
 
 	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")

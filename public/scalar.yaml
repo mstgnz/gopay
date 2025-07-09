@@ -1105,6 +1105,7 @@ paths:
             type: string
             enum: [sandbox, production]
           description: Payment environment default is sandbox
+          example: sandbox
       requestBody:
         required: true
         content:
