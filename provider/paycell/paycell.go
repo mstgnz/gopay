@@ -21,7 +21,7 @@ import (
 
 const (
 	// API URLs
-	apiSandboxURL    = "https://tpay-test.turkcell.com.tr:443"
+	apiSandboxURL    = "https://tpay-test.turkcell.com.tr"
 	apiProductionURL = "https://tpay.turkcell.com.tr"
 
 	// Payment Management URLs (different domain for 3D secure)
@@ -503,8 +503,6 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("failed to marshal card token request: %v", err)
 	}
 
-	fmt.Printf("getCardTokenSecure Request: %s\n", string(jsonData))
-
 	req, err := http.NewRequestWithContext(ctx, "POST", cardTokenEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create card token request: %v", err)
@@ -724,8 +722,6 @@ func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, cal
 	if err != nil {
 		return "", fmt.Errorf("failed to read 3D form response: %v", err)
 	}
-
-	fmt.Printf("3D Form Submission Response: %s\n", string(body))
 
 	var paycellResp PaycellProvisionResponse
 	if err := json.Unmarshal(body, &paycellResp); err != nil {
