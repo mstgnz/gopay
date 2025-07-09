@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -378,15 +379,30 @@ func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, _ b
 		paparaReq["conversationId"] = uuid.New().String()
 	}
 
-	// Add redirect and notification URLs
+	// Add redirect and notification URLs - route through GoPay
 	if request.CallbackURL != "" {
+		// Build callback URL through GoPay (like other providers)
+		gopayCallbackURL := fmt.Sprintf("%s/v1/callback/papara", p.gopayBaseURL)
+		if request.CallbackURL != "" {
+			gopayCallbackURL += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL)
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
+			}
+		} else {
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
+			}
+		}
+
 		// Add tenant ID to webhook URL for proper tenant identification
 		notificationURL := fmt.Sprintf("%s/v1/webhooks/papara", p.gopayBaseURL)
 		if request.TenantID != 0 {
 			notificationURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
 		}
 		paparaReq["notificationUrl"] = notificationURL
-		paparaReq["redirectUrl"] = request.CallbackURL
+		paparaReq["redirectUrl"] = gopayCallbackURL
 	}
 
 	return paparaReq

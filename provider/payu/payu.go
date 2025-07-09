@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -456,11 +457,27 @@ func (p *PayUProvider) mapToPayURequest(request provider.PaymentRequest, is3D bo
 		}
 	}
 
-	// Add callback URLs for 3D payments
+	// Add callback URLs for 3D payments - route through GoPay
 	if is3D && request.CallbackURL != "" {
-		payuReq["successUrl"] = request.CallbackURL
-		payuReq["failureUrl"] = request.CallbackURL
-		payuReq["cancelUrl"] = request.CallbackURL
+		// Build callback URL through GoPay (like other providers)
+		gopayCallbackURL := fmt.Sprintf("%s/v1/callback/payu", p.gopayBaseURL)
+		if request.CallbackURL != "" {
+			gopayCallbackURL += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL)
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
+			}
+		} else {
+			// Add tenant ID to callback URL for proper tenant identification
+			if request.TenantID != 0 {
+				gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
+			}
+		}
+
+		payuReq["successUrl"] = gopayCallbackURL
+		payuReq["failureUrl"] = gopayCallbackURL
+		payuReq["cancelUrl"] = gopayCallbackURL
+
 		// Add tenant ID to webhook URL for proper tenant identification
 		notificationURL := fmt.Sprintf("%s/v1/webhooks/payu", p.gopayBaseURL)
 		if request.TenantID != 0 {
