@@ -266,6 +266,21 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 // CreateTenant handles tenant creation requests (admin only)
 func (h *AuthHandler) CreateTenant(w http.ResponseWriter, r *http.Request) {
+	// Get tenant information from context (set by JWT middleware)
+	tenantIDStr := middle.GetTenantIDFromContext(r.Context())
+	username := middle.GetTenantUserFromContext(r.Context())
+
+	if tenantIDStr == "" || username == "" {
+		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+
+	// Only admin (tenant_id = "1") can create tenants
+	if tenantIDStr != "1" {
+		response.Error(w, http.StatusForbidden, "Only administrators can create new tenants", nil)
+		return
+	}
+
 	// Parse the create tenant request
 	var req CreateTenantRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

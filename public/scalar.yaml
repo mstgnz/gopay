@@ -2300,6 +2300,8 @@ paths:
         1. **Fresh Installation**: First call creates admin user
         2. **Existing System**: Returns 403 Forbidden
       tags: [Authentication]
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:
@@ -2672,6 +2674,8 @@ paths:
         - Issues new token with extended expiry
         - Original token becomes invalid
       tags: [Authentication]
+      security:
+        - BearerAuth: []
       requestBody:
         required: true
         content:

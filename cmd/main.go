@@ -193,6 +193,15 @@ func main() {
 		r.Post("/register", authHandler.Register) // Public registration (only if no users exist)
 		r.Post("/refresh", authHandler.RefreshToken)
 		r.Post("/validate", authHandler.ValidateToken)
+
+		// Protected auth endpoints (require JWT)
+		r.Group(func(r chi.Router) {
+			r.Use(middle.JWTAuthMiddleware(jwtService))
+			r.Post("/create-tenant", authHandler.CreateTenant) // Admin-only tenant creation
+			r.Post("/logout", authHandler.Logout)
+			r.Post("/change-password", authHandler.ChangePassword)
+			r.Get("/profile", authHandler.GetProfile)
+		})
 	})
 
 	// Public v1 analytics routes (no authentication required - for dashboard)
@@ -213,8 +222,8 @@ func main() {
 		// Add JWT authentication middleware only to protected routes
 		r.Use(middle.JWTAuthMiddleware(jwtService))
 
-		// Import v1 routes with required services (but exclude auth routes since they're handled above)
-		v1.Routes(r, postgresLogger, paymentService, providerConfig, jwtService, tenantService)
+		// Import v1 routes with required services (auth routes are handled above)
+		v1.Routes(r, postgresLogger, paymentService, providerConfig)
 
 		// Add tenant rate limiting stats endpoint
 		r.Get("/rate-limit/stats", rateLimitHandler.GetTenantStats)
