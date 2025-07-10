@@ -52,6 +52,8 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
 		return
 	}
+	req.ClientIP = middle.GetClientIP(r)
+	req.ClientUserAgent = r.Header.Get("User-Agent")
 
 	// Validate the request
 	if err := h.validate.Struct(req); err != nil {
