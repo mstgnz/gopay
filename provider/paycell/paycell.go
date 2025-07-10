@@ -150,7 +150,6 @@ func NewProvider() provider.PaymentProvider {
 		client: &http.Client{
 			Timeout: defaultTimeout,
 		},
-		clientIP: "127.0.0.1",
 	}
 }
 
@@ -318,9 +317,9 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 	paycellReq := PaycellInquireRequest{
 		RequestHeader:           requestHeader,
 		OriginalReferenceNumber: paymentID,
-		ReferenceNumber:         paymentID,
+		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
-		MSISDN:                  "+905551234567",
+		MSISDN:                  "+902323223232",
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)

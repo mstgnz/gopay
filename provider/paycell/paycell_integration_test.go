@@ -117,7 +117,7 @@ func TestPaycellProvider_RealAPI_Create3DPayment(t *testing.T) {
 			Name:        "Test",
 			Surname:     "User",
 			Email:       "test@paycell.example.com",
-			PhoneNumber: "5551234567", // 10 digit format
+			PhoneNumber: "+905551234567",
 			Address: &provider.Address{
 				Country: "Turkey",
 				City:    "Istanbul",
@@ -189,7 +189,7 @@ func TestPaycellProvider_RealAPI_GetPaymentStatus(t *testing.T) {
 			Name:        "Test",
 			Surname:     "User",
 			Email:       "test@paycell.example.com",
-			PhoneNumber: "5551234567",
+			PhoneNumber: "+905551234567",
 		},
 		CardInfo: provider.CardInfo{
 			CardNumber:     card.CardNumber,
