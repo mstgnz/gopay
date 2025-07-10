@@ -93,7 +93,7 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get client IP
-			clientIP := getClientIP(r)
+			clientIP := GetClientIP(r)
 
 			// Check rate limit
 			if !rl.Allow(clientIP) {
@@ -107,8 +107,8 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-// getClientIP extracts the real client IP
-func getClientIP(r *http.Request) string {
+// GetClientIP extracts the real client IP
+func GetClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header
 	xff := r.Header.Get("X-Forwarded-For")
 	if xff != "" {
@@ -128,10 +128,20 @@ func getClientIP(r *http.Request) string {
 	}
 
 	// Fall back to RemoteAddr
-	if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
-		ip := r.RemoteAddr[:idx]
+	remoteAddr := r.RemoteAddr
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		ip := remoteAddr[:idx]
+		// Handle IPv6 localhost addresses
+		if ip == "[::1]" {
+			return "127.0.0.1"
+		}
 		return ip
 	}
 
-	return r.RemoteAddr
+	// Handle case where RemoteAddr doesn't have port
+	if remoteAddr == "[::1]" {
+		return "127.0.0.1"
+	}
+
+	return remoteAddr
 }

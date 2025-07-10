@@ -103,7 +103,7 @@ func PaymentLoggingMiddleware(logger *postgres.Logger) func(http.Handler) http.H
 				Endpoint:     r.URL.Path,
 				RequestID:    requestID,
 				UserAgent:    r.UserAgent(),
-				ClientIP:     getClientIP(r),
+				ClientIP:     GetClientIP(r),
 				Request:      postgres.SanitizeForLog(requestData),
 				Response:     postgres.SanitizeForLog(responseData),
 				ProcessingMs: time.Since(rw.startTime).Milliseconds(),

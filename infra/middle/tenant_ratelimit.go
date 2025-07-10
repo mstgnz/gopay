@@ -366,7 +366,7 @@ func TenantRateLimitMiddleware(trl *TenantRateLimiter) func(http.Handler) http.H
 			tenantID := GetTenantIDFromContext(r.Context())
 
 			// Get client IP for fallback
-			clientIP := getClientIP(r)
+			clientIP := GetClientIP(r)
 
 			// Determine action type based on URL path and method
 			action := determineActionType(r.URL.Path, r.Method)

@@ -39,7 +39,7 @@ func IPWhitelistMiddleware() func(http.Handler) http.Handler {
 
 			// Parse whitelist
 			allowedIPs := strings.Split(whitelist, ",")
-			clientIP := getClientIP(r)
+			clientIP := GetClientIP(r)
 
 			// Check if client IP is whitelisted
 			allowed := false
