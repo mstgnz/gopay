@@ -226,7 +226,6 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.merchantID = conf["merchantId"]
 	p.terminalID = conf["terminalId"]
 	p.secureCode = conf["secureCode"]
-	p.clientIP = conf["clientIP"]
 
 	if p.username == "" || p.password == "" || p.merchantID == "" || p.terminalID == "" || p.secureCode == "" {
 		return errors.New("paycell: username, password, merchantId, terminalId and secureCode are required")
