@@ -10,15 +10,136 @@ class GoPayAnalytics {
             environment: 'all',
             hours: '24'
         };
+        this.authToken = localStorage.getItem('authToken');
         this.init();
     }
 
+    getAuthHeaders() {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (this.authToken) {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+        return headers;
+    }
+
+    async authenticatedFetch(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                ...this.getAuthHeaders(),
+                ...options.headers
+            }
+        });
+
+        // If unauthorized, redirect to login
+        if (response.status === 401) {
+            localStorage.removeItem('authToken');
+            window.location.href = '/login';
+            return null;
+        }
+
+        return response;
+    }
+
     async init() {
+        // Check authentication first
+        const isAuthenticated = await this.checkAuthentication();
+        if (!isAuthenticated) {
+            return; // Will redirect to login
+        }
+
         this.initializeFilters();
+        this.initializeLogout();
         await this.loadFilterOptions();
         await this.loadDashboardData();
         this.initCharts();
         this.startRealTimeUpdates();
+    }
+
+    async checkAuthentication() {
+        const token = localStorage.getItem('authToken');
+        
+        if (!token) {
+            this.redirectToLogin();
+            return false;
+        }
+
+        try {
+            const response = await fetch('/v1/auth/validate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                this.redirectToLogin();
+                return false;
+            }
+
+            const data = await response.json();
+            
+            if (!data.success) {
+                this.redirectToLogin();
+                return false;
+            }
+
+            // Check if tenant_id is 1
+            if (data.data.tenant_id !== "1") {
+                alert('Access denied. Only tenant with ID 1 can access the dashboard.');
+                this.redirectToLogin();
+                return false;
+            }
+
+            // Update the token in case it was refreshed
+            this.authToken = token;
+            
+            // Hide loading screen and show dashboard
+            this.showDashboard();
+            return true;
+
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            this.redirectToLogin();
+            return false;
+        }
+    }
+
+    showDashboard() {
+        const loadingScreen = document.getElementById('authLoadingScreen');
+        const dashboardContainer = document.getElementById('dashboardContainer');
+        
+        if (loadingScreen) {
+            loadingScreen.style.display = 'none';
+        }
+        if (dashboardContainer) {
+            dashboardContainer.style.display = 'block';
+        }
+    }
+
+    redirectToLogin() {
+        localStorage.removeItem('authToken');
+        window.location.href = '/login';
+    }
+
+    initializeLogout() {
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                this.logout();
+            });
+        }
+    }
+
+    logout() {
+        // Clear stored tokens
+        localStorage.removeItem('authToken');
+        
+        // Redirect to login page
+        window.location.href = '/login';
     }
 
     initializeFilters() {
@@ -78,8 +199,8 @@ class GoPayAnalytics {
 
     async loadTenantOptions() {
         try {
-            const response = await fetch('/v1/analytics/tenants');
-            if (response.ok) {
+            const response = await this.authenticatedFetch('/v1/analytics/tenants');
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success && data.data) {
                     const tenantFilter = document.getElementById('tenantFilter');
@@ -105,8 +226,8 @@ class GoPayAnalytics {
 
     async loadProviderOptions() {
         try {
-            const response = await fetch('/v1/analytics/providers/list');
-            if (response.ok) {
+            const response = await this.authenticatedFetch('/v1/analytics/providers/list');
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success && data.data) {
                     const providerFilter = document.getElementById('providerFilter');
@@ -192,9 +313,9 @@ class GoPayAnalytics {
         try {
             // Load dashboard stats from analytics API with filters
             const filterParams = this.buildFilterParams();
-            const dashboardResponse = await fetch(`/v1/analytics/dashboard?${filterParams}`);
+            const dashboardResponse = await this.authenticatedFetch(`/v1/analytics/dashboard?${filterParams}`);
             
-            if (dashboardResponse.ok) {
+            if (dashboardResponse && dashboardResponse.ok) {
                 const dashboardData = await dashboardResponse.json();
                 if (dashboardData.success) {
                     this.updateStats(dashboardData.data);
@@ -277,9 +398,9 @@ class GoPayAnalytics {
         
         try {
             const filterParams = this.buildFilterParams();
-            const response = await fetch(`/v1/analytics/trends?${filterParams}`);
+            const response = await this.authenticatedFetch(`/v1/analytics/trends?${filterParams}`);
             
-            if (response.ok) {
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success && data.data.datasets) {
                     this.trendsChart = new Chart(trendsCtx, {
@@ -318,9 +439,9 @@ class GoPayAnalytics {
         
         try {
             const filterParams = this.buildFilterParams();
-            const response = await fetch(`/v1/analytics/providers?${filterParams}`);
+            const response = await this.authenticatedFetch(`/v1/analytics/providers?${filterParams}`);
             
-            if (response.ok) {
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success && data.data) {
                     const providers = data.data.slice(0, 5); // Top 5 providers
@@ -450,9 +571,9 @@ class GoPayAnalytics {
         
         try {
             const filterParams = this.buildFilterParams();
-            const response = await fetch(`/v1/analytics/providers?${filterParams}`);
+            const response = await this.authenticatedFetch(`/v1/analytics/providers?${filterParams}`);
             
-            if (response.ok) {
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success) {
                     const providers = data.data;
@@ -512,9 +633,9 @@ class GoPayAnalytics {
         
         try {
             const filterParams = this.buildFilterParams();
-            const response = await fetch(`/v1/analytics/activity?limit=5&${filterParams}`);
+            const response = await this.authenticatedFetch(`/v1/analytics/activity?limit=5&${filterParams}`);
             
-            if (response.ok) {
+            if (response && response.ok) {
                 const data = await response.json();
                 if (data.success) {
                     const activities = data.data;

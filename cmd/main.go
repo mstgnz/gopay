@@ -154,7 +154,12 @@ func main() {
 		w.Write(scalarContent)
 	})
 
-	// Analytics Dashboard (Main Page)
+	// Login page route
+	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, filepath.Join(workDir, "public", "login.html"))
+	})
+
+	// Analytics Dashboard (Main Page) - Client-side authentication
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(workDir, "public", "index.html"))
 	})

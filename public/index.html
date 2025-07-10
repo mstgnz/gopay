@@ -11,7 +11,15 @@
     <link rel="stylesheet" href="/public/index.css">
 </head>
 <body>
-    <div class="dashboard-container">
+    <!-- Loading screen -->
+    <div id="authLoadingScreen" class="auth-loading">
+        <div class="auth-loading-content">
+            <div class="auth-loading-spinner"></div>
+            <p>Verifying authentication...</p>
+        </div>
+    </div>
+
+    <div id="dashboardContainer" class="dashboard-container" style="display: none;">
         <!-- Header -->
         <header class="header">
             <div>
@@ -72,6 +80,9 @@
                 <a href="/health" class="btn">
                     ❤️ Health
                 </a>
+                <button id="logoutBtn" class="btn logout-btn">
+                    🚪 Logout
+                </button>
             </div>
         </header>
 
@@ -194,7 +205,7 @@
             <p>&copy; 2025 GoPay - Unified Payment Integration Service</p>
             <p class="footer-subtitle">Real-time payment analytics powered by GoPay</p>
         </footer>
-    </div>
+    </div> <!-- End dashboardContainer -->
 
     <script src="/public/index.js"></script>
     <script>

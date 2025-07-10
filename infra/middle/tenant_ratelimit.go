@@ -428,7 +428,12 @@ func shouldSkipRateLimit(path string) bool {
 		"/health",
 		"/docs",
 		"/scalar.yaml",
+		"/login",                  // Login page
 		"/",                       // Dashboard main page
+		"/v1/auth/login",          // Login endpoint
+		"/v1/auth/register",       // Register endpoint
+		"/v1/auth/refresh",        // Token refresh endpoint
+		"/v1/auth/validate",       // Token validation endpoint
 		"/v1/analytics/dashboard", // Public analytics
 		"/v1/analytics/providers", // Public analytics
 		"/v1/analytics/activity",  // Public analytics
