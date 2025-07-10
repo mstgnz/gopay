@@ -140,6 +140,7 @@ type PaycellProvider struct {
 	paymentManagementURL string // For 3D secure operations
 	gopayBaseURL         string // GoPay's own base URL for callbacks
 	isProduction         bool
+	clientIP             string
 	client               *http.Client
 }
 
@@ -149,6 +150,7 @@ func NewProvider() provider.PaymentProvider {
 		client: &http.Client{
 			Timeout: defaultTimeout,
 		},
+		clientIP: "127.0.0.1",
 	}
 }
 
@@ -224,6 +226,7 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.merchantID = conf["merchantId"]
 	p.terminalID = conf["terminalId"]
 	p.secureCode = conf["secureCode"]
+	p.clientIP = conf["clientIP"]
 
 	if p.username == "" || p.password == "" || p.merchantID == "" || p.terminalID == "" || p.secureCode == "" {
 		return errors.New("paycell: username, password, merchantId, terminalId and secureCode are required")
@@ -245,6 +248,7 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *PaycellProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.clientIP = request.ClientIP
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("paycell: invalid payment request: %w", err)
 	}
@@ -254,6 +258,7 @@ func (p *PaycellProvider) CreatePayment(ctx context.Context, request provider.Pa
 
 // Create3DPayment starts a 3D secure payment process
 func (p *PaycellProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.clientIP = request.ClientIP
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("paycell: invalid 3D payment request: %w", err)
 	}
@@ -280,7 +285,7 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, paymentID, conv
 	requestHeader := PaycellRequestHeader{
 		ApplicationName:     p.username,
 		ApplicationPwd:      p.password,
-		ClientIPAddress:     "127.0.0.1", // Default IP
+		ClientIPAddress:     p.clientIP,
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
@@ -299,14 +304,14 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	endpoint := endpointInquire
+	endpoint := endpointInquireAll
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
 	requestHeader := PaycellRequestHeader{
 		ApplicationName:     p.username,
 		ApplicationPwd:      p.password,
-		ClientIPAddress:     "127.0.0.1", // Default IP
+		ClientIPAddress:     p.clientIP,
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
@@ -316,7 +321,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		OriginalReferenceNumber: paymentID,
 		ReferenceNumber:         paymentID,
 		MerchantCode:            p.merchantID,
-		MSISDN:                  "5551234567", // Default test MSISDN as per docs
+		MSISDN:                  "+905551234567",
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -335,7 +340,7 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason s
 	requestHeader := PaycellRequestHeader{
 		ApplicationName:     p.username,
 		ApplicationPwd:      p.password,
-		ClientIPAddress:     "127.0.0.1", // Default IP
+		ClientIPAddress:     p.clientIP,
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
@@ -368,7 +373,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	requestHeader := PaycellRequestHeader{
 		ApplicationName:     p.username,
 		ApplicationPwd:      p.password,
-		ClientIPAddress:     "127.0.0.1", // Default IP
+		ClientIPAddress:     p.clientIP,
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
@@ -568,7 +573,7 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 	requestHeader := PaycellRequestHeader{
 		ApplicationName:     p.username,
 		ApplicationPwd:      p.password,
-		ClientIPAddress:     "127.0.0.1", // Default IP
+		ClientIPAddress:     p.clientIP,
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
@@ -658,7 +663,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		RequestHeader: PaycellRequestHeader{
 			ApplicationName:     p.username,
 			ApplicationPwd:      p.password,
-			ClientIPAddress:     "127.0.0.1",
+			ClientIPAddress:     p.clientIP,
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
@@ -891,7 +896,7 @@ func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _
 		"requestHeader": map[string]any{
 			"applicationName":     p.username,
 			"applicationPwd":      p.password,
-			"clientIPAddress":     "127.0.0.1", // Default, should be real client IP in production
+			"clientIPAddress":     p.clientIP,
 			"transactionDateTime": transactionDateTime,
 			"transactionId":       transactionID,
 		},

@@ -49,7 +49,7 @@ func TestPaycellProvider_RealAPI_CreatePayment(t *testing.T) {
 			Name:        "Test",
 			Surname:     "Customer",
 			Email:       "test@example.com",
-			PhoneNumber: "+905551234567", // 10 digit format without country code
+			PhoneNumber: "+905551234567",
 		},
 		CardInfo: provider.CardInfo{
 			CardNumber:     card.CardNumber,
