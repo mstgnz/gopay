@@ -561,7 +561,7 @@ func (p *PaycellProvider) generateHash(data string) string {
 
 // provisionWithToken processes a regular payment with card token
 func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provider.PaymentRequest, cardToken string) (*provider.PaymentResponse, error) {
-	endpoint := endpointProvision
+	endpoint := endpointProvisionAll
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
@@ -572,10 +572,6 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		TransactionDateTime: transactionDateTime,
 		TransactionID:       transactionID,
 	}
-
-	// Clean phone number (remove country code)
-	msisdn := strings.TrimPrefix(request.Customer.PhoneNumber, "+90")
-	msisdn = strings.TrimPrefix(msisdn, "90")
 
 	// Convert amount to kuruş (multiply by 100)
 	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
@@ -590,9 +586,10 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		Currency:                request.Currency,
 		InstallmentCount:        nil,
 		MerchantCode:            p.merchantID,
-		MSISDN:                  msisdn,
+		MSISDN:                  request.Customer.PhoneNumber,
 		OriginalReferenceNumber: nil,
 		PaymentType:             "SALE",
+		PaymentMethodType:       "CREDIT_CARD",
 		Pin:                     nil,
 		PointAmount:             nil,
 		ReferenceNumber:         p.generateReferenceNumber(),
@@ -1064,6 +1061,7 @@ type PaycellProvisionRequest struct {
 	MSISDN                  string               `json:"msisdn"`
 	OriginalReferenceNumber *string              `json:"originalReferenceNumber"`
 	PaymentType             string               `json:"paymentType"`
+	PaymentMethodType       string               `json:"paymentMethodType"`
 	Pin                     *string              `json:"pin"`
 	PointAmount             *string              `json:"pointAmount"`
 	ReferenceNumber         string               `json:"referenceNumber"`
