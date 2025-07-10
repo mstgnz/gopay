@@ -245,8 +245,7 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 	}
 
 	// Generate hash: sx+startDate+endDate+clientRefCode+secretkey
-	hashData := formData["sx"] + formData["startDate"] + formData["endDate"] + formData["clientRefCode"] + p.secretKey
-	formData["hashData"] = p.generateSHA1Hash(hashData)
+	formData["hashData"] = p.generateSHA1Hash(formData)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointPaymentList, formData)
 	if err != nil {
@@ -281,8 +280,7 @@ func (p *NkolayProvider) CancelPayment(ctx context.Context, paymentID, reason st
 	}
 
 	// Generate hash: sx+referenceCode+type+trxDate+secretkey
-	hashData := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["trxDate"] + p.secretKey
-	formData["hashData"] = p.generateSHA1Hash(hashData)
+	formData["hashData"] = p.generateSHA1Hash(formData)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
@@ -321,8 +319,7 @@ func (p *NkolayProvider) RefundPayment(ctx context.Context, request provider.Ref
 	}
 
 	// Generate hash: sx+referenceCode+type+amount+trxDate+secretkey
-	hashData := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["amount"] + formData["trxDate"] + p.secretKey
-	formData["hashData"] = p.generateSHA1Hash(hashData)
+	formData["hashData"] = p.generateSHA1Hash(formData)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
@@ -469,12 +466,12 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 func (p *NkolayProvider) generatePaymentHash(formData map[string]string) string {
 	// According to Nkolay docs: specific fields + secret key
 	// This is a simplified version - real implementation would need exact field order
-	hashInput := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["rnd"] + p.secretKey
-	return p.generateSHA1Hash(hashInput)
+	return p.generateSHA1Hash(formData)
 }
 
 // generateSHA1Hash generates SHA1 hash and encodes it in base64
-func (p *NkolayProvider) generateSHA1Hash(input string) string {
+func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
+	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey + formData["customerKey"]
 	h := sha1.New()
 	h.Write([]byte(input))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))

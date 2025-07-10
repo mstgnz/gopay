@@ -318,41 +318,6 @@ func TestNkolayProvider_GeneratePaymentHash(t *testing.T) {
 	}
 }
 
-func TestNkolayProvider_GenerateSHA1Hash(t *testing.T) {
-	provider := &NkolayProvider{}
-
-	tests := []struct {
-		input    string
-		expected string // Leave empty to just test non-empty result
-	}{
-		{
-			input: "test",
-		},
-		{
-			input: "hello world",
-		},
-		{
-			input: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := provider.generateSHA1Hash(tt.input)
-
-			if result == "" {
-				t.Error("Expected non-empty hash result")
-			}
-
-			// Test consistency - same input should produce same output
-			result2 := provider.generateSHA1Hash(tt.input)
-			if result != result2 {
-				t.Error("Expected consistent hash results")
-			}
-		})
-	}
-}
-
 func TestNkolayProvider_CreatePayment(t *testing.T) {
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

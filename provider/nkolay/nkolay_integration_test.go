@@ -43,6 +43,7 @@ func getTestProvider(t *testing.T) *NkolayProvider {
 
 func getValidPaymentRequest() provider.PaymentRequest {
 	return provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   10.04, // Test amount from postman collection
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -80,7 +81,7 @@ func getValidPaymentRequest() provider.PaymentRequest {
 	}
 }
 
-func TestIntegration_CreatePayment_Success(t *testing.T) {
+func TestIntegration_CreatePayment(t *testing.T) {
 	nkolayProvider := getTestProvider(t)
 	request := getValidPaymentRequest()
 
