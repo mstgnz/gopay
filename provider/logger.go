@@ -155,12 +155,15 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 	var status, errorCode string
 	var amount float64
 	var currency string
+	var paymentID, transactionID string
 
 	if resp, ok := response.(*PaymentResponse); ok {
 		status = string(resp.Status)
 		errorCode = resp.ErrorCode
 		amount = resp.Amount
 		currency = resp.Currency
+		paymentID = resp.PaymentID
+		transactionID = resp.TransactionID
 	}
 
 	// Get the provider table name from our mapping
@@ -175,11 +178,11 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 	// Update the specific table directly instead of trying all tables
 	query := fmt.Sprintf(`
 		UPDATE %s 
-		SET response = $1, response_at = NOW(), status = $2, error_code = $3, amount = $4, currency = $5, processing_ms = $6
-		WHERE id = $7
+		SET response = $1, response_at = NOW(), status = $2, error_code = $3, amount = $4, currency = $5, processing_ms = $6, payment_id = $7, transaction_id = $8
+		WHERE id = $9
 	`, tableName)
 
-	result, err := l.db.ExecContext(ctx, query, string(responseJSON), status, errorCode, amount, currency, processingMs, logID)
+	result, err := l.db.ExecContext(ctx, query, string(responseJSON), status, errorCode, amount, currency, processingMs, paymentID, transactionID, logID)
 	if err != nil {
 		return fmt.Errorf("failed to update response in %s table for log ID %d: %w", tableName, logID, err)
 	}
