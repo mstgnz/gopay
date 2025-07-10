@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -377,4 +378,36 @@ func AddProviderRequestToClientRequest(providerName string, providerRequest any,
 	}
 
 	return nil
+}
+
+func GetProviderRequestFromLog(providerName string, logID int64, key string) (string, error) {
+	query := fmt.Sprintf(`
+		WITH RECURSIVE json_tree AS (
+			SELECT key, value
+			FROM %s, jsonb_each(request)
+			WHERE id = $1
+
+			UNION ALL
+
+			SELECT e.key, e.value
+			FROM json_tree jt,
+				jsonb_each(jt.value) e
+			WHERE jsonb_typeof(jt.value) = 'object'
+		)
+		SELECT value::text
+		FROM json_tree
+		WHERE key = $2
+		LIMIT 1;
+	`, providerName)
+
+	var result string
+	err := config.App().DB.QueryRow(query, logID, key).Scan(&result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("key %s not found", key)
+		}
+		return "", fmt.Errorf("failed to find key in JSON: %w", err)
+	}
+
+	return result, nil
 }

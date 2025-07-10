@@ -141,6 +141,7 @@ type PaycellProvider struct {
 	gopayBaseURL         string // GoPay's own base URL for callbacks
 	isProduction         bool
 	logID                int64
+	phoneNumber          string
 	clientIP             string
 	client               *http.Client
 }
@@ -305,6 +306,12 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
+	// get spesific key in log jsonb
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", p.logID, "referenceNumber")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reference number: %w", err)
+	}
+
 	endpoint := endpointInquireAll
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
@@ -319,10 +326,10 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 
 	paycellReq := PaycellInquireRequest{
 		RequestHeader:           requestHeader,
-		OriginalReferenceNumber: paymentID,
+		OriginalReferenceNumber: originalReferenceNumber,
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
-		MSISDN:                  "+902323223232",
+		MSISDN:                  p.phoneNumber,
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -463,6 +470,7 @@ func (p *PaycellProvider) validatePaymentRequest(request provider.PaymentRequest
 
 // processPayment handles the main payment processing logic
 func (p *PaycellProvider) processPayment(ctx context.Context, request provider.PaymentRequest, is3D bool) (*provider.PaymentResponse, error) {
+	p.phoneNumber = request.Customer.PhoneNumber
 	// Step 1: Get card token from getCardTokenSecure service
 	cardToken, err := p.getCardTokenSecure(ctx, request)
 	if err != nil {
