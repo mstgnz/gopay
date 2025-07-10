@@ -69,6 +69,8 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 			},
 		})
 	}
+	// required to add provider request to client request
+	request.LogID = logID
 
 	// Process payment
 	var response *PaymentResponse

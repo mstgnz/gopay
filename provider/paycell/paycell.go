@@ -140,6 +140,7 @@ type PaycellProvider struct {
 	paymentManagementURL string // For 3D secure operations
 	gopayBaseURL         string // GoPay's own base URL for callbacks
 	isProduction         bool
+	logID                int64
 	clientIP             string
 	client               *http.Client
 }
@@ -247,6 +248,7 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 // CreatePayment makes a non-3D payment request
 func (p *PaycellProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.clientIP = request.ClientIP
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("paycell: invalid payment request: %w", err)
 	}
@@ -257,6 +259,7 @@ func (p *PaycellProvider) CreatePayment(ctx context.Context, request provider.Pa
 // Create3DPayment starts a 3D secure payment process
 func (p *PaycellProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.clientIP = request.ClientIP
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("paycell: invalid 3D payment request: %w", err)
 	}
@@ -776,6 +779,9 @@ func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint str
 	if err := json.Unmarshal(respBody, &paycellResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("paycell", data, p.logID)
 
 	return p.mapProvisionToPaymentResponse(paycellResp), nil
 }

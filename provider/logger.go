@@ -346,3 +346,35 @@ func loadProviderFromDB(tenantID int, providerName, environment string) (Payment
 
 	return provider, nil
 }
+
+func AddProviderRequestToClientRequest(providerName string, providerRequest any, logID int64) error {
+	var requestJSON []byte
+	err := config.App().DB.QueryRow(fmt.Sprintf("SELECT request FROM %s WHERE id = $1", providerName), logID).Scan(&requestJSON)
+	if err != nil {
+		return fmt.Errorf("failed to get log request: %w", err)
+	}
+
+	// 2. JSON'dan Go map'e çevir
+	var logRequest map[string]any
+	if err := json.Unmarshal(requestJSON, &logRequest); err != nil {
+		return fmt.Errorf("failed to unmarshal log request: %w", err)
+	}
+
+	providerRequestBytes, err := json.Marshal(providerRequest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal provider request: %w", err)
+	}
+	logRequest["providerRequest"] = json.RawMessage(providerRequestBytes)
+
+	updatedRequestBytes, err := json.Marshal(logRequest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated request: %w", err)
+	}
+
+	_, err = config.App().DB.Exec(fmt.Sprintf("UPDATE %s SET request = $1 WHERE id = $2", providerName), updatedRequestBytes, logID)
+	if err != nil {
+		return fmt.Errorf("failed to update log: %w", err)
+	}
+
+	return nil
+}

@@ -71,6 +71,7 @@ type Item struct {
 // PaymentRequest contains all information required to create a payment
 type PaymentRequest struct {
 	ID               string   `json:"id,omitempty"`
+	LogID            int64    `json:"logId,omitempty"`
 	ReferenceID      string   `json:"referenceId,omitempty"`
 	Currency         string   `json:"currency"`
 	Amount           float64  `json:"amount"`
