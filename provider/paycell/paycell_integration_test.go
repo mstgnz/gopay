@@ -107,6 +107,7 @@ func TestPaycellProvider_RealAPI_Create3DPayment(t *testing.T) {
 	p := setupRealTestProvider()
 	ctx := context.Background()
 
+	card := testCards[rand.Intn(len(testCards))]
 	request := provider.PaymentRequest{
 		TenantID:    1,
 		Amount:      1.00, // Minimum test amount
@@ -125,10 +126,10 @@ func TestPaycellProvider_RealAPI_Create3DPayment(t *testing.T) {
 			},
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:     "4355084355084358", // Akbank test card with 3D password "a"
-			ExpireMonth:    "12",
-			ExpireYear:     "26",
-			CVV:            "000",
+			CardNumber:     card.CardNumber, // Akbank test card with 3D password "a"
+			ExpireMonth:    card.ExpireMonth,
+			ExpireYear:     card.ExpireYear,
+			CVV:            card.CVV,
 			CardHolderName: "TEST USER",
 		},
 		Description:    "GoPay Paycell Real 3D API Test",
