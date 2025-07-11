@@ -64,7 +64,7 @@ info:
     GoPay uses **PostgreSQL 17.5** for:
     - **User Management**: Secure tenant authentication
     - **Payment Logging**: Complete request/response tracking
-    - **Configuration Storage**: Tenant-specific provider settings
+    - **Configuration Storage**: Provider settings
     - **Analytics**: Real-time payment statistics
 
     ### Payment Logging Features
@@ -906,9 +906,9 @@ paths:
                   example: paycell
                 environment:
                   type: string
-                  enum: [test, prod]
-                  description: Environment (test or prod)
-                  example: test
+                  enum: [sandbox, production]
+                  description: Environment (sandbox or production)
+                  example: sandbox
                 configs:
                   type: array
                   description: Provider configuration key/value pairs
@@ -929,7 +929,7 @@ paths:
                 summary: Paycell Configuration
                 value:
                   provider: paycell
-                  environment: test
+                  environment: sandbox
                   configs:
                     - key: username
                       value: "paycell-user"
@@ -1074,7 +1074,7 @@ paths:
       summary: Process payment with specific provider
       description: |
         Processes a payment using a specific payment provider.
-        Tenant-specific provider configuration is automatically loaded from JWT token context.
+        Provider configuration is automatically loaded from JWT token context.
         
         **Available Providers:**
         - `iyzico` - İyzico (Turkey)
@@ -1083,7 +1083,7 @@ paths:
         
         **JWT Token Authentication:**
         - Bearer token automatically provides tenant context
-        - Tenant-specific provider configuration is used automatically
+        - Provider configuration is used automatically
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1135,7 +1135,7 @@ paths:
       summary: Get payment status with specific provider
       description: |
         Retrieves the current status of a payment using a specific provider.
-        Tenant-specific provider configuration is automatically loaded from JWT token context.
+        Provider configuration is automatically loaded from JWT token context.
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1186,7 +1186,7 @@ paths:
       summary: Cancel payment with specific provider
       description: |
         Cancels a payment using a specific provider.
-        Tenant-specific provider configuration is automatically loaded from JWT token context.
+        Provider configuration is automatically loaded from JWT token context.
       tags: [Payments]
       security:
         - BearerAuth: []
@@ -1244,7 +1244,7 @@ paths:
       summary: Refund payment with specific provider
       description: |
         Processes a refund using a specific provider.
-        Tenant-specific provider configuration is automatically loaded from JWT token context.
+        Provider configuration is automatically loaded from JWT token context.
       tags: [Refunds]
       security:
         - BearerAuth: []
