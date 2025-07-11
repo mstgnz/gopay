@@ -192,7 +192,7 @@ func main() {
 		r.Post("/login", authHandler.Login)
 		r.Post("/register", authHandler.Register) // Public registration (only if no users exist)
 		r.Post("/refresh", authHandler.RefreshToken)
-		r.Post("/validate", authHandler.ValidateToken)
+		r.Get("/validate", authHandler.ValidateToken)
 
 		// Protected auth endpoints (require JWT)
 		r.Group(func(r chi.Router) {

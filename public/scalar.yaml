@@ -2706,7 +2706,7 @@ paths:
           description: Internal server error
 
   /v1/auth/validate:
-    post:
+    get:
       summary: Validate JWT token
       description: |
         Validates a JWT token and returns user information if valid.
@@ -2716,18 +2716,8 @@ paths:
         - Verify user identity
         - Get user info from token
       tags: [Authentication]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
-                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  description: JWT token to validate
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: Token is valid
