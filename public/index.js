@@ -68,7 +68,7 @@ class GoPayAnalytics {
 
         try {
             const response = await fetch('/v1/auth/validate', {
-                method: 'POST',
+                method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`

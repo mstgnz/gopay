@@ -262,7 +262,7 @@
             if (token) {
                 // Validate token
                 fetch('/v1/auth/validate', {
-                    method: 'POST',
+                    method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
