@@ -350,7 +350,7 @@ func loadProviderFromDB(tenantID int, providerName, environment string) (Payment
 	return provider, nil
 }
 
-func AddProviderRequestToClientRequest(providerName string, providerRequest any, logID int64) error {
+func AddProviderRequestToClientRequest(providerName, keyName string, providerRequest any, logID int64) error {
 	var requestJSON []byte
 	err := config.App().DB.QueryRow(fmt.Sprintf("SELECT request FROM %s WHERE id = $1", providerName), logID).Scan(&requestJSON)
 	if err != nil {
@@ -367,7 +367,7 @@ func AddProviderRequestToClientRequest(providerName string, providerRequest any,
 	if err != nil {
 		return fmt.Errorf("failed to marshal provider request: %w", err)
 	}
-	logRequest["providerRequest"] = json.RawMessage(providerRequestBytes)
+	logRequest[keyName] = json.RawMessage(providerRequestBytes)
 
 	updatedRequestBytes, err := json.Marshal(logRequest)
 	if err != nil {

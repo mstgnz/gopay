@@ -519,6 +519,8 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	}
 
 	fmt.Printf("getCardTokenSecure Request: %s\n", string(jsonData))
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", cardTokenRequest, p.logID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", cardTokenEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -792,7 +794,7 @@ func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint str
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", data, p.logID)
+	_ = provider.AddProviderRequestToClientRequest("paycell", "providerRequest", data, p.logID)
 
 	return p.mapProvisionToPaymentResponse(paycellResp), nil
 }
