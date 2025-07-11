@@ -1102,7 +1102,8 @@ paths:
           schema:
             type: string
             enum: [sandbox, production]
-          description: Payment environment default is sandbox
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
           example: sandbox
       requestBody:
         required: true
@@ -1153,7 +1154,15 @@ paths:
           schema:
             type: string
           description: Payment ID to check
-          example: payment123
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
+          example: sandbox
       responses:
         '200':
           description: Payment status retrieved successfully
@@ -1196,7 +1205,15 @@ paths:
           schema:
             type: string
           description: Payment ID to cancel
-          example: payment123
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
+          example: sandbox
       requestBody:
         content:
           application/json:
@@ -1240,6 +1257,15 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
+          example: sandbox
       requestBody:
         required: true
         content:

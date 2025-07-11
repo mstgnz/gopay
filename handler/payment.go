@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -94,17 +95,10 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get tenant ID from JWT context and construct tenant-specific provider name if present
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
-	}
-
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	log.Println("environment", environment)
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Get payment status
@@ -132,17 +126,9 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get tenant ID from JWT context and construct tenant-specific provider name if present
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
-	}
-
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Parse reason from request body
@@ -173,17 +159,9 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	// Get tenant ID from JWT context and construct tenant-specific provider name if present
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID != "" && providerName != "" {
-		// Use tenant-specific provider: TENANT_provider
-		providerName = strings.ToUpper(tenantID) + "_" + strings.ToLower(providerName)
-	}
-
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Parse refund request
@@ -223,9 +201,8 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Get conversationID and paymentID from query parameters
@@ -369,9 +346,8 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	environment := r.URL.Query().Get("environment")
-	if environment == "" {
-		response.Error(w, http.StatusBadRequest, "Missing environment", nil)
-		return
+	if environment != "production" {
+		environment = "sandbox"
 	}
 
 	// Parse webhook data based on content type
