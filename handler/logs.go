@@ -174,83 +174,47 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 
 // GetPaymentLogs retrieves logs for a specific payment ID
 func (h *LogsHandler) GetPaymentLogs(w http.ResponseWriter, r *http.Request) {
-	if h.postgresLogger == nil {
+	if h.logger == nil {
 		response.Error(w, http.StatusServiceUnavailable, "Logging service not available", nil)
 		return
 	}
 
 	// Get parameters
 	tenantID := middle.GetTenantIDFromContext(r.Context())
-	provider := r.URL.Query().Get("provider")
-	hours := r.URL.Query().Get("hours")
-	paymentID := r.URL.Query().Get("payment_id")
+	provider := chi.URLParam(r, "provider")
+	paymentID := chi.URLParam(r, "paymentID")
 
 	if provider == "" {
 		response.Error(w, http.StatusBadRequest, "provider parameter is required", nil)
 		return
 	}
 
-	hoursInt := 24 // Default to 24 hours
-	if hours != "" {
-		if h, err := strconv.Atoi(hours); err == nil && h > 0 {
-			hoursInt = h
-		}
+	if paymentID == "" {
+		response.Error(w, http.StatusBadRequest, "paymentID parameter is required", nil)
+		return
+	}
+
+	if tenantID == "" {
+		response.Error(w, http.StatusUnauthorized, "Invalid or missing authentication", nil)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	var logs []postgres.PaymentLog
-	var err error
-
-	if paymentID != "" {
-		// Get logs for specific payment using search with payment_id filter
-		filters := map[string]any{
-			"payment_id": paymentID,
-		}
-		if tenantID != "" {
-			tenantIDInt, convErr := strconv.Atoi(tenantID)
-			if convErr != nil {
-				response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
-				return
-			}
-			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, tenantIDInt, provider, filters)
-		} else {
-			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, 0, provider, filters)
-		}
-	} else {
-		// Get recent logs using time range filter
-		filters := map[string]any{
-			"start_date": time.Now().Add(-time.Duration(hoursInt) * time.Hour),
-			"end_date":   time.Now(),
-		}
-		if tenantID != "" {
-			tenantIDInt, convErr := strconv.Atoi(tenantID)
-			if convErr != nil {
-				response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
-				return
-			}
-			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, tenantIDInt, provider, filters)
-		} else {
-			logs, err = h.postgresLogger.SearchPaymentLogs(ctx, 0, provider, filters)
-		}
-	}
-
+	// Get logs for specific payment
+	logs, err := h.logger.GetPaymentLogs(ctx, tenantID, provider, paymentID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to retrieve logs", err)
 		return
 	}
 
 	responseData := map[string]any{
-		"logs":      logs,
-		"count":     len(logs),
-		"tenant_id": tenantID,
-		"provider":  provider,
-		"hours":     hoursInt,
-	}
-
-	if paymentID != "" {
-		responseData["payment_id"] = paymentID
+		"logs":       logs,
+		"count":      len(logs),
+		"tenant_id":  tenantID,
+		"provider":   provider,
+		"payment_id": paymentID,
 	}
 
 	response.Success(w, http.StatusOK, "Logs retrieved successfully", responseData)
@@ -377,14 +341,25 @@ func (h *LogsHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
 
 // GetLogStats retrieves log statistics
 func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
-	if h.postgresLogger == nil {
+	if h.logger == nil {
 		response.Error(w, http.StatusServiceUnavailable, "Logging service not available", nil)
 		return
 	}
 
 	// Get parameters
 	tenantID := middle.GetTenantIDFromContext(r.Context())
+	provider := chi.URLParam(r, "provider")
 	hours := r.URL.Query().Get("hours")
+
+	if provider == "" {
+		response.Error(w, http.StatusBadRequest, "provider parameter is required", nil)
+		return
+	}
+
+	if tenantID == "" {
+		response.Error(w, http.StatusUnauthorized, "Invalid or missing authentication", nil)
+		return
+	}
 
 	hoursInt := 24 // Default to 24 hours
 	if hours != "" {
@@ -396,23 +371,8 @@ func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	// Get stats from PostgreSQL
-	var stats map[string]any
-	var err error
-
-	if tenantID != "" {
-		tenantIDInt, convErr := strconv.Atoi(tenantID)
-		if convErr != nil {
-			response.Error(w, http.StatusBadRequest, "Invalid tenant ID", convErr)
-			return
-		}
-		// Get stats for all providers for this tenant
-		stats, err = h.postgresLogger.GetPaymentStats(ctx, tenantIDInt, "", hoursInt)
-	} else {
-		// Get stats for all tenants
-		stats, err = h.postgresLogger.GetPaymentStats(ctx, 0, "", hoursInt)
-	}
-
+	// Get stats from provider-specific logger
+	stats, err := h.logger.GetProviderStats(ctx, tenantID, provider, hoursInt)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to retrieve log statistics", err)
 		return
@@ -421,6 +381,7 @@ func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
 	responseData := map[string]any{
 		"stats":     stats,
 		"tenant_id": tenantID,
+		"provider":  provider,
 		"hours":     hoursInt,
 	}
 

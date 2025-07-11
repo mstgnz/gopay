@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -410,4 +412,332 @@ func GetProviderRequestFromLog(providerName string, logID int64, key string) (st
 	}
 
 	return result, nil
+}
+
+// ProviderSpecificLogger implements LoggerInterface for provider-specific tables
+type ProviderSpecificLogger struct {
+	db *conn.DB
+}
+
+// NewProviderSpecificLogger creates a new provider-specific logger
+func NewProviderSpecificLogger(db *conn.DB) *ProviderSpecificLogger {
+	return &ProviderSpecificLogger{db: db}
+}
+
+// SearchLogs searches logs in provider-specific tables
+func (l *ProviderSpecificLogger) SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]postgres.PaymentLog, error) {
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	// Build query with filters
+	querySQL := fmt.Sprintf(`
+		SELECT id, tenant_id, request, response, request_at, response_at, 
+		       method, endpoint, payment_id, transaction_id, amount, currency, 
+		       status, error_code, processing_ms, user_agent, client_ip
+		FROM %s
+		WHERE tenant_id = $1
+	`, provider)
+
+	args := []any{tenantIDInt}
+	argIndex := 2
+
+	// Add payment ID filter if in query
+	if paymentID, ok := extractPaymentIDFromQuery(query); ok && paymentID != "" {
+		querySQL += fmt.Sprintf(" AND (payment_id = $%d OR request::text ILIKE $%d)", argIndex, argIndex+1)
+		args = append(args, paymentID, "%"+paymentID+"%")
+		argIndex += 2
+	}
+
+	// Add status filter if in query
+	if status, ok := extractStatusFromQuery(query); ok && status != "" {
+		querySQL += fmt.Sprintf(" AND status = $%d", argIndex)
+		args = append(args, status)
+		argIndex++
+	}
+
+	// Add error filter if in query
+	if shouldFilterErrors(query) {
+		querySQL += fmt.Sprintf(" AND error_code IS NOT NULL")
+	}
+
+	// Add time range filter if in query
+	if hours, ok := extractTimeRangeFromQuery(query); ok && hours > 0 {
+		querySQL += fmt.Sprintf(" AND request_at >= NOW() - INTERVAL '%d hours'", hours)
+	}
+
+	querySQL += " ORDER BY request_at DESC LIMIT 100"
+
+	rows, err := l.db.QueryContext(ctx, querySQL, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search logs: %w", err)
+	}
+	defer rows.Close()
+
+	return l.scanPaymentLogs(rows, provider)
+}
+
+// GetPaymentLogs retrieves logs for a specific payment ID
+func (l *ProviderSpecificLogger) GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]postgres.PaymentLog, error) {
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, tenant_id, request, response, request_at, response_at, 
+		       method, endpoint, payment_id, transaction_id, amount, currency, 
+		       status, error_code, processing_ms, user_agent, client_ip
+		FROM %s
+		WHERE tenant_id = $1 AND (payment_id = $2 OR request::text ILIKE $3)
+		ORDER BY request_at DESC
+	`, provider)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantIDInt, paymentID, "%"+paymentID+"%")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment logs: %w", err)
+	}
+	defer rows.Close()
+
+	return l.scanPaymentLogs(rows, provider)
+}
+
+// GetRecentErrorLogs retrieves recent error logs for a provider
+func (l *ProviderSpecificLogger) GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]postgres.PaymentLog, error) {
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, tenant_id, request, response, request_at, response_at, 
+		       method, endpoint, payment_id, transaction_id, amount, currency, 
+		       status, error_code, processing_ms, user_agent, client_ip
+		FROM %s
+		WHERE tenant_id = $1 AND error_code IS NOT NULL 
+		AND request_at >= NOW() - INTERVAL '%d hours'
+		ORDER BY request_at DESC
+		LIMIT 100
+	`, provider, hours)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantIDInt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get error logs: %w", err)
+	}
+	defer rows.Close()
+
+	return l.scanPaymentLogs(rows, provider)
+}
+
+// GetProviderStats retrieves provider statistics
+func (l *ProviderSpecificLogger) GetProviderStats(ctx context.Context, tenantID, provider string, hours int) (map[string]any, error) {
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT 
+			COUNT(*) as total_requests,
+			COUNT(CASE WHEN status = 'success' THEN 1 END) as success_count,
+			COUNT(CASE WHEN error_code IS NOT NULL THEN 1 END) as error_count,
+			AVG(processing_ms) as avg_processing_ms,
+			SUM(amount) as total_amount
+		FROM %s
+		WHERE tenant_id = $1 
+		AND request_at >= NOW() - INTERVAL '%d hours'
+	`, provider, hours)
+
+	var stats struct {
+		TotalRequests   int      `json:"total_requests"`
+		SuccessCount    int      `json:"success_count"`
+		ErrorCount      int      `json:"error_count"`
+		AvgProcessingMs *float64 `json:"avg_processing_ms"`
+		TotalAmount     *float64 `json:"total_amount"`
+	}
+
+	err = l.db.QueryRowContext(ctx, query, tenantIDInt).Scan(
+		&stats.TotalRequests,
+		&stats.SuccessCount,
+		&stats.ErrorCount,
+		&stats.AvgProcessingMs,
+		&stats.TotalAmount,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider stats: %w", err)
+	}
+
+	result := map[string]any{
+		"total_requests": stats.TotalRequests,
+		"success_count":  stats.SuccessCount,
+		"error_count":    stats.ErrorCount,
+		"success_rate":   0.0,
+	}
+
+	if stats.TotalRequests > 0 {
+		result["success_rate"] = float64(stats.SuccessCount) / float64(stats.TotalRequests) * 100
+	}
+
+	if stats.AvgProcessingMs != nil {
+		result["avg_processing_ms"] = *stats.AvgProcessingMs
+	}
+
+	if stats.TotalAmount != nil {
+		result["total_amount"] = *stats.TotalAmount
+	}
+
+	return result, nil
+}
+
+// scanPaymentLogs scans database rows into PaymentLog structs
+func (l *ProviderSpecificLogger) scanPaymentLogs(rows *sql.Rows, provider string) ([]postgres.PaymentLog, error) {
+	var logs []postgres.PaymentLog
+	for rows.Next() {
+		var log postgres.PaymentLog
+		var requestJSON, responseJSON sql.NullString
+		var responseAt sql.NullTime
+		var method, endpoint, paymentID, transactionID, currency, status, errorCode, userAgent, clientIP sql.NullString
+		var amount sql.NullFloat64
+		var processingMs sql.NullInt64
+
+		err := rows.Scan(
+			&log.ID,
+			&log.TenantID,
+			&requestJSON,
+			&responseJSON,
+			&log.Timestamp,
+			&responseAt,
+			&method,
+			&endpoint,
+			&paymentID,
+			&transactionID,
+			&amount,
+			&currency,
+			&status,
+			&errorCode,
+			&processingMs,
+			&userAgent,
+			&clientIP,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan payment log row: %w", err)
+		}
+
+		log.Provider = provider
+		log.Method = method.String
+		log.Endpoint = endpoint.String
+		log.UserAgent = userAgent.String
+		log.ClientIP = clientIP.String
+		log.ProcessingMs = processingMs.Int64
+
+		// Parse JSON fields
+		if requestJSON.Valid {
+			if err := json.Unmarshal([]byte(requestJSON.String), &log.Request); err != nil {
+				log.Request = map[string]any{"raw": requestJSON.String}
+			}
+		}
+
+		if responseJSON.Valid {
+			if err := json.Unmarshal([]byte(responseJSON.String), &log.Response); err != nil {
+				log.Response = map[string]any{"raw": responseJSON.String}
+			}
+		}
+
+		// Set payment info
+		log.PaymentInfo = &postgres.PaymentInfo{
+			PaymentID: paymentID.String,
+			Amount:    amount.Float64,
+			Currency:  currency.String,
+			Status:    status.String,
+		}
+
+		// Set error info
+		if errorCode.Valid {
+			log.Error = &postgres.ErrorInfo{
+				Code:    errorCode.String,
+				Message: errorCode.String,
+			}
+		}
+
+		logs = append(logs, log)
+	}
+
+	return logs, rows.Err()
+}
+
+// Helper functions to extract information from query map
+func extractPaymentIDFromQuery(query map[string]any) (string, bool) {
+	if match, ok := query["match"].(map[string]any); ok {
+		if paymentID, ok := match["payment_info.payment_id"].(string); ok {
+			return paymentID, true
+		}
+	}
+	return "", false
+}
+
+func extractStatusFromQuery(query map[string]any) (string, bool) {
+	if match, ok := query["match"].(map[string]any); ok {
+		if status, ok := match["payment_info.status"].(string); ok {
+			return status, true
+		}
+	}
+	if boolQuery, ok := query["bool"].(map[string]any); ok {
+		if must, ok := boolQuery["must"].([]map[string]any); ok {
+			for _, condition := range must {
+				if match, ok := condition["match"].(map[string]any); ok {
+					if status, ok := match["payment_info.status"].(string); ok {
+						return status, true
+					}
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+func shouldFilterErrors(query map[string]any) bool {
+	if exists, ok := query["exists"].(map[string]any); ok {
+		if field, ok := exists["field"].(string); ok && field == "error.code" {
+			return true
+		}
+	}
+	if boolQuery, ok := query["bool"].(map[string]any); ok {
+		if must, ok := boolQuery["must"].([]map[string]any); ok {
+			for _, condition := range must {
+				if exists, ok := condition["exists"].(map[string]any); ok {
+					if field, ok := exists["field"].(string); ok && field == "error.code" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func extractTimeRangeFromQuery(query map[string]any) (int, bool) {
+	if rangeQuery, ok := query["range"].(map[string]any); ok {
+		if timestamp, ok := rangeQuery["timestamp"].(map[string]any); ok {
+			if gte, ok := timestamp["gte"].(string); ok {
+				// Parse "now-24h" format
+				if strings.HasPrefix(gte, "now-") && strings.HasSuffix(gte, "h") {
+					hoursStr := strings.TrimSuffix(strings.TrimPrefix(gte, "now-"), "h")
+					if hours, err := strconv.Atoi(hoursStr); err == nil {
+						return hours, true
+					}
+				}
+			}
+		}
+	}
+	if boolQuery, ok := query["bool"].(map[string]any); ok {
+		if must, ok := boolQuery["must"].([]map[string]any); ok {
+			for _, condition := range must {
+				if hours, ok := extractTimeRangeFromQuery(condition); ok {
+					return hours, true
+				}
+			}
+		}
+	}
+	return 0, false
 }

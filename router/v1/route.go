@@ -25,7 +25,10 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	validator := validator.New()
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
-	logsHandler := handler.NewLogsHandler(nil, postgresLogger)
+
+	// Initialize provider-specific logger for logs handler
+	providerLogger := provider.NewProviderSpecificLogger(config.App().DB)
+	logsHandler := handler.NewLogsHandler(providerLogger, postgresLogger)
 
 	// Payment routes (JWT protected)
 	r.Route("/payments", func(r chi.Router) {
