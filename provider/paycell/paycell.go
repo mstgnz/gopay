@@ -518,6 +518,8 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("failed to marshal card token request: %v", err)
 	}
 
+	fmt.Printf("getCardTokenSecure Request: %s\n", string(jsonData))
+
 	req, err := http.NewRequestWithContext(ctx, "POST", cardTokenEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create card token request: %v", err)
