@@ -1981,7 +1981,6 @@ paths:
           schema:
             type: string
           description: Filter by specific payment ID
-          example: payment123
         - name: status
           in: query
           required: false
@@ -2084,14 +2083,6 @@ paths:
           schema:
             type: string
           description: Payment ID to get logs for
-          example: payment123
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Tenant identifier (required)
-          example: tenant123
       responses:
         '200':
           description: Payment logs retrieved successfully
@@ -2122,7 +2113,7 @@ paths:
                             items:
                               $ref: '#/components/schemas/PaymentLog'
         '400':
-          description: Invalid parameters or missing X-Tenant-ID header
+          description: Invalid parameters
         '401':
           description: Unauthorized - Invalid JWT token
         '404':
@@ -2154,13 +2145,6 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
-        - name: X-Tenant-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Tenant identifier (required)
-          example: tenant123
         - name: hours
           in: query
           required: false
@@ -2201,7 +2185,7 @@ paths:
                             items:
                               $ref: '#/components/schemas/PaymentLog'
         '400':
-          description: Invalid parameters or missing X-Tenant-ID header
+          description: Invalid parameters
         '401':
           description: Unauthorized - Invalid JWT token
         '500':
@@ -2267,7 +2251,7 @@ paths:
                           stats:
                             $ref: '#/components/schemas/LoggingStats'
         '400':
-          description: Invalid parameters or missing X-Tenant-ID header
+          description: Invalid parameters
         '401':
           description: Unauthorized - Invalid JWT token
         '500':
