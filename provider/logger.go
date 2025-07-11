@@ -459,7 +459,7 @@ func (l *ProviderSpecificLogger) SearchLogs(ctx context.Context, tenantID, provi
 
 	// Add error filter if in query
 	if shouldFilterErrors(query) {
-		querySQL += fmt.Sprintf(" AND error_code IS NOT NULL")
+		querySQL += " AND error_code IS NOT NULL"
 	}
 
 	// Add time range filter if in query
