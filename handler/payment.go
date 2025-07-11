@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -96,7 +95,6 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	environment := r.URL.Query().Get("environment")
-	log.Println("environment", environment)
 	if environment != "production" {
 		environment = "sandbox"
 	}

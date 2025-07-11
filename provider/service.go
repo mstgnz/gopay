@@ -119,7 +119,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, pro
 	if err != nil {
 		return nil, err
 	}
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 	if err != nil {
 		return nil, err
 	}
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 	if err != nil {
 		return nil, err
 	}
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 	if err != nil {
 		return nil, err
 	}
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +344,7 @@ func (s *PaymentService) ValidateWebhook(ctx context.Context, environment, provi
 	if err != nil {
 		return false, nil, err
 	}
-	provider, err := GetProvider(tenantID, environment, providerName)
+	provider, err := GetProvider(tenantID, providerName, environment)
 	if err != nil {
 		return false, nil, err
 	}
