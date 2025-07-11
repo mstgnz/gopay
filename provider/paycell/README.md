@@ -2,7 +2,7 @@
 
 This package provides a complete integration between GoPay and Paycell (TPay), Turkcell's payment processing solution. Paycell offers secure payment processing for Turkish market with comprehensive tPay REST API support.
 
-[Paycell API Documentation](https://apiportal.paycell.com.tr/)
+[Paycell API Documentation](https://apiportal.paycell.com.tr/paycellapi)
 
 ## API URLs
 

@@ -307,7 +307,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 	}
 
 	// get spesific key in log jsonb
-	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", p.logID, "referenceNumber")
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
@@ -330,6 +330,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
 		MSISDN:                  p.phoneNumber,
+		PaymentMethodType:       "CREDIT_CARD",
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -1139,6 +1140,7 @@ type PaycellInquireRequest struct {
 	ReferenceNumber         string               `json:"referenceNumber"`
 	MerchantCode            string               `json:"merchantCode"`
 	MSISDN                  string               `json:"msisdn"`
+	PaymentMethodType       string               `json:"paymentMethodType"`
 }
 
 // PaycellReverseRequest represents reverse request

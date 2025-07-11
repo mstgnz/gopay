@@ -382,12 +382,12 @@ func AddProviderRequestToClientRequest(providerName string, providerRequest any,
 	return nil
 }
 
-func GetProviderRequestFromLog(providerName string, logID int64, key string) (string, error) {
+func GetProviderRequestFromLog(providerName string, paymentID string, key string) (string, error) {
 	query := fmt.Sprintf(`
 		WITH RECURSIVE json_tree AS (
 			SELECT key, value
 			FROM %s, jsonb_each(request)
-			WHERE id = $1
+			WHERE payment_id = $1
 
 			UNION ALL
 
@@ -403,7 +403,7 @@ func GetProviderRequestFromLog(providerName string, logID int64, key string) (st
 	`, providerName)
 
 	var result string
-	err := config.App().DB.QueryRow(query, logID, key).Scan(&result)
+	err := config.App().DB.QueryRow(query, paymentID, key).Scan(&result)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("key %s not found", key)
