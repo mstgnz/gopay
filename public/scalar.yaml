@@ -87,17 +87,91 @@ info:
     Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     ```
 
-    ## Payment Flow
-    ### Regular Payment
-    1. `POST /v1/payments/{provider}` - Process payment
-    2. `GET /v1/payments/{provider}/{paymentID}` - Check status
-    3. `POST /v1/payments/{provider}/refund` - Refund if needed
+    ## Payment Flows
 
-    ### 3D Secure Payment
-    1. `POST /v1/payments/{provider}` with `use3D: true` - Initialize 3D payment
-    2. User completes 3D authentication on bank page
-    3. `GET|POST /v1/callback/{provider}` - Handle callback
-    4. `GET /v1/payments/{provider}/{paymentID}` - Verify final status
+    ### 🔄 Standard Operations (Payment, Refund, Cancel)
+    ```
+    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+    │                 │    │                 │    │                 │
+    │   Your Apps     │◄──►│     GoPay       │◄──►│   Payment       │
+    │  (Multi-Tenant) │    │   (Gateway)     │    │   Providers     │
+    │                 │    │                 │    │                 │
+    └─────────────────┘    └─────────────────┘    └─────────────────┘
+    ```
+
+    **Direct API flow for payments, refunds, and cancellations.**
+
+    ### 🔐 3D Secure Payment Flow (Detailed)
+
+    **Phase 1: Payment Initialization**
+    ```
+    1. [App] ──POST /payments/provider──► [GoPay]
+       │ Request: { amount, cardInfo, callbackUrl: "app.com/callback" }
+       │
+       └─► [GoPay] ──► [Provider]
+           │ Modified: { callbackUrl: "gopay.com/v1/callback/provider?originalCallbackUrl=app.com/callback" }
+           │
+           └─► Response: { redirectUrl: "provider-3d-secure-link" }
+    ```
+
+    **Phase 2: User Redirect**
+    ```
+    2. [GoPay] ──Response──► [App]
+       │ Returns: { redirectUrl: "provider-3d-secure-link" }
+       │
+       └─► [App] redirects user to payment page
+           │
+           └─► User goes to [Provider 3D Secure Page]
+    ```
+
+    **Phase 3: 3D Secure Process**
+    ```
+    3. [User] completes 3D authentication on provider page
+       ├─► Enter SMS code
+       ├─► Bank authentication  
+       └─► Payment confirmation
+    ```
+
+    **Phase 4: Callback Handling**
+    ```
+    4. [Provider] ──Callback──► [GoPay]
+       │ URL: gopay.com/v1/callback/provider?originalCallbackUrl=app.com/callback
+       │ Data: { paymentId, status, transactionId }
+       │
+       └─► [GoPay] processes result
+           │
+           └─► [GoPay] ──Redirect──► [App]
+               │ URL: app.com/callback?success=true&paymentId=123&status=successful
+               │
+               └─► [App] shows success/failure page to user
+    ```
+
+    **Complete 3D Secure Flow:**
+    ```
+    [Your App] → [GoPay] → [Provider] → [3D Page] → [Provider] → [GoPay] → [Your App]
+        │           │          │           │          │           │          │
+        │           │          │           │          │           │          │
+        ▼           ▼          ▼           ▼          ▼           ▼          ▼
+    1. Payment   2. Forward  3. Return   4. User    5. Callback 6. Process  7. Final
+       request      with       3D link     auth       to GoPay    & redirect   result
+                   callback
+    ```
+
+    ### 🔧 Session Management
+    **Your application's session (PHP, Node.js, etc.) is preserved throughout the flow:**
+    - ✅ **Session Cookies**: Domain-specific cookies remain intact
+    - ✅ **HTTP Redirects**: Standard redirects don't affect session state
+    - ✅ **Cross-Domain**: Browser maintains session across domains
+    - ⚠️ **Timeout Considerations**: Ensure session timeout > payment duration
+
+    ### 🔗 Callback URL Transformation
+    **GoPay automatically transforms your callback URLs:**
+    ```
+    Your Original:  "https://app.com/payment-callback"
+    GoPay Sends:    "https://gopay.com/v1/callback/iyzico?originalCallbackUrl=https://app.com/payment-callback"
+    Provider Returns: "https://gopay.com/v1/callback/iyzico?originalCallbackUrl=...&paymentId=123&status=success"
+    GoPay Redirects: "https://app.com/payment-callback?success=true&paymentId=123&status=successful"
+    ```
 
     ## Contact
     - **Developer**: Mesut GENEZ
@@ -1301,13 +1375,24 @@ paths:
         Handles 3D Secure authentication callback from the bank using GET method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
         
-        **Provider Resolution:**
-        - Provider name is resolved from providers table in database
-        - No tenant prefix needed, provider name is validated against active providers
+        **🔄 Callback Flow:**
+        ```
+        [Provider] → [GoPay Callback] → [Your App]
+        ```
         
-        **Multi-Tenant Routing:**
-        - Include `tenantId` query parameter for proper tenant routing (provided by bank callback)
-        - No authentication required as this is called directly by payment providers
+        **URL Transformation:**
+        - **Provider sends to GoPay:** `gopay.com/v1/callback/iyzico?originalCallbackUrl=app.com/callback&paymentId=123&status=success`
+        - **GoPay processes and redirects to:** `app.com/callback?success=true&paymentId=123&status=successful`
+        
+        **Session Preservation:**
+        - ✅ Your app's session (PHP, Node.js, etc.) is preserved
+        - ✅ Browser maintains session cookies across redirects
+        - ✅ No authentication required (called by payment providers)
+        
+        **Multi-Tenant Support:**
+        - Include `tenantId` query parameter for proper tenant routing
+        - GoPay automatically routes to correct tenant configuration
+        - Provider name is validated against active providers
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -1373,13 +1458,24 @@ paths:
         Handles 3D Secure authentication callback from the bank using POST method with specific provider.
         This endpoint is called by the bank after user completes 3D authentication.
         
-        **Provider Resolution:**
-        - Provider name is resolved from providers table in database
-        - No tenant prefix needed, provider name is validated against active providers
+        **🔄 Callback Flow:**
+        ```
+        [Provider] → [GoPay Callback] → [Your App]
+        ```
         
-        **Multi-Tenant Routing:**
-        - Include `tenantId` query parameter for proper tenant routing (provided by bank callback)
-        - No authentication required as this is called directly by payment providers
+        **URL Transformation:**
+        - **Provider sends to GoPay:** `gopay.com/v1/callback/iyzico?originalCallbackUrl=app.com/callback&paymentId=123&status=success`
+        - **GoPay processes and redirects to:** `app.com/callback?success=true&paymentId=123&status=successful`
+        
+        **Session Preservation:**
+        - ✅ Your app's session (PHP, Node.js, etc.) is preserved
+        - ✅ Browser maintains session cookies across redirects
+        - ✅ No authentication required (called by payment providers)
+        
+        **Multi-Tenant Support:**
+        - Include `tenantId` query parameter for proper tenant routing
+        - GoPay automatically routes to correct tenant configuration
+        - Provider name is validated against active providers
       tags: [3D Secure]
       parameters:
         - name: provider
@@ -1445,9 +1541,21 @@ paths:
         - Fraud alerts
         - Chargeback notifications
         
+        **🔄 Webhook Flow:**
+        ```
+        [Provider] → [GoPay Webhook] → [Internal Processing]
+        ```
+        
+        **Key Differences from Callbacks:**
+        - **Callbacks**: User browser redirects (3D Secure)
+        - **Webhooks**: Server-to-server notifications (background)
+        - **Callbacks**: Require user interaction
+        - **Webhooks**: Automatic processing
+        
         **Multi-Tenant Support:**
         - Include `tenantId` query parameter for tenant-specific routing
         - GoPay automatically validates signatures and processes notifications
+        - No authentication required (cryptographic signatures for security)
         
         **Provider-Specific Examples:**
         
@@ -1461,7 +1569,10 @@ paths:
         - Subscription events
         - Invoice payments
         
-        **No Authentication Required** - Webhooks use cryptographic signatures for security.
+        **Security:**
+        - ✅ Cryptographic signature validation
+        - ✅ No authentication required
+        - ✅ Provider-specific validation rules
       tags: [Webhooks]
       parameters:
         - name: provider
