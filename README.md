@@ -29,13 +29,94 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 - **Rate Limiting**: Tenant-specific rate limits with burst allowance
 - **Security**: Auto-rotating JWT secrets, input validation, audit logging
 
-### Payment Flow
+### Payment Flows
 
-1. **Authenticate** → Get JWT token
-2. **Configure** → Set provider credentials (tenant-specific)
+#### 🔄 **Standard Operations (Payment, Refund, Cancel)**
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│             │    │             │    │             │
+│   Your App  │───►│   GoPay     │───►│  Provider   │
+│             │    │             │    │             │
+│             │◄───│             │◄───│             │
+└─────────────┘    └─────────────┘    └─────────────┘
+     │                    │                    │
+     │                    │                    │
+     ▼                    ▼                    ▼
+1. Send request      2. Forward to        3. Process &
+   with JWT             provider             respond
+```
+
+**Direct API flow for payments, refunds, and cancellations.**
+
+#### 🔐 **3D Secure Payment Flow (Detailed)**
+
+**Phase 1: Payment Initialization**
+
+```
+1. [App] ──POST /payments/provider──► [GoPay]
+   │ Request: { amount, cardInfo, callbackUrl: "app.com/callback" }
+   │
+   └─► [GoPay] ──► [Provider]
+       │ Modified: { callbackUrl: "gopay.com/v1/callback/provider?originalCallbackUrl=app.com/callback" }
+       │
+       └─► Response: { redirectUrl: "provider-3d-secure-link" }
+```
+
+**Phase 2: User Redirect**
+
+```
+2. [GoPay] ──Response──► [App]
+   │ Returns: { redirectUrl: "provider-3d-secure-link" }
+   │
+   └─► [App] redirects user to payment page
+       │
+       └─► User goes to [Provider 3D Secure Page]
+```
+
+**Phase 3: 3D Secure Process**
+
+```
+3. [User] completes 3D authentication on provider page
+   ├─► Enter SMS code
+   ├─► Bank authentication
+   └─► Payment confirmation
+```
+
+**Phase 4: Callback Handling**
+
+```
+4. [Provider] ──Callback──► [GoPay]
+   │ URL: gopay.com/v1/callback/provider?originalCallbackUrl=app.com/callback
+   │ Data: { paymentId, status, transactionId }
+   │
+   └─► [GoPay] processes result
+       │
+       └─► [GoPay] ──Redirect──► [App]
+           │ URL: app.com/callback?success=true&paymentId=123&status=successful
+           │
+           └─► [App] shows success/failure page to user
+```
+
+**Complete 3D Secure Flow:**
+
+```
+[Your App] → [GoPay] → [Provider] → [3D Page] → [Provider] → [GoPay] → [Your App]
+    │           │          │           │          │           │          │
+    │           │          │           │          │           │          │
+    ▼           ▼          ▼           ▼          ▼           ▼          ▼
+1. Payment   2. Forward  3. Return   4. User    5. Callback 6. Process  7. Final
+   request      with       3D link     auth       to GoPay    & redirect   result
+               callback
+```
+
+#### 🔧 **Setup Flow**
+
+1. **Authenticate** → Get JWT token (`POST /v1/auth/login`)
+2. **Configure** → Set provider credentials (`POST /v1/config/tenant`)
 3. **Process** → Create payments using standardized API
-4. **Handle** → Manage callbacks, webhooks, and responses
-5. **Monitor** → Track transactions and analytics
+4. **Handle** → Automatic callback/webhook management
+5. **Monitor** → Track transactions via dashboard & logs
 
 ## 🏪 Supported Payment Providers
 
@@ -106,10 +187,48 @@ curl -X POST http://localhost:9999/v1/config/tenant \
   }'
 ```
 
-### 4. Process Payment
+### 4. Process Payments
+
+#### 💳 **Standard Payment (Direct)**
 
 ```bash
-# Create payment
+# Create direct payment (no 3D Secure)
+curl -X POST http://localhost:9999/v1/payments/iyzico \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 100.50,
+    "currency": "TRY",
+    "customer": {
+      "name": "John",
+      "surname": "Doe",
+      "email": "john@example.com"
+    },
+    "cardInfo": {
+      "cardHolderName": "John Doe",
+      "cardNumber": "5528790000000008",
+      "expireMonth": "12",
+      "expireYear": "2030",
+      "cvv": "123"
+    },
+    "use3D": false
+  }'
+
+# Response
+{
+  "success": true,
+  "status": "successful",
+  "paymentId": "12345",
+  "transactionId": "67890",
+  "amount": 100.50,
+  "currency": "TRY"
+}
+```
+
+#### 🔐 **3D Secure Payment (Step-by-Step)**
+
+```bash
+# Step 1: Initialize 3D Secure payment
 curl -X POST http://localhost:9999/v1/payments/iyzico \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
@@ -129,9 +248,59 @@ curl -X POST http://localhost:9999/v1/payments/iyzico \
       "cvv": "123"
     },
     "use3D": true,
-    "callbackUrl": "https://yourapp.com/callback"
+    "callbackUrl": "https://yourapp.com/payment-callback"
   }'
+
+# Step 1 Response: You get redirect URL
+{
+  "success": true,
+  "status": "pending",
+  "paymentId": "12345",
+  "redirectUrl": "https://provider-3dsecure.com/auth?token=xyz",
+  "message": "3D Secure authentication required"
+}
 ```
+
+**3D Secure Flow Implementation:**
+
+```php
+<?php
+// Step 2: Your app redirects user to 3D page
+session_start();
+$_SESSION['payment_id'] = $paymentId; // Store for later
+
+header("Location: " . $redirectUrl); // User goes to bank page
+?>
+```
+
+```php
+<?php
+// Step 3: Handle callback (yourapp.com/payment-callback)
+session_start();
+
+if($_GET['success'] === 'true') {
+    $paymentId = $_GET['paymentId'];
+    $status = $_GET['status'];
+    $transactionId = $_GET['transactionId'];
+
+    // Payment successful - redirect to success page
+    header("Location: /payment-success?payment=" . $paymentId);
+} else {
+    $error = $_GET['error'];
+    // Payment failed - redirect to error page
+    header("Location: /payment-failed?error=" . urlencode($error));
+}
+?>
+```
+
+**Complete 3D Flow:**
+
+1. **Your App** → Send payment request → **GoPay**
+2. **GoPay** → Get `redirectUrl` → **Your App**
+3. **Your App** → Redirect user → **Provider 3D Page**
+4. **User** → Complete 3D auth → **Provider**
+5. **Provider** → Callback → **GoPay** → **Your App**
+6. **Your App** → Show result page → **User**
 
 ## 🔐 Security Features
 
@@ -205,6 +374,24 @@ GET  /v1/payments/{provider}/{paymentID}     # Check payment status
 DELETE /v1/payments/{provider}/{paymentID}   # Cancel payment
 POST /v1/payments/{provider}/refund          # Process refund
 ```
+
+### Callbacks & Webhooks (Provider → GoPay → Your App)
+
+```
+# 3D Secure Callbacks (Automatic - Provider calls these)
+GET|POST /v1/callback/{provider}             # 3D Secure completion callback
+Parameters: ?originalCallbackUrl=yourapp.com/callback&paymentId=123&status=success
+
+# Payment Webhooks (Automatic - Provider notifications)
+POST /v1/webhooks/{provider}                 # Payment status notifications
+```
+
+**Callback Flow:**
+
+- Provider redirects user to: `gopay.com/v1/callback/iyzico?originalCallbackUrl=yourapp.com/callback`
+- GoPay processes and redirects to: `yourapp.com/callback?success=true&paymentId=123&status=successful`
+
+**You don't call these endpoints directly - they're called by payment providers.**
 
 ### Monitoring
 
