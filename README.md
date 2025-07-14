@@ -123,13 +123,13 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 | Provider    | Status        | Region | Features                    |
 | ----------- | ------------- | ------ | --------------------------- |
 | **İyzico**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **Stripe**  | ✅ Production | Global | Payment, 3D, Refund, Cancel |
 | **OzanPay** | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
 | **Paycell** | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
 | **Papara**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
 | **Nkolay**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
 | **PayTR**   | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
 | **PayU**    | ✅ Production | Global | Payment, 3D, Refund, Cancel |
+| **Stripe**  | ✅ Production | Global | Payment, 3D, Refund, Cancel |
 
 ## 🚦 Quick Start
 
