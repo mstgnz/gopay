@@ -297,15 +297,16 @@ CREATE TABLE "public"."payu" (
     PRIMARY KEY ("id")
 );
 
-INSERT INTO "public"."providers" ("id", "name") VALUES
-(1, 'iyzico'),
-(2, 'ozanpay'),
-(3, 'strpie'),
-(4, 'paycell'),
-(5, 'papara'),
-(6, 'paytr'),
-(7, 'payu'),
-(8, 'nkolay');
+INSERT INTO "public"."providers" ("name", "active") VALUES
+('iyzico', true),
+('ozanpay', true),
+('strpie', true),
+('paycell', true),
+('papara', true),
+('paytr', true),
+('payu', true),
+('nkolay', true),
+('shopier', false);
 
 ALTER TABLE "public"."iyzico" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
