@@ -1,0 +1,41 @@
+services:
+  # Load Balancer - Routes traffic to API replicas
+  nginx:
+    image: nginx:alpine
+    container_name: gopay-nginx
+    restart: always
+    ports:
+      - "${APP_PORT}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+    networks:
+      - gopay
+
+  # API Service (will be scaled manually)
+  api:
+    build:
+      context: .
+      dockerfile: dockerfile
+    image: gopay:latest
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+    expose:
+      - "${APP_PORT}"
+    env_file:
+      - .env
+    networks:
+      - gopay
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  gopay:
+    name: gopay
+    driver: bridge
