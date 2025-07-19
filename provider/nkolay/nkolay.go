@@ -554,7 +554,27 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 			}
 		}
 
-		// Check for 3D Secure HTML form
+		// Check for 3D Secure HTML form in BANK_REQUEST_MESSAGE
+		if bankRequestMessage, ok := jsonResponse["BANK_REQUEST_MESSAGE"].(string); ok && bankRequestMessage != "" && strings.Contains(bankRequestMessage, "form") {
+			response.Success = true
+			response.Status = provider.StatusPending
+			response.Message = "3D Secure authentication required"
+
+			// Clean HTML for client use
+			cleanHTML := p.cleanHTMLForClient(bankRequestMessage)
+			response.HTML = cleanHTML
+
+			// Extract redirect URL from form action
+			if actionStart := strings.Index(bankRequestMessage, `action="`); actionStart != -1 {
+				actionStart += 8 // len(`action="`)
+				if actionEnd := strings.Index(bankRequestMessage[actionStart:], `"`); actionEnd != -1 {
+					response.RedirectURL = bankRequestMessage[actionStart : actionStart+actionEnd]
+				}
+			}
+			return response, nil
+		}
+
+		// Also check HTML_STRING as fallback
 		if htmlStr, ok := htmlString.(string); ok && htmlStr != "" && strings.Contains(htmlStr, "form") {
 			response.Success = true
 			response.Status = provider.StatusPending
@@ -679,4 +699,14 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 // timePtr returns a pointer to the given time
 func timePtr(t time.Time) *time.Time {
 	return &t
+}
+
+// cleanHTMLForClient cleans HTML by removing escape characters
+func (p *NkolayProvider) cleanHTMLForClient(htmlStr string) string {
+	// Remove escape characters
+	cleanHTML := strings.ReplaceAll(htmlStr, "\r", "")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\n", "")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\t", "")
+
+	return cleanHTML
 }
