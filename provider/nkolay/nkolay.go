@@ -78,7 +78,7 @@ func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.Config
 	return []provider.ConfigField{
 		{
 			Key:         "sx",
-			Required:    false,
+			Required:    true,
 			Type:        "string",
 			Description: "Nkolay SX token for payment operations (optional, uses test value if not provided)",
 			Example:     "118591467|bScbGDYCtPf7SS1N...",
@@ -87,7 +87,7 @@ func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.Config
 		},
 		{
 			Key:         "sxList",
-			Required:    false,
+			Required:    true,
 			Type:        "string",
 			Description: "Nkolay SX token for listing operations (optional, uses test value if not provided)",
 			Example:     "118591467|bScbGDYCtPf7SS1N...|3hJpHVF2cqvcCZ4q6F7rcA==",
@@ -96,7 +96,7 @@ func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.Config
 		},
 		{
 			Key:         "sxCancel",
-			Required:    false,
+			Required:    true,
 			Type:        "string",
 			Description: "Nkolay SX token for cancel/refund operations (optional, uses test value if not provided)",
 			Example:     "118591467|bScbGDYCtPf7SS1N...|yDUZaCk6rsoHZJWI3d471A/+TJA7C81X",
@@ -105,7 +105,7 @@ func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.Config
 		},
 		{
 			Key:         "secretKey",
-			Required:    false,
+			Required:    true,
 			Type:        "string",
 			Description: "Nkolay Secret Key (optional, uses test value if not provided)",
 			Example:     "_YckdxUbv4vrnMUZ6VQsr",

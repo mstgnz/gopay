@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -250,7 +251,7 @@ func (h *ConfigHandler) validateConfigWithProvider(providerName string, config m
 				"error": err.Error(),
 			},
 		})
-		return h.basicValidateConfig(providerName, config)
+		return errors.New("provider not found in registry")
 	}
 
 	// Create provider instance
@@ -259,21 +260,6 @@ func (h *ConfigHandler) validateConfigWithProvider(providerName string, config m
 	// Use provider's own validation
 	if err := providerInstance.ValidateConfig(config); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// basicValidateConfig provides basic validation as fallback
-func (h *ConfigHandler) basicValidateConfig(providerName string, config map[string]string) error {
-	// Basic validation: check environment is present
-	if environment, exists := config["environment"]; !exists || environment == "" {
-		return fmt.Errorf("environment is required")
-	}
-
-	// Basic validation: check at least one other config key
-	if len(config) < 2 {
-		return fmt.Errorf("at least one configuration parameter is required besides environment")
 	}
 
 	return nil
