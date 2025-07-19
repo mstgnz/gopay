@@ -191,7 +191,7 @@ func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.Confi
 			Type:        "string",
 			Description: "Paycell Terminal ID (provided by Paycell)",
 			Example:     "VP123456",
-			MinLength:   5,
+			MinLength:   1,
 			MaxLength:   20,
 		},
 		{
