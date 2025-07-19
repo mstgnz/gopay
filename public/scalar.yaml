@@ -534,11 +534,6 @@ components:
           type: string
           example: "{\"userId\":123}"
           description: Additional metadata
-        redirectUrl:
-          type: string
-          format: uri
-          example: "https://yoursite.com/payment-result"
-          description: Redirect URL after payment
 
     PaymentResponse:
       type: object
