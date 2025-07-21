@@ -25,8 +25,28 @@ func TestNewProvider(t *testing.T) {
 		t.Fatal("NewProvider should return a PaycellProvider instance")
 	}
 
+	// HTTP client is created only after Initialize() is called
+	if paycellProvider.client != nil {
+		t.Error("PaycellProvider should have nil HTTP client before Initialize()")
+	}
+
+	// Test that Initialize creates the client properly
+	config := map[string]string{
+		"username":    "test_user",
+		"password":    "test_pass",
+		"merchantId":  "test_merchant",
+		"terminalId":  "test_terminal",
+		"secureCode":  "test_secure",
+		"environment": "sandbox",
+	}
+
+	err := paycellProvider.Initialize(config)
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
 	if paycellProvider.client == nil {
-		t.Error("PaycellProvider should have a non-nil HTTP client")
+		t.Error("PaycellProvider should have a non-nil HTTP client after Initialize()")
 	}
 
 	if paycellProvider.client.Timeout != defaultTimeout {
@@ -48,6 +68,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"password":     "test_pass",
 				"merchantId":   "test_merchant",
 				"terminalId":   "test_terminal",
+				"secureCode":   "test_secure",
 				"environment":  "sandbox",
 				"gopayBaseURL": "https://test.gopay.com",
 			},
@@ -60,6 +81,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"password":    "test_pass",
 				"merchantId":  "test_merchant",
 				"terminalId":  "test_terminal",
+				"secureCode":  "test_secure",
 				"environment": "production",
 			},
 			expectError: false,
@@ -70,9 +92,10 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"password":   "test_pass",
 				"merchantId": "test_merchant",
 				"terminalId": "test_terminal",
+				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId and terminalId are required",
+			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
 		},
 		{
 			name: "missing password",
@@ -80,9 +103,10 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":   "test_user",
 				"merchantId": "test_merchant",
 				"terminalId": "test_terminal",
+				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId and terminalId are required",
+			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
 		},
 		{
 			name: "missing merchantId",
@@ -90,9 +114,10 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":   "test_user",
 				"password":   "test_pass",
 				"terminalId": "test_terminal",
+				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId and terminalId are required",
+			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
 		},
 		{
 			name: "missing terminalId",
@@ -100,9 +125,21 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":   "test_user",
 				"password":   "test_pass",
 				"merchantId": "test_merchant",
+				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId and terminalId are required",
+			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+		},
+		{
+			name: "missing secureCode",
+			config: map[string]string{
+				"username":   "test_user",
+				"password":   "test_pass",
+				"merchantId": "test_merchant",
+				"terminalId": "test_terminal",
+			},
+			expectError: true,
+			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
 		},
 	}
 
@@ -706,10 +743,12 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 	// Initialize provider
 	p := NewProvider().(*PaycellProvider)
 	config := map[string]string{
-		"username":   "test_user",
-		"password":   "test_pass",
-		"merchantId": "test_merchant",
-		"terminalId": "test_terminal",
+		"username":    "test_user",
+		"password":    "test_pass",
+		"merchantId":  "test_merchant",
+		"terminalId":  "test_terminal",
+		"secureCode":  "test_secure",
+		"environment": "sandbox",
 	}
 	err := p.Initialize(config)
 	if err != nil {
@@ -853,9 +892,9 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 		environment string
 		expected    int
 	}{
-		{"sandbox environment", "sandbox", 5},
-		{"production environment", "production", 5},
-		{"test environment", "test", 5},
+		{"sandbox environment", "sandbox", 6},
+		{"production environment", "production", 6},
+		{"test environment", "test", 6},
 	}
 
 	for _, tt := range tests {
@@ -866,7 +905,7 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 			}
 
 			// Check required fields
-			expectedFields := []string{"username", "password", "merchantId", "terminalId", "environment"}
+			expectedFields := []string{"username", "password", "merchantId", "terminalId", "secureCode", "environment"}
 			for i, field := range result {
 				if field.Key != expectedFields[i] {
 					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
