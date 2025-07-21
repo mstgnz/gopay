@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -66,11 +67,7 @@ type NkolayProvider struct {
 
 // NewProvider creates a new Nkolay payment provider
 func NewProvider() provider.PaymentProvider {
-	return &NkolayProvider{
-		client: &http.Client{
-			Timeout: defaultTimeout,
-		},
-	}
+	return &NkolayProvider{}
 }
 
 // GetRequiredConfig returns the configuration fields required for Nkolay
@@ -161,8 +158,19 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
+		// Production environment - use secure TLS
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+		}
 	} else {
 		p.baseURL = apiSandboxURL
+		// Sandbox environment - skip TLS verification for test endpoints
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
 	}
 
 	return nil

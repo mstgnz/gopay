@@ -3,6 +3,7 @@ package ozanpay
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -55,11 +56,7 @@ type OzanPayProvider struct {
 
 // NewProvider creates a new OzanPay payment provider
 func NewProvider() provider.PaymentProvider {
-	return &OzanPayProvider{
-		client: &http.Client{
-			Timeout: defaultTimeout,
-		},
-	}
+	return &OzanPayProvider{}
 }
 
 // GetRequiredConfig returns the configuration fields required for OzanPay
@@ -124,8 +121,19 @@ func (p *OzanPayProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
+		// Production environment - use secure TLS
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+		}
 	} else {
 		p.baseURL = apiSandboxURL
+		// Sandbox environment - skip TLS verification for test endpoints
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
 	}
 
 	return nil

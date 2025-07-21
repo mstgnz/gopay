@@ -3,6 +3,7 @@ package paytr
 import (
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -51,11 +52,7 @@ type PayTRProvider struct {
 
 // NewProvider creates a new PayTR payment provider
 func NewProvider() provider.PaymentProvider {
-	return &PayTRProvider{
-		client: &http.Client{
-			Timeout: defaultTimeout,
-		},
-	}
+	return &PayTRProvider{}
 }
 
 // GetRequiredConfig returns the configuration fields required for PayTR
@@ -120,6 +117,22 @@ func (p *PayTRProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	// PayTR uses the same base URL for both sandbox and production
 	p.baseURL = apiProductionURL
+
+	// Configure HTTP client based on environment
+	if p.isProduction {
+		// Production environment - use secure TLS
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+		}
+	} else {
+		// Sandbox environment - skip TLS verification for test endpoints
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+	}
 
 	return nil
 }

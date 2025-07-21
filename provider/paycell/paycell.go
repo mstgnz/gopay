@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -148,11 +149,7 @@ type PaycellProvider struct {
 
 // NewProvider creates a new Paycell payment provider
 func NewProvider() provider.PaymentProvider {
-	return &PaycellProvider{
-		client: &http.Client{
-			Timeout: defaultTimeout,
-		},
-	}
+	return &PaycellProvider{}
 }
 
 // GetRequiredConfig returns the configuration fields required for Paycell
@@ -238,9 +235,20 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	if p.isProduction {
 		p.baseURL = apiProductionURL
 		p.paymentManagementURL = paymentManagementProductionURL
+		// Production environment - use secure TLS
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+		}
 	} else {
 		p.baseURL = apiSandboxURL
 		p.paymentManagementURL = paymentManagementSandboxURL
+		// Sandbox environment - skip TLS verification for test endpoints
+		p.client = &http.Client{
+			Timeout: defaultTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
 	}
 
 	return nil
