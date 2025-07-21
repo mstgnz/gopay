@@ -52,6 +52,7 @@ type OzanPayProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new OzanPay payment provider
@@ -141,6 +142,7 @@ func (p *OzanPayProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *OzanPayProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("ozanpay: invalid payment request: %w", err)
 	}
@@ -150,6 +152,7 @@ func (p *OzanPayProvider) CreatePayment(ctx context.Context, request provider.Pa
 
 // Create3DPayment starts a 3D secure payment process
 func (p *OzanPayProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("ozanpay: invalid 3D payment request: %w", err)
 	}
@@ -406,6 +409,9 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 	if err != nil {
 		return nil, err
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("ozanpay", "providerRequest", paymentData, p.logID)
 
 	// Map response to common format
 	return p.mapToPaymentResponse(response)

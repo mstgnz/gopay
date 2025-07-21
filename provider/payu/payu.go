@@ -55,6 +55,7 @@ type PayUProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new PayU Turkey payment provider
@@ -134,6 +135,7 @@ func (p *PayUProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *PayUProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("payu: invalid payment request: %w", err)
 	}
@@ -143,6 +145,7 @@ func (p *PayUProvider) CreatePayment(ctx context.Context, request provider.Payme
 
 // Create3DPayment starts a 3D secure payment process
 func (p *PayUProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("payu: invalid 3D payment request: %w", err)
 	}
@@ -432,6 +435,9 @@ func (p *PayUProvider) processPayment(ctx context.Context, request provider.Paym
 	if err := json.Unmarshal(body, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("payu", "providerRequest", payuReq, p.logID)
 
 	return p.mapToPaymentResponse(payuResp), nil
 }

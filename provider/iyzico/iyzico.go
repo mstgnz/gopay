@@ -60,6 +60,7 @@ type IyzicoProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new Iyzico payment provider
@@ -139,6 +140,7 @@ func (p *IyzicoProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *IyzicoProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("iyzico: invalid payment request: %w", err)
 	}
@@ -149,6 +151,7 @@ func (p *IyzicoProvider) CreatePayment(ctx context.Context, request provider.Pay
 
 // Create3DPayment starts a 3D secure payment process
 func (p *IyzicoProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("iyzico: invalid 3D payment request: %w", err)
 	}
@@ -501,6 +504,9 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 	if err != nil {
 		return nil, err
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("iyzico", "providerRequest", requestData, p.logID)
 
 	// Map Iyzico response to our common PaymentResponse
 	paymentResp := &provider.PaymentResponse{

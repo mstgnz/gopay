@@ -50,6 +50,7 @@ type PaparaProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new Papara payment provider
@@ -119,6 +120,7 @@ func (p *PaparaProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *PaparaProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("papara: invalid payment request: %w", err)
 	}
@@ -128,6 +130,7 @@ func (p *PaparaProvider) CreatePayment(ctx context.Context, request provider.Pay
 
 // Create3DPayment starts a 3D secure payment process
 func (p *PaparaProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("papara: invalid 3D payment request: %w", err)
 	}
@@ -367,6 +370,9 @@ func (p *PaparaProvider) processPayment(ctx context.Context, request provider.Pa
 	if err := json.Unmarshal(body, &paparaResp); err != nil {
 		return nil, fmt.Errorf("papara: failed to parse response: %w", err)
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("papara", "providerRequest", paparaReq, p.logID)
 
 	return p.mapToPaymentResponse(paparaResp), nil
 }

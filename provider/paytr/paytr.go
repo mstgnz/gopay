@@ -48,6 +48,7 @@ type PayTRProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new PayTR payment provider
@@ -139,6 +140,7 @@ func (p *PayTRProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request (Direct API)
 func (p *PayTRProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("paytr: invalid payment request: %w", err)
 	}
@@ -148,6 +150,7 @@ func (p *PayTRProvider) CreatePayment(ctx context.Context, request provider.Paym
 
 // Create3DPayment starts a 3D secure payment process (iFrame API)
 func (p *PayTRProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("paytr: invalid 3D payment request: %w", err)
 	}
@@ -344,6 +347,9 @@ func (p *PayTRProvider) processIFramePayment(ctx context.Context, request provid
 	if err != nil {
 		return nil, fmt.Errorf("paytr: failed to get iframe token: %w", err)
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("paytr", "providerRequest", data, p.logID)
 
 	return p.mapToIFrameResponse(response, merchantOid), nil
 }

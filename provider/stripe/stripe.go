@@ -27,6 +27,7 @@ type StripeProvider struct {
 	client       *stripe.Client
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
+	logID        int64
 }
 
 // NewProvider creates a new Stripe payment provider
@@ -112,6 +113,7 @@ func (p *StripeProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *StripeProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("stripe: invalid payment request: %w", err)
 	}
@@ -121,6 +123,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, request provider.Pay
 
 // Create3DPayment starts a 3D secure payment process
 func (p *StripeProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("stripe: invalid 3D payment request: %w", err)
 	}
@@ -386,6 +389,9 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 			return nil, fmt.Errorf("stripe: failed to confirm 3D payment intent: %w", err)
 		}
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("stripe", "providerRequest", piParams, p.logID)
 
 	return p.mapPaymentIntentToResponse(pi), nil
 }
