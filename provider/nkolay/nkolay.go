@@ -492,10 +492,11 @@ func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
 
 // sendFormRequest sends form-data request to Nkolay API
 func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, formData map[string]string) ([]byte, error) {
+	// Use multipart/form-data like the working JavaScript example
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	// Add form fields
+	// Add form fields with proper UTF-8 encoding
 	for key, value := range formData {
 		if err := writer.WriteField(key, value); err != nil {
 			return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
@@ -511,7 +512,13 @@ func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, f
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	// Set proper content type with charset
+	contentType := writer.FormDataContentType()
+	if !strings.Contains(contentType, "charset") {
+		contentType = contentType + "; charset=utf-8"
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json, text/html")
 
 	resp, err := p.client.Do(req)
 	if err != nil {
