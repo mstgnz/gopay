@@ -601,22 +601,24 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 	// Convert amount to kuruş (multiply by 100)
 	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
 
-	installmentCount := request.InstallmentCount
-	if installmentCount == 0 {
-		installmentCount = 1
-	}
-
 	paycellReq := PaycellProvisionRequest{
-		RequestHeader:     requestHeader,
-		Amount:            amountInKurus,
-		CardToken:         cardToken,
-		Currency:          request.Currency,
-		InstallmentCount:  installmentCount,
-		MerchantCode:      p.merchantID,
-		MSISDN:            request.Customer.PhoneNumber,
-		PaymentType:       "SALE",
-		PaymentMethodType: "CREDIT_CARD",
-		ReferenceNumber:   p.generateReferenceNumber(),
+		ExtraParameters:         nil,
+		RequestHeader:           requestHeader,
+		AcquirerBankCode:        nil,
+		Amount:                  amountInKurus,
+		CardID:                  nil,
+		CardToken:               &cardToken,
+		Currency:                request.Currency,
+		InstallmentCount:        nil,
+		MerchantCode:            p.merchantID,
+		MSISDN:                  request.Customer.PhoneNumber,
+		OriginalReferenceNumber: nil,
+		PaymentType:             "SALE",
+		PaymentMethodType:       "CREDIT_CARD",
+		Pin:                     nil,
+		PointAmount:             nil,
+		ReferenceNumber:         p.generateReferenceNumber(),
+		ThreeDSessionID:         nil,
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -661,6 +663,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		Amount:           request.Amount,
 		Currency:         request.Currency,
 		RedirectURL:      redirectURL,
+		HTML:             p.generate3DSecureHTML(threeDSession.ThreeDSessionId, gopayCallbackURL),
 		Message:          "3D secure authentication required",
 		SystemTime:       &now,
 		ProviderResponse: threeDSession,
@@ -677,11 +680,6 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 	msisdn := strings.TrimPrefix(request.Customer.PhoneNumber, "+90")
 	msisdn = strings.TrimPrefix(msisdn, "90")
 
-	installmentCount := request.InstallmentCount
-	if installmentCount == 0 {
-		installmentCount = 1
-	}
-
 	paycellReq := PaycellGetThreeDSessionRequest{
 		RequestHeader: PaycellRequestHeader{
 			ApplicationName:     p.username,
@@ -692,10 +690,12 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		},
 		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
 		CardToken:        cardToken,
-		InstallmentCount: installmentCount,
+		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
-		MSISDN:           msisdn,
+		Msisdn:           msisdn,
 		ReferenceNumber:  p.generateReferenceNumber(),
+		Target:           "MERCHANT", // Changed from "AUTH" to "MERCHANT" as per docs
+		TransactionType:  "AUTH",     // Changed from "SALE" to "AUTH" as per docs
 	}
 
 	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -766,6 +766,16 @@ func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, cal
 	return p.paymentManagementURL + endpointThreeDSecure, nil
 }
 
+// generate3DSecureHTML generates HTML form for 3D secure authentication according to Paycell docs
+func (p *PaycellProvider) generate3DSecureHTML(threeDSessionID, callbackURL string) string {
+	// Determine the correct 3D secure URL based on environment
+	threeDSecureURL := p.paymentManagementURL + endpointThreeDSecure
+
+	html := fmt.Sprintf(`<!DOCTYPE html><html><head><title>3D Secure Authentication</title><meta charset="utf-8"></head><body><div style="text-align: center; margin-top: 50px;"><p>Ödeme işleminiz 3D güvenlik sayfasına yönlendiriliyor...</p><p>Payment is being redirected to 3D secure page...</p></div><form name="threeDForm" action="%s" method="POST"><input type="hidden" name="threeDSessionId" value="%s"><input type="hidden" name="callbackurl" value="%s"></form><script type="text/javascript">document.threeDForm.submit();</script></body></html>`, threeDSecureURL, threeDSessionID, callbackURL)
+
+	return html
+}
+
 // sendProvisionRequest sends request to Paycell provision API
 func (p *PaycellProvider) sendProvisionRequest(ctx context.Context, endpoint string, data any) (*provider.PaymentResponse, error) {
 	url := p.baseURL + endpoint
@@ -813,13 +823,21 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 		status = provider.StatusSuccessful
 	}
 
+	// Convert amount back from kuruş to TRY
+	amount := 0.0
+	if paycellResp.Amount != "" {
+		if amountInt, err := strconv.ParseFloat(paycellResp.Amount, 64); err == nil {
+			amount = amountInt / 100
+		}
+	}
+
 	now := time.Now()
 	return &provider.PaymentResponse{
 		Success:          success,
 		Status:           status,
 		PaymentID:        paycellResp.ResponseHeader.TransactionID,
 		TransactionID:    paycellResp.ResponseHeader.TransactionID,
-		OrderID:          paycellResp.OrderID,
+		Amount:           amount,
 		Currency:         defaultCurrency,
 		Message:          paycellResp.ResponseHeader.ResponseDescription,
 		ErrorCode:        paycellResp.ResponseHeader.ResponseCode,
@@ -1047,40 +1065,14 @@ type PaycellResponseHeader struct {
 	ResponseDescription string `json:"responseDescription"`
 }
 
-// PaycellProvisionRequest represents provision request according to official docs
-type PaycellProvisionRequest struct {
-	RequestHeader     PaycellRequestHeader `json:"requestHeader"`
-	Amount            string               `json:"amount"`
-	MSISDN            string               `json:"msisdn"`
-	ReferenceNumber   string               `json:"referenceNumber"`
-	MerchantCode      string               `json:"merchantCode"`
-	Currency          string               `json:"currency"`
-	InstallmentCount  int                  `json:"installmentCount"`
-	PaymentType       string               `json:"paymentType"`
-	PaymentMethodType string               `json:"paymentMethodType"`
-	CardToken         string               `json:"cardToken"`
-	ThreeDSessionID   string               `json:"threeDSessionId,omitempty"`
-}
-
-// PaycellProvisionResponse represents provision response
-type PaycellProvisionResponse struct {
-	ResponseHeader     PaycellResponseHeader `json:"responseHeader"`
-	ExtraParameters    map[string]any        `json:"extraParameters"`
-	OrderID            string                `json:"orderId"`
-	AcquirerBankCode   string                `json:"acquirerBankCode"`
-	IssuerBankCode     string                `json:"issuerBankCode"`
-	ApprovalCode       string                `json:"approvalCode"`
-	ReconciliationDate string                `json:"reconciliationDate"`
-}
-
 // PaycellGetCardTokenSecureRequest represents getCardTokenSecure request
 type PaycellGetCardTokenSecureRequest struct {
 	Header          PaycellRequestHeader `json:"header"`
-	CCAuthor        string               `json:"ccAuthor,omitempty"`
+	CCAuthor        string               `json:"ccAuthor"`
 	CreditCardNo    string               `json:"creditCardNo"`
 	ExpireDateMonth string               `json:"expireDateMonth"`
 	ExpireDateYear  string               `json:"expireDateYear"`
-	CvcCode         string               `json:"cvcNo"` // Note: API uses "cvcNo" not "cvcCode"
+	CvcCode         string               `json:"cvcNo"`
 	HashData        string               `json:"hashData"`
 }
 
@@ -1090,14 +1082,46 @@ type PaycellGetCardTokenSecureResponse struct {
 	CardToken string                `json:"cardToken"`
 }
 
+// PaycellProvisionRequest represents provision request according to official docs
+type PaycellProvisionRequest struct {
+	ExtraParameters         map[string]any       `json:"extraParameters"`
+	RequestHeader           PaycellRequestHeader `json:"requestHeader"`
+	AcquirerBankCode        *string              `json:"acquirerBankCode"`
+	Amount                  string               `json:"amount"`
+	CardID                  *string              `json:"cardId"`
+	CardToken               *string              `json:"cardToken"`
+	Currency                string               `json:"currency"`
+	InstallmentCount        *int                 `json:"installmentCount"`
+	MerchantCode            string               `json:"merchantCode"`
+	MSISDN                  string               `json:"msisdn"`
+	OriginalReferenceNumber *string              `json:"originalReferenceNumber"`
+	PaymentType             string               `json:"paymentType"`
+	PaymentMethodType       string               `json:"paymentMethodType"`
+	Pin                     *string              `json:"pin"`
+	PointAmount             *string              `json:"pointAmount"`
+	ReferenceNumber         string               `json:"referenceNumber"`
+	ThreeDSessionID         *string              `json:"threeDSessionId"`
+}
+
+// PaycellProvisionResponse represents provision response
+type PaycellProvisionResponse struct {
+	ResponseHeader     PaycellResponseHeader `json:"responseHeader"`
+	ExtraParameters    map[string]any        `json:"extraParameters"`
+	AcquirerBankCode   string                `json:"acquirerBankCode"`
+	IssuerBankCode     string                `json:"issuerBankCode"`
+	ApprovalCode       string                `json:"approvalCode"`
+	ReconciliationDate string                `json:"reconciliationDate"`
+	Amount             string                `json:"amount"`
+}
+
 // PaycellGetThreeDSessionRequest represents getThreeDSession request matching docs format
 type PaycellGetThreeDSessionRequest struct {
 	RequestHeader    PaycellRequestHeader `json:"requestHeader"`
-	Amount           string               `json:"amount"`
+	Amount           string               `json:"amount"` // Amount in kuruş as string
 	CardToken        string               `json:"cardToken"`
 	InstallmentCount int                  `json:"installmentCount"`
 	MerchantCode     string               `json:"merchantCode"`
-	MSISDN           string               `json:"msisdn"`
+	Msisdn           string               `json:"msisdn"`
 	ReferenceNumber  string               `json:"referenceNumber"`
 	Target           string               `json:"target"`
 	TransactionType  string               `json:"transactionType"`
@@ -1105,14 +1129,9 @@ type PaycellGetThreeDSessionRequest struct {
 
 // PaycellGetThreeDSessionResponse represents getThreeDSession response matching docs format
 type PaycellGetThreeDSessionResponse struct {
-	ResponseHeader struct {
-		TransactionID       string `json:"transactionId"`
-		ResponseDateTime    string `json:"responseDateTime"`
-		ResponseCode        string `json:"responseCode"`
-		ResponseDescription string `json:"responseDescription"`
-	} `json:"responseHeader"`
-	ExtraParameters map[string]any `json:"extraParameters"`
-	ThreeDSessionId string         `json:"threeDSessionId"`
+	ResponseHeader  PaycellResponseHeader `json:"responseHeader"`
+	ExtraParameters map[string]any        `json:"extraParameters"`
+	ThreeDSessionId string                `json:"threeDSessionId"`
 }
 
 // PaycellGetThreeDSessionResultRequest represents getThreeDSessionResult request
@@ -1174,20 +1193,10 @@ type PaycellResponse struct {
 	ResponseMessage   string `json:"responseMessage"`
 
 	// Real Paycell API response structure (for different endpoints)
-	ResponseHeader struct {
-		TransactionID       string `json:"transactionId"`
-		ResponseDateTime    string `json:"responseDateTime"`
-		ResponseCode        string `json:"responseCode"`
-		ResponseDescription string `json:"responseDescription"`
-	} `json:"responseHeader,omitempty"`
+	ResponseHeader PaycellResponseHeader `json:"responseHeader"`
 
 	// Alternative header format (getCardTokenSecure uses this)
-	Header struct {
-		TransactionID       string `json:"transactionId"`
-		ResponseDateTime    string `json:"responseDateTime"`
-		ResponseCode        string `json:"responseCode"`
-		ResponseDescription string `json:"responseDescription"`
-	} `json:"header,omitempty"`
+	Header PaycellResponseHeader `json:"header"`
 
 	ExtraParameters         map[string]any `json:"extraParameters,omitempty"`
 	AcquirerBankCode        string         `json:"acquirerBankCode,omitempty"`
