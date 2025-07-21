@@ -101,7 +101,8 @@ type PaymentResponse struct {
 	ErrorCode        string        `json:"errorCode,omitempty"`
 	TransactionID    string        `json:"transactionId,omitempty"`
 	PaymentID        string        `json:"paymentId,omitempty"`
-	Amount           float64       `json:"amount"`
+	OrderID          string        `json:"orderId,omitempty"`
+	Amount           float64       `json:"amount,omitempty"`
 	Currency         string        `json:"currency"`
 	RedirectURL      string        `json:"redirectUrl,omitempty"`
 	HTML             string        `json:"html,omitempty"`
