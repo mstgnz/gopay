@@ -302,6 +302,8 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, paymentID, conv
 
 	paycellReq := PaycellGetThreeDSessionResultRequest{
 		RequestHeader:   requestHeader,
+		MerchantCode:    p.merchantID,
+		MSISDN:          p.phoneNumber,
 		ThreeDSessionID: threeDSessionID,
 	}
 
@@ -507,6 +509,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
+		CCAuthor:        request.CardInfo.CardHolderName,
 		CreditCardNo:    request.CardInfo.CardNumber,
 		ExpireDateMonth: request.CardInfo.ExpireMonth,
 		ExpireDateYear:  getLastTwoDigits(request.CardInfo.ExpireYear),
@@ -1073,6 +1076,7 @@ type PaycellProvisionResponse struct {
 // PaycellGetCardTokenSecureRequest represents getCardTokenSecure request
 type PaycellGetCardTokenSecureRequest struct {
 	Header          PaycellRequestHeader `json:"header"`
+	CCAuthor        string               `json:"ccAuthor,omitempty"`
 	CreditCardNo    string               `json:"creditCardNo"`
 	ExpireDateMonth string               `json:"expireDateMonth"`
 	ExpireDateYear  string               `json:"expireDateYear"`
@@ -1114,7 +1118,9 @@ type PaycellGetThreeDSessionResponse struct {
 // PaycellGetThreeDSessionResultRequest represents getThreeDSessionResult request
 type PaycellGetThreeDSessionResultRequest struct {
 	RequestHeader   PaycellRequestHeader `json:"requestHeader"`
+	MerchantCode    string               `json:"merchantCode"`
 	ThreeDSessionID string               `json:"threeDSessionId"`
+	MSISDN          string               `json:"msisdn"`
 }
 
 // PaycellInquireRequest represents inquire request
