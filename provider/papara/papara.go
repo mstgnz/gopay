@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -398,7 +397,7 @@ func (p *PaparaProvider) mapToPaparaRequest(request provider.PaymentRequest, _ b
 		// Build callback URL through GoPay (like other providers)
 		gopayCallbackURL := fmt.Sprintf("%s/v1/callback/papara", p.gopayBaseURL)
 		if request.CallbackURL != "" {
-			gopayCallbackURL += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL)
+			gopayCallbackURL += "?originalCallbackUrl=" + request.CallbackURL
 			// Add tenant ID to callback URL for proper tenant identification
 			if request.TenantID != 0 {
 				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)

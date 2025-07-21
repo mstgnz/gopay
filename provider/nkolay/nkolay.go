@@ -12,7 +12,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -435,8 +434,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		failUrl := fmt.Sprintf("%s/v1/callback/nkolay", p.gopayBaseURL)
 
 		if request.CallbackURL != "" {
-			successUrl += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL) + "&status=success"
-			failUrl += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL) + "&status=failed"
+			successUrl += "?originalCallbackUrl=" + request.CallbackURL + "&status=success"
+			failUrl += "?originalCallbackUrl=" + request.CallbackURL + "&status=failed"
 		}
 
 		formData["successUrl"] = successUrl

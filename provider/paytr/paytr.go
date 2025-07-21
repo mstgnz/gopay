@@ -411,7 +411,7 @@ func (p *PayTRProvider) getTestMode() string {
 
 func (p *PayTRProvider) getCallbackURL(originalURL, status string, tenantID int) string {
 	if originalURL != "" {
-		callbackURL := fmt.Sprintf("%s/v1/callback/paytr?originalCallbackUrl=%s&status=%s", p.gopayBaseURL, url.QueryEscape(originalURL), status)
+		callbackURL := fmt.Sprintf("%s/v1/callback/paytr?originalCallbackUrl=%s&status=%s", p.gopayBaseURL, originalURL, status)
 		if tenantID != 0 {
 			callbackURL += fmt.Sprintf("&tenantId=%d", tenantID)
 		}

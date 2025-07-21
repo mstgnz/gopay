@@ -635,7 +635,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 	// Build callback URL through GoPay (like other providers)
 	gopayCallbackURL := fmt.Sprintf("%s/v1/callback/paycell", p.gopayBaseURL)
 	if request.CallbackURL != "" {
-		gopayCallbackURL += "?originalCallbackUrl=" + url.QueryEscape(request.CallbackURL)
+		gopayCallbackURL += "?originalCallbackUrl=" + request.CallbackURL
 		// Add tenant ID to callback URL for proper tenant identification
 		if request.TenantID != 0 {
 			gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
