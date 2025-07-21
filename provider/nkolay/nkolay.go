@@ -63,6 +63,7 @@ type NkolayProvider struct {
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
 	client       *http.Client
+	logID        int64
 }
 
 // NewProvider creates a new Nkolay payment provider
@@ -178,6 +179,7 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 
 // CreatePayment makes a non-3D payment request
 func (p *NkolayProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("nkolay: invalid payment request: %w", err)
 	}
@@ -187,6 +189,7 @@ func (p *NkolayProvider) CreatePayment(ctx context.Context, request provider.Pay
 
 // Create3DPayment starts a 3D secure payment process
 func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("nkolay: invalid 3D payment request: %w", err)
 	}
@@ -466,6 +469,9 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: payment request failed: %w", err)
 	}
+
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("nkolay", "providerRequest", formData, p.logID)
 
 	return p.parsePaymentResponse(responseBody, clientRefCode, request.Amount)
 }
