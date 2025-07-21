@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -74,11 +75,9 @@ func validateFieldPattern(providerName string, field ConfigField, value string) 
 
 	// Special case for environment field
 	if field.Key == "environment" {
-		validEnvs := []string{"sandbox", "test", "production"}
-		for _, env := range validEnvs {
-			if value == env {
-				return nil
-			}
+		validEnvs := []string{"sandbox", "production"}
+		if slices.Contains(validEnvs, value) {
+			return nil
 		}
 		return fmt.Errorf("%s: environment must be one of: %s", providerName, strings.Join(validEnvs, ", "))
 	}

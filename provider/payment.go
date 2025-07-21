@@ -79,7 +79,7 @@ type PaymentRequest struct {
 	CardInfo         CardInfo `json:"cardInfo"`
 	Items            []Item   `json:"items,omitempty"`
 	Description      string   `json:"description,omitempty"`
-	CallbackURL      string   `json:"callbackUrl,omitempty"`
+	CallbackURL      string   `json:"callbackUrl"`
 	Use3D            bool     `json:"use3D"`
 	InstallmentCount int      `json:"installmentCount,omitempty"`
 	PaymentChannel   string   `json:"paymentChannel,omitempty"`
