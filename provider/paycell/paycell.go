@@ -537,8 +537,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send card token request: %v", err)
 	}
@@ -735,8 +734,7 @@ func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, cal
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to submit 3D form: %v", err)
 	}
