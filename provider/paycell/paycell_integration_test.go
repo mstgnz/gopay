@@ -261,16 +261,11 @@ func TestPaycellProvider_RealAPI_Endpoints(t *testing.T) {
 		t.Errorf("Expected merchantID %s, got %s", testMerchantCode, p.merchantID)
 	}
 
-	if p.terminalID != testEulaID {
-		t.Errorf("Expected terminalID %s, got %s", testEulaID, p.terminalID)
-	}
-
-	fmt.Printf("✅ All configurations are correct\n")
+	fmt.Printf("  All configurations are correct\n")
 	fmt.Printf("  Base URL: %s\n", p.baseURL)
 	fmt.Printf("  Payment Mgmt URL: %s\n", p.paymentManagementURL)
 	fmt.Printf("  Username: %s\n", p.username)
 	fmt.Printf("  Merchant ID: %s\n", p.merchantID)
-	fmt.Printf("  Terminal ID: %s\n", p.terminalID)
 }
 
 // TestPaycellProvider_RealAPI_HashGeneration hash generation'ın doğruluğunu test eder

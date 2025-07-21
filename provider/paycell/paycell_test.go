@@ -67,7 +67,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":     "test_user",
 				"password":     "test_pass",
 				"merchantId":   "test_merchant",
-				"terminalId":   "test_terminal",
 				"secureCode":   "test_secure",
 				"environment":  "sandbox",
 				"gopayBaseURL": "https://test.gopay.com",
@@ -80,7 +79,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":    "test_user",
 				"password":    "test_pass",
 				"merchantId":  "test_merchant",
-				"terminalId":  "test_terminal",
 				"secureCode":  "test_secure",
 				"environment": "production",
 			},
@@ -91,11 +89,10 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 			config: map[string]string{
 				"password":   "test_pass",
 				"merchantId": "test_merchant",
-				"terminalId": "test_terminal",
 				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+			errorMsg:    "username, password, merchantId and secureCode are required",
 		},
 		{
 			name: "missing password",
@@ -106,7 +103,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+			errorMsg:    "username, password, merchantId and secureCode are required",
 		},
 		{
 			name: "missing merchantId",
@@ -117,7 +114,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+			errorMsg:    "username, password, merchantId and secureCode are required",
 		},
 		{
 			name: "missing terminalId",
@@ -128,7 +125,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"secureCode": "test_secure",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+			errorMsg:    "username, password, merchantId and secureCode are required",
 		},
 		{
 			name: "missing secureCode",
@@ -139,7 +136,7 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"terminalId": "test_terminal",
 			},
 			expectError: true,
-			errorMsg:    "username, password, merchantId, terminalId and secureCode are required",
+			errorMsg:    "username, password, merchantId and secureCode are required",
 		},
 	}
 
@@ -169,9 +166,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				}
 				if p.merchantID != tt.config["merchantId"] {
 					t.Errorf("Expected merchantId '%s', got '%s'", tt.config["merchantId"], p.merchantID)
-				}
-				if p.terminalID != tt.config["terminalId"] {
-					t.Errorf("Expected terminalId '%s', got '%s'", tt.config["terminalId"], p.terminalID)
 				}
 
 				// Verify environment setting
@@ -369,7 +363,6 @@ func TestPaycellProvider_ValidatePaymentRequest(t *testing.T) {
 func TestPaycellProvider_MapToPaycellRequest(t *testing.T) {
 	p := &PaycellProvider{
 		merchantID:   "test_merchant",
-		terminalID:   "test_terminal",
 		gopayBaseURL: "https://test.gopay.com",
 	}
 

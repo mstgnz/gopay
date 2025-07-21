@@ -1006,8 +1006,8 @@ paths:
                       value: "paycell-pass"
                     - key: merchantId
                       value: "merchant456"
-                    - key: terminalId
-                      value: "terminal789"
+                    - key: secureCode
+                      value: "secure-code"
       responses:
         '200':
           description: Configuration saved successfully
