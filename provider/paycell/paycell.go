@@ -633,12 +633,6 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		}
 	}
 
-	// Instead of returning HTML form to app, GoPay submits form internally and gets redirect URL
-	redirectURL, err := p.submit3DForm(ctx, threeDSession.ThreeDSessionId, gopayCallbackURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to submit 3D form: %w", err)
-	}
-
 	now := time.Now()
 	// Return only redirect URL (like other providers)
 	return &provider.PaymentResponse{
@@ -648,7 +642,6 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		TransactionID:    threeDSession.ResponseHeader.TransactionID,
 		Amount:           request.Amount,
 		Currency:         request.Currency,
-		RedirectURL:      redirectURL,
 		HTML:             p.generate3DSecureHTML(threeDSession.ThreeDSessionId, gopayCallbackURL),
 		Message:          "3D secure authentication required",
 		SystemTime:       &now,
