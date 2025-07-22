@@ -15,7 +15,13 @@ import (
 func setupRealTestProvider() *PaycellProvider {
 	p := NewProvider().(*PaycellProvider)
 	config := map[string]string{
-		"environment": "sandbox", // Test environment will use built-in test credentials
+		"username":     testApplicationName,
+		"password":     testApplicationPwd,
+		"merchantId":   testMerchantCode,
+		"terminalId":   testEulaID,
+		"secureCode":   testSecureCode,
+		"environment":  "sandbox",
+		"gopayBaseURL": "https://test.gopay.com",
 	}
 
 	err := p.Initialize(config)

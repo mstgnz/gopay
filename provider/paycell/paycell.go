@@ -209,19 +209,19 @@ func (p *PaycellProvider) ValidateConfig(config map[string]string) error {
 
 // Initialize sets up the Paycell payment provider with authentication credentials
 func (p *PaycellProvider) Initialize(conf map[string]string) error {
+	p.username = conf["username"]
+	p.password = conf["password"]
+	p.merchantID = conf["merchantId"]
+	p.secureCode = conf["secureCode"]
+
+	if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
+		return errors.New("paycell: username, password, merchantId and secureCode are required")
+	}
+
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
+
 	p.isProduction = conf["environment"] == "production"
-
 	if p.isProduction {
-		// Production environment - use provided credentials
-		p.username = conf["username"]
-		p.password = conf["password"]
-		p.merchantID = conf["merchantId"]
-		p.secureCode = conf["secureCode"]
-
-		if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
-			return errors.New("paycell: username, password, merchantId and secureCode are required for production")
-		}
-
 		p.baseURL = apiProductionURL
 		p.paymentManagementURL = paymentManagementProductionURL
 		// Production environment - use secure TLS
@@ -229,14 +229,6 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 			Timeout: defaultTimeout,
 		}
 	} else {
-		// Test environment - use test credentials for integration tests [[memory:2471205]]
-		p.username = testApplicationName
-		p.password = testApplicationPwd
-		p.merchantID = testMerchantCode
-		p.secureCode = testSecureCode
-
-		fmt.Printf("Using test credentials - Username: %s, MerchantID: %s\n", p.username, p.merchantID)
-
 		p.baseURL = apiSandboxURL
 		p.paymentManagementURL = paymentManagementSandboxURL
 		// Sandbox environment - skip TLS verification for test endpoints
@@ -247,8 +239,6 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 			},
 		}
 	}
-
-	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	return nil
 }
