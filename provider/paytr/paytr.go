@@ -159,14 +159,14 @@ func (p *PayTRProvider) Create3DPayment(ctx context.Context, request provider.Pa
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *PayTRProvider) Complete3DPayment(ctx context.Context, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayTRProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" {
 		return nil, errors.New("paytr: paymentID is required")
 	}
 
 	// For PayTR, 3D completion is handled via callback
 	// We typically just need to verify the callback data and get payment status
-	return p.GetPaymentStatus(ctx, paymentID)
+	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
 }
 
 // GetPaymentStatus retrieves the current status of a payment

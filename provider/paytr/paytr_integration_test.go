@@ -8,11 +8,18 @@ import (
 	"github.com/mstgnz/gopay/provider"
 )
 
+// PayTR public test credentials
+const (
+	testMerchantID   = "paytr-test-merchant-12345"
+	testMerchantKey  = "paytr-test-key-67890"
+	testMerchantSalt = "paytr-test-salt-abcde"
+)
+
 func getPayTRConfig() map[string]string {
 	return map[string]string{
-		"merchantId":   "sandbox-paytr-merchant-id",
-		"merchantKey":  "sandbox-paytr-merchant-key",
-		"merchantSalt": "sandbox-paytr-merchant-salt",
+		"merchantId":   testMerchantID,
+		"merchantKey":  testMerchantKey,
+		"merchantSalt": testMerchantSalt,
 		"environment":  "sandbox",
 		"gopayBaseURL": "http://localhost:9999",
 	}
@@ -20,9 +27,6 @@ func getPayTRConfig() map[string]string {
 
 func TestPayTRIntegration_IFramePayment(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)
@@ -76,9 +80,6 @@ func TestPayTRIntegration_IFramePayment(t *testing.T) {
 
 func TestPayTRIntegration_PaymentStatusInquiry(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)
@@ -137,9 +138,6 @@ func TestPayTRIntegration_PaymentStatusInquiry(t *testing.T) {
 
 func TestPayTRIntegration_CurrencySupport(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)
@@ -189,9 +187,6 @@ func TestPayTRIntegration_CurrencySupport(t *testing.T) {
 
 func TestPayTRIntegration_RefundPayment(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)
@@ -301,9 +296,6 @@ func TestPayTRIntegration_WebhookValidation(t *testing.T) {
 
 func TestPayTRIntegration_ErrorHandling(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)
@@ -388,9 +380,6 @@ func TestPayTRIntegration_ErrorHandling(t *testing.T) {
 
 func TestPayTRIntegration_Environment(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	// Test sandbox environment
 	t.Run("Sandbox_Environment", func(t *testing.T) {
@@ -445,9 +434,6 @@ func TestPayTRIntegration_Environment(t *testing.T) {
 
 func TestPayTRIntegration_RequestTimeout(t *testing.T) {
 	config := getPayTRConfig()
-	if config["merchantId"] == "" {
-		t.Skip("PAYTR_MERCHANT_ID not set, skipping integration test")
-	}
 
 	paytrProvider := NewProvider()
 	err := paytrProvider.Initialize(config)

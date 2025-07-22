@@ -8,14 +8,14 @@ PayTR is one of Turkey's leading payment processing platforms, providing virtual
 
 ## Features
 
-- ✅ **iFrame Payments**: Secure payment form within iframe
-- ✅ **3D Secure Support**: Enhanced security with SCA compliance
-- ✅ **Payment Status Inquiry**: Real-time payment status tracking
-- ✅ **Refunds**: Full and partial refund support
-- ✅ **Webhook Validation**: Secure webhook handling with MD5 signatures
-- ✅ **Multi-Currency**: Support for TL, USD, EUR
-- ✅ **Installment Payments**: Flexible installment options
-- ✅ **Test Mode**: Comprehensive testing environment
+- **iFrame Payments**: Secure payment form within iframe
+- **3D Secure Support**: Enhanced security with SCA compliance
+- **Payment Status Inquiry**: Real-time payment status tracking
+- **Refunds**: Full and partial refund support
+- **Webhook Validation**: Secure webhook handling with MD5 signatures
+- **Multi-Currency**: Support for TL, USD, EUR
+- **Installment Payments**: Flexible installment options
+- **Test Mode**: Comprehensive testing environment
 
 ## Configuration
 
