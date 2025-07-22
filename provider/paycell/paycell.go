@@ -587,14 +587,11 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		TransactionID:       transactionID,
 	}
 
-	// Convert amount to kuruş (multiply by 100)
-	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
-
 	paycellReq := PaycellProvisionRequest{
 		ExtraParameters:         nil,
 		RequestHeader:           requestHeader,
 		AcquirerBankCode:        nil,
-		Amount:                  amountInKurus,
+		Amount:                  request.Amount,
 		CardID:                  nil,
 		CardToken:               &cardToken,
 		Currency:                request.Currency,
@@ -1076,7 +1073,7 @@ type PaycellProvisionRequest struct {
 	ExtraParameters         map[string]any       `json:"extraParameters"`
 	RequestHeader           PaycellRequestHeader `json:"requestHeader"`
 	AcquirerBankCode        *string              `json:"acquirerBankCode"`
-	Amount                  string               `json:"amount"`
+	Amount                  float64              `json:"amount"`
 	CardID                  *string              `json:"cardId"`
 	CardToken               *string              `json:"cardToken"`
 	Currency                string               `json:"currency"`
