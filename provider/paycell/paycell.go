@@ -337,8 +337,10 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 
 // CancelPayment cancels a payment (reverse operation)
 func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
-		return nil, errors.New("paycell: paymentID is required")
+	// get spesific key in log jsonb
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
 
 	endpoint := endpointReverse
@@ -355,7 +357,7 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason s
 
 	paycellReq := PaycellReverseRequest{
 		RequestHeader:           requestHeader,
-		OriginalReferenceNumber: paymentID,
+		OriginalReferenceNumber: originalReferenceNumber,
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
 		PaymentType:             "REVERSE",
@@ -667,36 +669,56 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
-		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
-		CardToken:        cardToken,
-		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
 		Msisdn:           msisdn,
-		Target:           "MERCHANT",
+		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
+		InstallmentCount: 1,
+		CardToken:        cardToken,
 		TransactionType:  "AUTH",
+		Target:           "MERCHANT",
 	}
 
-	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Make direct HTTP call instead of using sendProvisionRequest
+	url := p.baseURL + endpoint
+
+	jsonData, err := json.Marshal(paycellReq)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal getThreeDSession request: %w", err)
 	}
 
-	// Convert response to 3D session response
-	return &PaycellGetThreeDSessionResponse{
-		ResponseHeader: struct {
-			TransactionID       string `json:"transactionId"`
-			ResponseDateTime    string `json:"responseDateTime"`
-			ResponseCode        string `json:"responseCode"`
-			ResponseDescription string `json:"responseDescription"`
-		}{
-			TransactionID:       response.TransactionID,
-			ResponseDateTime:    time.Now().Format("20060102150405000"),
-			ResponseCode:        "0",
-			ResponseDescription: "Success",
-		},
-		ExtraParameters: nil,
-		ThreeDSessionId: response.PaymentID,
-	}, nil
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create getThreeDSession request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send getThreeDSession request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read getThreeDSession response: %w", err)
+	}
+
+	var threeDSessionResp PaycellGetThreeDSessionResponse
+	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSession response: %w. Response body: %s", err, string(body))
+	}
+
+	// Check for success
+	if threeDSessionResp.ResponseHeader.ResponseCode != "0" {
+		return nil, fmt.Errorf("getThreeDSession error: %s - %s", threeDSessionResp.ResponseHeader.ResponseCode, threeDSessionResp.ResponseHeader.ResponseDescription)
+	}
+
+	return &threeDSessionResp, nil
 }
 
 // submit3DForm submits the 3D secure form to Paycell and returns the redirect URL
