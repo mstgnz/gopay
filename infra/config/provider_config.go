@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"maps"
 	"strings"
 	"sync"
 )
@@ -94,43 +95,49 @@ func (c *ProviderConfig) SetTenantConfig(tenantID, providerName string, config m
 	return nil
 }
 
-// GetTenantConfig returns configuration for a specific tenant and provider
-func (c *ProviderConfig) GetTenantConfig(tenantID, providerName string) (map[string]string, error) {
+// GetTenantConfig returns configuration for a specific tenant and provider grouped by environment
+func (c *ProviderConfig) GetTenantConfig(tenantID, providerName string) (map[string]map[string]string, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("tenant ID cannot be empty")
 	}
-
-	c.mu.RLock()
-	// Create tenant-specific provider key
-	tenantProviderKey := fmt.Sprintf("%s_%s", strings.ToUpper(tenantID), strings.ToLower(providerName))
-
-	config, exists := c.configs[tenantProviderKey]
-	c.mu.RUnlock()
-
-	// If not found in memory, try loading from PostgreSQL
-	if !exists && c.storage != nil {
-		postgresConfig, err := c.storage.LoadTenantConfig(tenantID, providerName)
-		if err == nil {
-			// Cache in memory for future use
-			c.mu.Lock()
-			c.configs[tenantProviderKey] = postgresConfig
-			c.mu.Unlock()
-			config = postgresConfig
-			exists = true
-		}
+	if providerName == "" {
+		return nil, fmt.Errorf("provider name cannot be empty")
 	}
 
-	if !exists {
+	// Always fetch from database to get latest environment-grouped configs
+	if c.storage == nil {
+		return nil, fmt.Errorf("storage not initialized")
+	}
+
+	// Get provider ID
+	providerID, err := c.GetProviderIDByName(providerName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider ID: %w", err)
+	}
+
+	// Query database for all environments for this tenant-provider combination
+	configs, err := c.storage.LoadTenantConfigsByEnvironment(tenantID, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load tenant configs: %w", err)
+	}
+
+	if len(configs) == 0 {
 		return nil, fmt.Errorf("no configuration found for tenant: %s, provider: %s", tenantID, providerName)
 	}
 
-	// Return a copy to prevent external modification
-	configCopy := make(map[string]string)
-	for k, v := range config {
-		configCopy[k] = v
+	// Format result with environment-based keys
+	result := make(map[string]map[string]string)
+	for environment, config := range configs {
+		key := environment
+
+		// Return a copy to prevent external modification
+		configCopy := make(map[string]string)
+		maps.Copy(configCopy, config)
+
+		result[key] = configCopy
 	}
 
-	return configCopy, nil
+	return result, nil
 }
 
 // GetStats returns configuration and storage statistics

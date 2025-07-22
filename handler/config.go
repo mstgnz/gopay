@@ -151,27 +151,10 @@ func (h *ConfigHandler) GetTenantConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Remove sensitive information from response
-	publicConfig := make(map[string]string)
-	for key, value := range config {
-		if strings.Contains(strings.ToLower(key), "key") ||
-			strings.Contains(strings.ToLower(key), "password") ||
-			strings.Contains(strings.ToLower(key), "secret") {
-			// Mask sensitive values
-			if len(value) > 8 {
-				publicConfig[key] = value[:4] + "****" + value[len(value)-4:]
-			} else {
-				publicConfig[key] = "****"
-			}
-		} else {
-			publicConfig[key] = value
-		}
-	}
-
 	responseData := map[string]any{
 		"tenantId": tenantID,
 		"provider": providerName,
-		"config":   publicConfig,
+		"config":   config,
 	}
 
 	response.Success(w, http.StatusOK, "Configuration retrieved", responseData)

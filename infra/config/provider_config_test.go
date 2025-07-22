@@ -153,9 +153,8 @@ func TestProviderConfig_GetTenantConfig(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, testConfig, result)
-
 				// Verify config is a copy (not the original)
-				result["newKey"] = "newValue"
+				result["newKey"] = map[string]string{"test": "value"}
 				originalConfig, _ := config.GetTenantConfig(tt.tenantID, tt.providerName)
 				_, exists := originalConfig["newKey"]
 				assert.False(t, exists, "Config should be a copy, not reference")

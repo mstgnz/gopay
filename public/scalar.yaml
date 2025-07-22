@@ -1578,13 +1578,6 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
           description: Payment provider name
           example: iyzico
-        - name: tenantId
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: Tenant identifier for multi-tenant webhook routing (optional)
-          example: 1
       requestBody:
         required: true
         content:

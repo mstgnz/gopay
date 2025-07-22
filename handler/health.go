@@ -129,9 +129,10 @@ func (h *HealthHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Set appropriate HTTP status code
 	statusCode := http.StatusOK
-	if health.Status == "degraded" {
+	switch health.Status {
+	case "degraded":
 		statusCode = http.StatusOK // Still 200, but clients can check status field
-	} else if health.Status == "unhealthy" {
+	case "unhealthy":
 		statusCode = http.StatusServiceUnavailable
 	}
 

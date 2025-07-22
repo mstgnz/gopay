@@ -207,6 +207,53 @@ func (s *PostgresStorage) LoadTenantConfig(tenantID, providerName string) (map[s
 	return config, nil
 }
 
+// LoadTenantConfigsByEnvironment loads tenant configurations grouped by environment
+func (s *PostgresStorage) LoadTenantConfigsByEnvironment(tenantID string, providerID int) (map[string]map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Convert tenantID to int
+	tenantIDInt, err := strconv.Atoi(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	query := `
+		SELECT environment, key, value 
+		FROM tenant_configs 
+		WHERE tenant_id = $1 AND provider_id = $2
+		ORDER BY environment, key
+	`
+
+	rows, err := s.db.Query(query, tenantIDInt, providerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tenant config: %w", err)
+	}
+	defer rows.Close()
+
+	configs := make(map[string]map[string]string)
+
+	for rows.Next() {
+		var environment, key, value string
+		if err := rows.Scan(&environment, &key, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan config row: %w", err)
+		}
+
+		// Initialize environment map if not exists
+		if configs[environment] == nil {
+			configs[environment] = make(map[string]string)
+		}
+
+		configs[environment][key] = value
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating config rows: %w", err)
+	}
+
+	return configs, nil
+}
+
 // LoadAllTenantConfigs loads all tenant configurations from PostgreSQL
 func (s *PostgresStorage) LoadAllTenantConfigs() (map[string]map[string]string, error) {
 	s.mu.Lock()
