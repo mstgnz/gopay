@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -408,23 +409,15 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	// Generate unique reference code
 	clientRefCode := fmt.Sprintf("gopay_%d", time.Now().UnixNano())
 
-	// Generate timestamp
-	rnd := time.Now().Format("02-01-2006 15:04:05")
-
 	formData := map[string]string{
 		"sx":              p.sx,
 		"clientRefCode":   clientRefCode,
 		"amount":          fmt.Sprintf("%.2f", request.Amount),
-		"installmentNo":   "1", // Default to 1 installment
-		"cardHolderName":  request.CardInfo.CardHolderName,
-		"month":           request.CardInfo.ExpireMonth,
-		"year":            request.CardInfo.ExpireYear,
-		"cvv":             request.CardInfo.CVV,
-		"cardNumber":      request.CardInfo.CardNumber,
 		"transactionType": "SALES",
-		"rnd":             rnd,
-		"environment":     "API",
+		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
 		"currencyNumber":  currencyCodeTRY,
+		"installmentNo":   "1",
+		"ECOMM_PLATFORM":  "GOPAY",
 	}
 
 	// Add 3D settings
@@ -449,11 +442,9 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
 		}
 
-		successUrl := fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=success", p.gopayBaseURL, gopayCallbackURL)
-		failUrl := fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=failed", p.gopayBaseURL, gopayCallbackURL)
+		formData["successUrl"] = fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=success", p.gopayBaseURL, gopayCallbackURL)
+		formData["failUrl"] = fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=failed", p.gopayBaseURL, gopayCallbackURL)
 
-		formData["successUrl"] = successUrl
-		formData["failUrl"] = failUrl
 	}
 
 	// Add optional fields
@@ -475,8 +466,9 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 
 	// Generate hash according to Nkolay documentation
 	// Hash format varies by endpoint, for payment it's specific fields + secret key
-	hashString := p.generatePaymentHash(formData)
-	formData["hashData"] = hashString
+	formData["hashData"] = p.generatePaymentHash(formData)
+
+	log.Println("formData formData formData formData formData", formData)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointPayment, formData)
 	if err != nil {
