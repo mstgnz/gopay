@@ -411,6 +411,8 @@ func GetProviderRequestFromLog(providerName string, paymentID string, key string
 		return "", fmt.Errorf("failed to find key in JSON: %w", err)
 	}
 
+	result = strings.ReplaceAll(result, `"`, "")
+
 	return result, nil
 }
 

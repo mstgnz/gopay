@@ -258,14 +258,68 @@ func (p *PaycellProvider) Create3DPayment(ctx context.Context, request provider.
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
-	paymentID := callbackState.PaymentID
-	if paymentID == "" {
-		return nil, errors.New("paycell: paymentID is required")
+
+	cardToken, err := provider.GetProviderRequestFromLog("paycell", callbackState.PaymentID, "cardToken")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get card token: %s %w", callbackState.PaymentID, err)
 	}
 
-	//p.ThreeDSessionResult(ctx, callbackState, data)
+	msisdn, err := provider.GetProviderRequestFromLog("paycell", callbackState.PaymentID, "msisdn")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get phone number: %s %w", callbackState.PaymentID, err)
+	}
+	p.phoneNumber = msisdn
 
-	return p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: paymentID})
+	// sadece 3D doğrulama sonucu
+	threeDSessionResp, err := p.threeDSessionResult(ctx, callbackState, data)
+	if err != nil {
+		return nil, fmt.Errorf("paycell: failed to complete 3D payment: %w", err)
+	}
+	// Convert to standard payment response
+	now := time.Now()
+	response := &provider.PaymentResponse{
+		Success:          threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0",
+		PaymentID:        callbackState.PaymentID,
+		TransactionID:    threeDSessionResp.ThreeDOperationResult.ResponseHeader.TransactionID,
+		Amount:           callbackState.Amount,
+		Currency:         callbackState.Currency,
+		SystemTime:       &now,
+		ProviderResponse: threeDSessionResp,
+	}
+
+	// Set status and message based on 3D result
+	if threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0" {
+		response.Status = provider.StatusSuccessful
+		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+	} else {
+		response.Status = provider.StatusFailed
+		response.Message = threeDSessionResp.MdErrorMessage
+		if response.Message == "" {
+			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+		}
+		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
+	}
+
+	if response.Success {
+
+		// ödemeyi tamamla
+		request := provider.PaymentRequest{
+			Amount:   callbackState.Amount,
+			Currency: callbackState.Currency,
+			Customer: provider.Customer{
+				PhoneNumber: msisdn,
+			},
+		}
+		response, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
+		if err != nil {
+			return nil, fmt.Errorf("paycell: failed to complete 3D payment: %w", err)
+		}
+	}
+
+	response.PaymentID = callbackState.PaymentID
+	response.RedirectURL = callbackState.OriginalCallback
+
+	return response, nil
 }
 
 // GetPaymentStatus retrieves the current status of a payment
@@ -277,19 +331,19 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	// Get reference number from log
 	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get reference number: %w", err)
+		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
 	// Get amount from log
 	amountStr, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "amount")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get amount: %w", err)
+		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
 	}
 
 	// Get card token from log
 	cardToken, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "cardToken")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get card token: %w", err)
+		return nil, fmt.Errorf("failed to get card token: %s %w", request.PaymentID, err)
 	}
 
 	// Set clientIP for inquire operation - use a default if not available
@@ -408,13 +462,13 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 	// Get original reference number from log
 	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get reference number: %w", err)
+		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
 	// Get amount from log for reverse operation
 	amountStr, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "amount")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get amount: %w", err)
+		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
 	}
 
 	// Set clientIP for reverse operation - use a default if not available
@@ -513,7 +567,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	// Get original reference number from log
 	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get reference number: %w", err)
+		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
 	// Set clientIP for refund operation - use a default if not available
@@ -610,7 +664,7 @@ func (p *PaycellProvider) ValidateWebhook(ctx context.Context, data, headers map
 	return true, data, nil
 }
 
-func (p *PaycellProvider) ThreeDSessionResult(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*PaycellGetThreeDSessionResultResponse, error) {
 	paymentID := callbackState.PaymentID
 	if paymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
@@ -628,7 +682,7 @@ func (p *PaycellProvider) ThreeDSessionResult(ctx context.Context, callbackState
 		"requestHeader": map[string]any{
 			"transactionId":       transactionID,
 			"transactionDateTime": transactionDateTime,
-			"clientIPAddress":     p.clientIP,
+			"clientIPAddress":     callbackState.ClientIP,
 			"applicationName":     p.username,
 			"applicationPwd":      p.password,
 		},
@@ -673,36 +727,7 @@ func (p *PaycellProvider) ThreeDSessionResult(ctx context.Context, callbackState
 		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, string(body))
 	}
 
-	// Convert to standard payment response
-	now := time.Now()
-	response := &provider.PaymentResponse{
-		Success:          threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0",
-		PaymentID:        paymentID,
-		TransactionID:    threeDSessionResp.ThreeDOperationResult.ResponseHeader.TransactionID,
-		Amount:           callbackState.Amount,
-		Currency:         callbackState.Currency,
-		SystemTime:       &now,
-		ProviderResponse: threeDSessionResp,
-		RedirectURL:      callbackState.OriginalCallback,
-	}
-
-	// Set status and message based on 3D result
-	if threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0" {
-		response.Status = provider.StatusSuccessful
-		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
-	} else {
-		response.Status = provider.StatusFailed
-		response.Message = threeDSessionResp.MdErrorMessage
-		if response.Message == "" {
-			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
-		}
-		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
-	}
-
-	// Enhance response with callback state info using common helper
-	provider.EnhanceResponseWithCallbackState(response, callbackState)
-
-	return response, nil
+	return &threeDSessionResp, nil
 }
 
 // validatePaymentRequest validates payment request parameters
@@ -760,10 +785,10 @@ func (p *PaycellProvider) processPayment(ctx context.Context, request provider.P
 
 	// Step 2: Process payment based on 3D requirement
 	if is3D {
-		return p.provision3DWithToken(ctx, request, cardToken)
+		return p.provision3D(ctx, request, cardToken)
 	}
 
-	return p.provisionWithToken(ctx, request, cardToken)
+	return p.provisionAll(ctx, request, cardToken, "")
 }
 
 // getCardTokenSecure handles card tokenization according to Paycell docs
@@ -852,7 +877,7 @@ func (p *PaycellProvider) generateHash(data string) string {
 }
 
 // provisionWithToken processes a regular payment with card token
-func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provider.PaymentRequest, cardToken string) (*provider.PaymentResponse, error) {
+func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.PaymentRequest, cardToken string, threeDSessionID string) (*provider.PaymentResponse, error) {
 	endpoint := endpointProvisionAll
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
@@ -885,14 +910,14 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		Pin:                     nil,
 		PointAmount:             nil,
 		ReferenceNumber:         p.generateReferenceNumber(),
-		ThreeDSessionID:         nil,
+		ThreeDSessionID:         &threeDSessionID,
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
 }
 
 // provision3DWithToken processes a 3D secure payment with card token
-func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request provider.PaymentRequest, cardToken string) (*provider.PaymentResponse, error) {
+func (p *PaycellProvider) provision3D(ctx context.Context, request provider.PaymentRequest, cardToken string) (*provider.PaymentResponse, error) {
 	// First, get 3D session
 	threeDSession, err := p.getThreeDSession(ctx, request, cardToken)
 	if err != nil {
@@ -908,8 +933,9 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		Currency:         request.Currency,
 		LogID:            p.logID,
 		Provider:         "paycell",
-		Environment:      map[bool]string{true: "production", false: "sandbox"}[p.isProduction],
+		Environment:      request.Environment,
 		Timestamp:        time.Now(),
+		ClientIP:         request.ClientIP,
 	}
 
 	// Use common encryption utility

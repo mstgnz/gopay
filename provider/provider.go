@@ -175,6 +175,7 @@ type CallbackState struct {
 	Provider         string    `json:"provider"`
 	Environment      string    `json:"environment"`
 	Timestamp        time.Time `json:"timestamp"`
+	ClientIP         string    `json:"clientIp"`
 }
 
 var callbackEncryptor *CallbackEncryptor
@@ -302,25 +303,6 @@ func CreateSecureCallbackURL(gopayBaseURL, provider string, state CallbackState)
 func HandleEncryptedCallbackState(state string) (*CallbackState, error) {
 	encryptor := NewCallbackEncryptor()
 	return encryptor.DecryptCallbackState(state)
-}
-
-// EnhanceResponseWithCallbackState enhances provider response with callback state info for handler processing
-func EnhanceResponseWithCallbackState(response *PaymentResponse, state *CallbackState) {
-	if response == nil || state == nil {
-		return
-	}
-
-	if response.ProviderResponse == nil {
-		response.ProviderResponse = make(map[string]any)
-	}
-
-	if providerResp, ok := response.ProviderResponse.(map[string]any); ok {
-		providerResp["tenantId"] = state.TenantID
-		providerResp["originalCallback"] = state.OriginalCallback
-		providerResp["conversationId"] = state.ConversationID
-		providerResp["provider"] = state.Provider
-		providerResp["environment"] = state.Environment
-	}
 }
 
 // PaymentProvider defines the interface that all payment gateways must implement
