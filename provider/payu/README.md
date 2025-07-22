@@ -8,14 +8,14 @@ This document provides comprehensive information about integrating PayU Turkey p
 
 PayU Turkey is a leading payment processing platform in Turkey, offering secure and reliable payment solutions for businesses. This provider implementation supports:
 
-- ✅ **Direct Payments**: Non-3D secure card payments
-- ✅ **3D Secure Payments**: Enhanced security with SCA compliance
-- ✅ **Payment Status Inquiry**: Real-time payment status tracking
-- ✅ **Payment Cancellation**: Cancel pending payments
-- ✅ **Refunds**: Full and partial refund support
-- ✅ **Webhook Validation**: Secure webhook handling with signature verification
-- ✅ **Multi-currency Support**: TRY, USD, EUR and other major currencies
-- ✅ **Turkish Market Focus**: Optimized for Turkish payment ecosystem
+- **Direct Payments**: Non-3D secure card payments
+- **3D Secure Payments**: Enhanced security with SCA compliance
+- **Payment Status Inquiry**: Real-time payment status tracking
+- **Payment Cancellation**: Cancel pending payments
+- **Refunds**: Full and partial refund support
+- **Webhook Validation**: Secure webhook handling with signature verification
+- **Multi-currency Support**: TRY, USD, EUR and other major currencies
+- **Turkish Market Focus**: Optimized for Turkish payment ecosystem
 
 ## Configuration
 
@@ -269,12 +269,12 @@ func validateWebhook(payload, signature, secretKey string) bool {
 
 | Currency      | Code | Supported |
 | ------------- | ---- | --------- |
-| Turkish Lira  | TRY  | ✅        |
-| US Dollar     | USD  | ✅        |
-| Euro          | EUR  | ✅        |
-| British Pound | GBP  | ✅        |
-| Swiss Franc   | CHF  | ✅        |
-| Japanese Yen  | JPY  | ✅        |
+| Turkish Lira  | TRY  |           |
+| US Dollar     | USD  |           |
+| Euro          | EUR  |           |
+| British Pound | GBP  |           |
+| Swiss Franc   | CHF  |           |
+| Japanese Yen  | JPY  |           |
 
 ## Security Features
 

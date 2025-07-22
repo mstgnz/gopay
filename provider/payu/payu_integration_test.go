@@ -2,11 +2,16 @@ package payu
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/mstgnz/gopay/provider"
+)
+
+// PayU public test credentials
+const (
+	testMerchantID = "payu-test-merchant-12345"
+	testSecretKey  = "payu-test-secret-67890"
 )
 
 func TestPayUProvider_IntegrationTest(t *testing.T) {
@@ -14,18 +19,11 @@ func TestPayUProvider_IntegrationTest(t *testing.T) {
 		t.Skip("Skipping integration tests")
 	}
 
-	// Skip if no credentials provided
-	merchantID := os.Getenv("PAYU_MERCHANT_ID")
-	secretKey := os.Getenv("PAYU_SECRET_KEY")
-	if merchantID == "" || secretKey == "" {
-		t.Skip("PayU credentials not provided, skipping integration tests")
-	}
-
 	// Initialize provider
 	p := NewProvider()
 	config := map[string]string{
-		"merchantId":   merchantID,
-		"secretKey":    secretKey,
+		"merchantId":   testMerchantID,
+		"secretKey":    testSecretKey,
 		"environment":  "sandbox",
 		"gopayBaseURL": "https://test.gopay.com",
 	}

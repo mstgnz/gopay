@@ -153,12 +153,12 @@ func (p *PayUProvider) Create3DPayment(ctx context.Context, request provider.Pay
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *PayUProvider) Complete3DPayment(ctx context.Context, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayUProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" {
 		return nil, errors.New("payu: paymentID is required")
 	}
 
-	payuReq := p.mapTo3DCompleteRequest(paymentID, conversationID, data)
+	payuReq := p.mapTo3DCompleteRequest(callbackState.PaymentID, callbackState.ConversationID, data)
 
 	reqBody, err := json.Marshal(payuReq)
 	if err != nil {
