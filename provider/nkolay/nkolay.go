@@ -1,6 +1,7 @@
 package nkolay
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/tls"
@@ -9,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -522,23 +523,30 @@ func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
 	return base64.StdEncoding.EncodeToString(binaryData)
 }
 
-// sendFormRequest sends form-data request to Nkolay API using URL-encoded format
+// sendFormRequest sends form-data request to Nkolay API using multipart/form-data format
 func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, formData map[string]string) ([]byte, error) {
-	// Use application/x-www-form-urlencoded instead of multipart/form-data to prevent character corruption
-	values := url.Values{}
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	// Add all form fields
 	for key, value := range formData {
-		values.Set(key, value)
+		if err := writer.WriteField(key, value); err != nil {
+			return nil, fmt.Errorf("failed to write field %s: %w", key, err)
+		}
 	}
 
-	body := strings.NewReader(values.Encode())
+	// Close the writer to finalize the form
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, body)
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set proper content type for URL-encoded form data
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	// Set proper content type for multipart form data (as per Nkolay's official example)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Accept", "application/json, text/html")
 
 	resp, err := p.client.Do(req)
