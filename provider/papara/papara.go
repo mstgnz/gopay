@@ -138,13 +138,13 @@ func (p *PaparaProvider) Create3DPayment(ctx context.Context, request provider.P
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *PaparaProvider) Complete3DPayment(ctx context.Context, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PaparaProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" {
 		return nil, errors.New("papara: paymentID is required")
 	}
 
 	// For Papara, typically we just need to check the payment status after 3D completion
-	return p.GetPaymentStatus(ctx, paymentID)
+	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
 }
 
 // GetPaymentStatus retrieves the current status of a payment

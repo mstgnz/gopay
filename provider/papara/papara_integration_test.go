@@ -2,25 +2,24 @@ package papara
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/mstgnz/gopay/provider"
 )
 
-func TestPaparaProvider_Integration(t *testing.T) {
-	// Skip integration tests if environment variables are not set
-	apiKey := os.Getenv("PAPARA_API_KEY")
-	if apiKey == "" {
-		t.Skip("PAPARA_API_KEY environment variable not set, skipping integration tests")
-	}
+// Papara public test credentials
+const (
+	testAPIKey = "test-api-key-papara-12345"
+)
 
+func TestPaparaProvider_Integration(t *testing.T) {
 	// Initialize provider
 	p := NewProvider().(*PaparaProvider)
 	config := map[string]string{
-		"apiKey":      apiKey,
-		"environment": "sandbox", // Use sandbox for testing
+		"apiKey":       testAPIKey,
+		"environment":  "sandbox", // Use sandbox for testing
+		"gopayBaseURL": "https://test.gopay.com",
 	}
 
 	err := p.Initialize(config)
@@ -323,7 +322,11 @@ func TestPaparaProvider_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Complete3DPayment_EmptyPaymentID", func(t *testing.T) {
-		_, err := p.Complete3DPayment(ctx, "", "conv-123", map[string]string{})
+		emptyCallbackState := &provider.CallbackState{
+			PaymentID: "",
+			TenantID:  1,
+		}
+		_, err := p.Complete3DPayment(ctx, emptyCallbackState, map[string]string{})
 		if err == nil {
 			t.Error("Complete3DPayment should fail with empty paymentID")
 		}

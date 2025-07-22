@@ -6,13 +6,13 @@ This document explains how to use the Papara payment provider within GoPay.
 
 ## Features
 
-- ✅ **Standard Payment**: Direct card payment
-- ✅ **3D Secure Payment**: Secure payment with 3D authentication
-- ✅ **Payment Status Query**: Check payment status
-- ✅ **Refund Operations**: Full and partial refunds
-- ✅ **Cancel Operations**: Payment cancellation (as refund)
-- ✅ **Webhook Validation**: Secure webhook notifications
-- ✅ **Test and Live Environment**: Sandbox and production support
+- **Standard Payment**: Direct card payment
+- **3D Secure Payment**: Secure payment with 3D authentication
+- **Payment Status Query**: Check payment status
+- **Refund Operations**: Full and partial refunds
+- **Cancel Operations**: Payment cancellation (as refund)
+- **Webhook Validation**: Secure webhook notifications
+- **Test and Live Environment**: Sandbox and production support
 
 ## Configuration
 
@@ -31,7 +31,7 @@ APP_URL=https://your-domain.com  # For GoPay callback URLs
 
 | Parameter      | Required | Description                                  |
 | -------------- | -------- | -------------------------------------------- |
-| `apiKey`       | ✅       | API key obtained from Papara merchant panel  |
+| `apiKey`       |          | API key obtained from Papara merchant panel  |
 | `environment`  | ❌       | `sandbox` or `production` (default: sandbox) |
 | `gopayBaseURL` | ❌       | GoPay's own base URL (for callbacks)         |
 
@@ -326,8 +326,8 @@ For issues with Papara integration:
 
 ### v1.0.0
 
-- ✅ Initial release
-- ✅ Basic payment operations
-- ✅ 3D Secure support
-- ✅ Refund and cancel operations
-- ✅ Webhook validation
+- Initial release
+- Basic payment operations
+- 3D Secure support
+- Refund and cancel operations
+- Webhook validation
