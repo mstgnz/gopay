@@ -1116,7 +1116,6 @@ type PaycellGetThreeDSessionRequest struct {
 	InstallmentCount int                  `json:"installmentCount"`
 	MerchantCode     string               `json:"merchantCode"`
 	Msisdn           string               `json:"msisdn"`
-	ReferenceNumber  string               `json:"referenceNumber"`
 	Target           string               `json:"target"`
 	TransactionType  string               `json:"transactionType"`
 }
