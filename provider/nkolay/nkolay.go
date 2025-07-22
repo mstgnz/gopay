@@ -1,7 +1,6 @@
 package nkolay
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/tls"
@@ -10,8 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -482,42 +481,50 @@ func (p *NkolayProvider) generatePaymentHash(formData map[string]string) string 
 	return p.generateSHA1Hash(formData)
 }
 
-// generateSHA1Hash generates SHA1 hash and encodes it in base64
+// generateSHA1Hash generates SHA1 hash and encodes it in base64 (Nkolay official format)
 func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
-	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey + formData["customerKey"]
+	// Official Nkolay hash format from documentation:
+	// sx + clientRefCode + amount + successUrl + failUrl + rnd + merchantSecretKey + customerKey
+	customerKey := formData["customerKey"]
+	if customerKey == "" {
+		customerKey = "" // Use empty string if not provided
+	}
+
+	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey + customerKey
+
+	// PHP equivalent: base64_encode(pack('H*', sha1($hashstr)))
+	// This means: SHA1 -> hex string -> binary -> base64
 	h := sha1.New()
 	h.Write([]byte(input))
-	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+	hexHash := fmt.Sprintf("%x", h.Sum(nil)) // Get hex string
+
+	// Convert hex string to binary (like PHP's pack('H*', ...))
+	binaryData := make([]byte, len(hexHash)/2)
+	for i := 0; i < len(hexHash); i += 2 {
+		val, _ := strconv.ParseUint(hexHash[i:i+2], 16, 8)
+		binaryData[i/2] = byte(val)
+	}
+
+	return base64.StdEncoding.EncodeToString(binaryData)
 }
 
-// sendFormRequest sends form-data request to Nkolay API
+// sendFormRequest sends form-data request to Nkolay API using URL-encoded format
 func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, formData map[string]string) ([]byte, error) {
-	// Use multipart/form-data like the working JavaScript example
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	// Add form fields with proper UTF-8 encoding
+	// Use application/x-www-form-urlencoded instead of multipart/form-data to prevent character corruption
+	values := url.Values{}
 	for key, value := range formData {
-		if err := writer.WriteField(key, value); err != nil {
-			return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
-		}
+		values.Set(key, value)
 	}
 
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close form writer: %w", err)
-	}
+	body := strings.NewReader(values.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, &body)
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set proper content type with charset
-	contentType := writer.FormDataContentType()
-	if !strings.Contains(contentType, "charset") {
-		contentType = contentType + "; charset=utf-8"
-	}
-	req.Header.Set("Content-Type", contentType)
+	// Set proper content type for URL-encoded form data
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
 	req.Header.Set("Accept", "application/json, text/html")
 
 	resp, err := p.client.Do(req)
