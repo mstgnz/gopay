@@ -6,16 +6,16 @@ OzanPay payment gateway integration for GoPay library. This provider supports al
 
 ## Features
 
-- ✅ **Standard Card Payments** - Direct card payments without 3D Secure
-- ✅ **3D Secure Payments** - Enhanced security with 3D authentication
-- ✅ **Payment Status Query** - Real-time payment status checking
-- ✅ **Refund Operations** - Full and partial refunds
-- ✅ **Payment Cancellation** - Cancel pending/authorized payments
-- ✅ **Webhook Validation** - Secure webhook signature validation
-- ✅ **Multi-Currency Support** - Support for multiple currencies
-- ✅ **Test Environment** - Comprehensive sandbox testing
-- ✅ **Error Handling** - Detailed error codes and messages
-- ✅ **Request Validation** - Input validation before API calls
+- **Standard Card Payments** - Direct card payments without 3D Secure
+- **3D Secure Payments** - Enhanced security with 3D authentication
+- **Payment Status Query** - Real-time payment status checking
+- **Refund Operations** - Full and partial refunds
+- **Payment Cancellation** - Cancel pending/authorized payments
+- **Webhook Validation** - Secure webhook signature validation
+- **Multi-Currency Support** - Support for multiple currencies
+- **Test Environment** - Comprehensive sandbox testing
+- **Error Handling** - Detailed error codes and messages
+- **Request Validation** - Input validation before API calls
 
 ## Installation
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,40 +20,24 @@ const (
 	// Test amounts and currencies
 	testAmountSuccess = 100.50
 	testCurrency      = "TRY" // OzanPay primarily supports TRY
+
+	// OzanPay public test credentials
+	testAPIKey      = "test-api-key-12345"
+	testSecretKey   = "test-secret-key-67890"
+	testProviderKey = "test-provider-key-abcde"
 )
 
 func getTestConfig() map[string]string {
-	// Use environment variables for real API keys, fallback to test values
-	apiKey := os.Getenv("OZANPAY_API_KEY")
-	if apiKey == "" {
-		apiKey = "test-api-key" // This will fail in real tests but allows compilation
-	}
-
-	secretKey := os.Getenv("OZANPAY_SECRET_KEY")
-	if secretKey == "" {
-		secretKey = "test-secret-key"
-	}
-
-	providerKey := os.Getenv("OZANPAY_PROVIDER_KEY")
-	if providerKey == "" {
-		providerKey = "test-provider-key"
-	}
-
 	return map[string]string{
-		"apiKey":       apiKey,
-		"secretKey":    secretKey,
-		"providerKey":  providerKey,
+		"apiKey":       testAPIKey,
+		"secretKey":    testSecretKey,
+		"providerKey":  testProviderKey,
 		"environment":  "sandbox", // Always use sandbox for integration tests
 		"gopayBaseURL": "https://test.gopay.com",
 	}
 }
 
 func TestOzanPayProvider_Integration_CreatePayment_Success(t *testing.T) {
-	// Skip test if no real API keys provided
-	if os.Getenv("OZANPAY_API_KEY") == "" {
-		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
-	}
-
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
 	err := ozanpayProvider.Initialize(config)
@@ -116,11 +99,6 @@ func TestOzanPayProvider_Integration_CreatePayment_Success(t *testing.T) {
 }
 
 func TestOzanPayProvider_Integration_Create3DPayment(t *testing.T) {
-	// Skip test if no real API keys provided
-	if os.Getenv("OZANPAY_API_KEY") == "" {
-		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
-	}
-
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
 	err := ozanpayProvider.Initialize(config)
@@ -175,11 +153,6 @@ func TestOzanPayProvider_Integration_Create3DPayment(t *testing.T) {
 }
 
 func TestOzanPayProvider_Integration_GetPaymentStatus(t *testing.T) {
-	// Skip test if no real API keys provided
-	if os.Getenv("OZANPAY_API_KEY") == "" {
-		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
-	}
-
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
 	err := ozanpayProvider.Initialize(config)
@@ -244,11 +217,6 @@ func TestOzanPayProvider_Integration_GetPaymentStatus(t *testing.T) {
 }
 
 func TestOzanPayProvider_Integration_RefundPayment(t *testing.T) {
-	// Skip test if no real API keys provided
-	if os.Getenv("OZANPAY_API_KEY") == "" {
-		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
-	}
-
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
 	err := ozanpayProvider.Initialize(config)
@@ -410,11 +378,6 @@ func TestOzanPayProvider_Integration_ErrorScenarios(t *testing.T) {
 }
 
 func TestOzanPayProvider_Integration_NetworkTimeout(t *testing.T) {
-	// Skip test if no real API keys provided
-	if os.Getenv("OZANPAY_API_KEY") == "" {
-		t.Skip("Skipping integration test: OZANPAY_API_KEY not set")
-	}
-
 	ozanpayProvider := NewProvider().(*OzanPayProvider)
 	config := getTestConfig()
 	err := ozanpayProvider.Initialize(config)

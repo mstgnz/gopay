@@ -161,14 +161,14 @@ func (p *OzanPayProvider) Create3DPayment(ctx context.Context, request provider.
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *OzanPayProvider) Complete3DPayment(ctx context.Context, paymentID string, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *OzanPayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" {
 		return nil, errors.New("ozanpay: paymentID is required for 3D completion")
 	}
 
 	// For OzanPay, 3D completion is handled via status check
 	// The payment should be completed automatically after 3D authentication
-	return p.GetPaymentStatus(ctx, paymentID)
+	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
 }
 
 // GetPaymentStatus retrieves the current status of a payment
