@@ -1,13 +1,12 @@
 // Stripe Integration Tests
 // These tests make real API calls to Stripe's test environment.
-// Using environment variables or fallback to Stripe's documented test keys.
+// Uses Stripe's public test credentials for testing.
 // Run: go test -v ./provider/stripe/ -run Integration
 
 package stripe
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,23 +14,16 @@ import (
 	"github.com/mstgnz/gopay/provider"
 )
 
+// Stripe public test credentials (safe for testing)
+const (
+	testSecretKey = "sk_test_26PHem9AhJZvU623DfE1x4sd"
+	testPublicKey = "pk_test_TYooMQauvdEDq54NiTphI7jx"
+)
+
 func getStripeConfig() map[string]string {
-	// Use environment variables if available, otherwise fallback to Stripe's documented test keys
-	secretKey := os.Getenv("STRIPE_SECRET_KEY")
-	if secretKey == "" {
-		// Fallback to Stripe's well-known test key (safe for testing)
-		secretKey = "sk_test_" + "26PHem9AhJZvU623DfE1x4sd"
-	}
-
-	publicKey := os.Getenv("STRIPE_PUBLIC_KEY")
-	if publicKey == "" {
-		// Fallback to Stripe's well-known test key (safe for testing)
-		publicKey = "pk_test_" + "TYooMQauvdEDq54NiTphI7jx"
-	}
-
 	return map[string]string{
-		"secretKey":    secretKey,
-		"publicKey":    publicKey,
+		"secretKey":    testSecretKey,
+		"publicKey":    testPublicKey,
 		"environment":  "sandbox", // Use sandbox/test environment
 		"gopayBaseURL": "http://localhost:9999",
 	}

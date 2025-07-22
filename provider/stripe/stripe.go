@@ -132,8 +132,8 @@ func (p *StripeProvider) Create3DPayment(ctx context.Context, request provider.P
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *StripeProvider) Complete3DPayment(ctx context.Context, paymentID string, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *StripeProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" {
 		return nil, errors.New("stripe: paymentID is required for 3D completion")
 	}
 
@@ -142,7 +142,7 @@ func (p *StripeProvider) Complete3DPayment(ctx context.Context, paymentID string
 		ReturnURL: stripe.String(fmt.Sprintf("%s/v1/callback/stripe", p.gopayBaseURL)),
 	}
 
-	pi, err := p.client.V1PaymentIntents.Confirm(ctx, paymentID, params)
+	pi, err := p.client.V1PaymentIntents.Confirm(ctx, callbackState.PaymentID, params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe: failed to confirm payment intent: %w", err)
 	}
