@@ -220,18 +220,15 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	// Complete 3D payment
 	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
 
-	// Enhanced redirect handling with better URL parsing
-	originalCallbackURL := r.URL.Query().Get("originalCallbackUrl")
-
 	if err != nil {
-		h.handleCallbackError(w, r, err, originalCallbackURL)
+		h.handleCallbackError(w, r, err, resp.RedirectURL)
 		return
 	}
 
 	if resp.Success {
-		h.handleCallbackSuccess(w, r, resp, originalCallbackURL)
+		h.handleCallbackSuccess(w, r, resp, resp.RedirectURL)
 	} else {
-		h.handleCallbackFailure(w, r, resp, originalCallbackURL)
+		h.handleCallbackFailure(w, r, resp, resp.RedirectURL)
 	}
 }
 

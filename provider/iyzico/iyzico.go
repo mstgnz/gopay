@@ -170,6 +170,7 @@ func (p *IyzicoProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		"paymentId":      callbackState.PaymentID,
 		"conversationId": callbackState.ConversationID,
 		"locale":         defaultLocale,
+		"callbackUrl":    callbackState.OriginalCallback,
 	}
 
 	// Add additional callback data received from 3D payment page
@@ -520,6 +521,7 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 		Success:          resp["status"] == statusSuccess,
 		SystemTime:       &now,
 		ProviderResponse: resp,
+		RedirectURL:      requestData["callbackUrl"].(string),
 	}
 
 	// Extract payment info based on response

@@ -213,6 +213,7 @@ func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		Message:          data["message"],
 		SystemTime:       timePtr(time.Now()),
 		ProviderResponse: data,
+		RedirectURL:      callbackState.OriginalCallback,
 	}
 
 	// Map status

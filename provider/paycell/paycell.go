@@ -290,6 +290,10 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 	}
 
 	// Add provider request to client request log
+	if logID, err := strconv.ParseInt(data["logID"], 10, 64); err == nil {
+		p.logID = logID
+	}
+
 	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
@@ -326,6 +330,7 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 		Currency:         callbackState.Currency,
 		SystemTime:       &now,
 		ProviderResponse: threeDSessionResp,
+		RedirectURL:      callbackState.OriginalCallback,
 	}
 
 	// Set status and message based on 3D result

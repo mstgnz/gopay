@@ -136,6 +136,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 			},
 		})
 	}
+	data["logID"] = strconv.FormatInt(logID, 10)
 
 	response, err := provider.Complete3DPayment(ctx, callbackState, data)
 
