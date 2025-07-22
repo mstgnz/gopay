@@ -401,7 +401,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		OriginalReferenceNumber: request.PaymentID,
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
-		Amount:                  fmt.Sprintf("%.2f", request.RefundAmount),
+		Amount:                  fmt.Sprintf("%.0f", request.RefundAmount*100), // Convert TL to kuruş (multiply by 100)
 		PaymentType:             "REFUND",
 	}
 
@@ -595,7 +595,7 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		ExtraParameters:         nil,
 		RequestHeader:           requestHeader,
 		AcquirerBankCode:        nil,
-		Amount:                  request.Amount,
+		Amount:                  fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
 		CardID:                  nil,
 		CardToken:               &cardToken,
 		Currency:                request.Currency,
@@ -678,7 +678,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
-		Amount:           fmt.Sprintf("%.2f", request.Amount),
+		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
 		CardToken:        cardToken,
 		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
@@ -943,7 +943,7 @@ func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _
 			"transactionId":       transactionID,
 		},
 		"acquirerBankCode":        nil,
-		"amount":                  fmt.Sprintf("%.2f", request.Amount),
+		"amount":                  fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
 		"cardId":                  nil,
 		"cardToken":               nil,
 		"currency":                request.Currency,
@@ -1095,7 +1095,7 @@ type PaycellProvisionRequest struct {
 	ExtraParameters         map[string]any       `json:"extraParameters"`
 	RequestHeader           PaycellRequestHeader `json:"requestHeader"`
 	AcquirerBankCode        *string              `json:"acquirerBankCode"`
-	Amount                  float64              `json:"amount"`
+	Amount                  string               `json:"amount"`
 	CardID                  *string              `json:"cardId"`
 	CardToken               *string              `json:"cardToken"`
 	Currency                string               `json:"currency"`
