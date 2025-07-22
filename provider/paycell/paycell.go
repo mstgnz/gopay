@@ -676,9 +676,8 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
 		Msisdn:           msisdn,
-		ReferenceNumber:  p.generateReferenceNumber(),
-		Target:           "MERCHANT", // Changed from "AUTH" to "MERCHANT" as per docs
-		TransactionType:  "AUTH",     // Changed from "SALE" to "AUTH" as per docs
+		Target:           "MERCHANT",
+		TransactionType:  "AUTH",
 	}
 
 	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -1103,7 +1102,6 @@ type PaycellGetThreeDSessionRequest struct {
 	InstallmentCount int                  `json:"installmentCount"`
 	MerchantCode     string               `json:"merchantCode"`
 	Msisdn           string               `json:"msisdn"`
-	ReferenceNumber  string               `json:"referenceNumber"`
 	Target           string               `json:"target"`
 	TransactionType  string               `json:"transactionType"`
 }
