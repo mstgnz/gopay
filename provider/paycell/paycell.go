@@ -263,93 +263,9 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	// Prepare request according to PayCell documentation
-	transactionID := p.generateTransactionID()
-	transactionDateTime := p.generateTransactionDateTime()
+	//p.ThreeDSessionResult(ctx, callbackState, data)
 
-	// Create request structure as shown in documentation
-	paycellReq := map[string]any{
-		"merchantCode":    p.merchantID,
-		"msisdn":          p.phoneNumber,
-		"threeDSessionId": callbackState.PaymentID,
-		"requestHeader": map[string]any{
-			"transactionId":       transactionID,
-			"transactionDateTime": transactionDateTime,
-			"clientIPAddress":     p.clientIP,
-			"applicationName":     p.username,
-			"applicationPwd":      p.password,
-		},
-	}
-
-	// Make HTTP request to getThreeDSessionResult endpoint
-	url := p.baseURL + endpointGetThreeDSessionResult
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal getThreeDSessionResult request: %w", err)
-	}
-
-	// Add provider request to client request log
-	if logID, err := strconv.ParseInt(data["logID"], 10, 64); err == nil {
-		p.logID = logID
-	}
-
-	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create getThreeDSessionResult request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send getThreeDSessionResult request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read getThreeDSessionResult response: %w", err)
-	}
-
-	var threeDSessionResp PaycellGetThreeDSessionResultResponse
-	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, string(body))
-	}
-
-	// Convert to standard payment response
-	now := time.Now()
-	response := &provider.PaymentResponse{
-		Success:          threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0",
-		PaymentID:        paymentID,
-		TransactionID:    threeDSessionResp.ThreeDOperationResult.ResponseHeader.TransactionID,
-		Amount:           callbackState.Amount,
-		Currency:         callbackState.Currency,
-		SystemTime:       &now,
-		ProviderResponse: threeDSessionResp,
-		RedirectURL:      callbackState.OriginalCallback,
-	}
-
-	// Set status and message based on 3D result
-	if threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0" {
-		response.Status = provider.StatusSuccessful
-		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
-	} else {
-		response.Status = provider.StatusFailed
-		response.Message = threeDSessionResp.MdErrorMessage
-		if response.Message == "" {
-			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
-		}
-		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
-	}
-
-	// Enhance response with callback state info using common helper
-	provider.EnhanceResponseWithCallbackState(response, callbackState)
-
-	return response, nil
+	return p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: paymentID})
 }
 
 // GetPaymentStatus retrieves the current status of a payment
@@ -692,6 +608,101 @@ func (p *PaycellProvider) ValidateWebhook(ctx context.Context, data, headers map
 	// Paycell doesn't have webhook validation in the same way
 	// This is more for completion callbacks
 	return true, data, nil
+}
+
+func (p *PaycellProvider) ThreeDSessionResult(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	paymentID := callbackState.PaymentID
+	if paymentID == "" {
+		return nil, errors.New("paycell: paymentID is required")
+	}
+
+	// Prepare request according to PayCell documentation
+	transactionID := p.generateTransactionID()
+	transactionDateTime := p.generateTransactionDateTime()
+
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"merchantCode":    p.merchantID,
+		"msisdn":          p.phoneNumber,
+		"threeDSessionId": callbackState.PaymentID,
+		"requestHeader": map[string]any{
+			"transactionId":       transactionID,
+			"transactionDateTime": transactionDateTime,
+			"clientIPAddress":     p.clientIP,
+			"applicationName":     p.username,
+			"applicationPwd":      p.password,
+		},
+	}
+
+	// Make HTTP request to getThreeDSessionResult endpoint
+	url := p.baseURL + endpointGetThreeDSessionResult
+
+	jsonData, err := json.Marshal(paycellReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal getThreeDSessionResult request: %w", err)
+	}
+
+	// Add provider request to client request log
+	if logID, err := strconv.ParseInt(data["logID"], 10, 64); err == nil {
+		p.logID = logID
+	}
+
+	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create getThreeDSessionResult request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send getThreeDSessionResult request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read getThreeDSessionResult response: %w", err)
+	}
+
+	var threeDSessionResp PaycellGetThreeDSessionResultResponse
+	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, string(body))
+	}
+
+	// Convert to standard payment response
+	now := time.Now()
+	response := &provider.PaymentResponse{
+		Success:          threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0",
+		PaymentID:        paymentID,
+		TransactionID:    threeDSessionResp.ThreeDOperationResult.ResponseHeader.TransactionID,
+		Amount:           callbackState.Amount,
+		Currency:         callbackState.Currency,
+		SystemTime:       &now,
+		ProviderResponse: threeDSessionResp,
+		RedirectURL:      callbackState.OriginalCallback,
+	}
+
+	// Set status and message based on 3D result
+	if threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0" {
+		response.Status = provider.StatusSuccessful
+		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+	} else {
+		response.Status = provider.StatusFailed
+		response.Message = threeDSessionResp.MdErrorMessage
+		if response.Message == "" {
+			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+		}
+		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
+	}
+
+	// Enhance response with callback state info using common helper
+	provider.EnhanceResponseWithCallbackState(response, callbackState)
+
+	return response, nil
 }
 
 // validatePaymentRequest validates payment request parameters
