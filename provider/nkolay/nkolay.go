@@ -240,8 +240,8 @@ func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *p
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
@@ -251,7 +251,7 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 		"sx":            p.sxList,
 		"startDate":     today.AddDate(0, 0, -1).Format("02.01.2006"), // Yesterday
 		"endDate":       today.Format("02.01.2006"),                   // Today
-		"clientRefCode": paymentID,
+		"clientRefCode": request.PaymentID,
 	}
 
 	// Generate hash: sx+startDate+endDate+clientRefCode+secretkey
@@ -265,7 +265,7 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 	// Parse response (Nkolay returns XML/HTML format)
 	// For now, return a basic response - would need XML parsing for full implementation
 	return &provider.PaymentResponse{
-		PaymentID:  paymentID,
+		PaymentID:  request.PaymentID,
 		Success:    strings.Contains(string(responseBody), "SUCCESS"),
 		Status:     provider.StatusPending,
 		Message:    "Status check completed",
@@ -277,14 +277,14 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 }
 
 // CancelPayment cancels a payment (same day cancellation)
-func (p *NkolayProvider) CancelPayment(ctx context.Context, paymentID, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *NkolayProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
 	formData := map[string]string{
 		"sx":            p.sxCancel,
-		"referenceCode": paymentID,
+		"referenceCode": request.PaymentID,
 		"type":          "cancel",
 		"trxDate":       time.Now().Format("2006.01.02"),
 	}
@@ -298,7 +298,7 @@ func (p *NkolayProvider) CancelPayment(ctx context.Context, paymentID, reason st
 	}
 
 	return &provider.PaymentResponse{
-		PaymentID:  paymentID,
+		PaymentID:  request.PaymentID,
 		Success:    strings.Contains(string(responseBody), "SUCCESS"),
 		Status:     provider.StatusCancelled,
 		Message:    "Payment cancellation processed",

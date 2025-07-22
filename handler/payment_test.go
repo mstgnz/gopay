@@ -19,8 +19,8 @@ import (
 // MockPaymentService implements PaymentServiceInterface for testing
 type MockPaymentService struct {
 	CreatePaymentFunc     func(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
-	GetPaymentStatusFunc  func(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
-	CancelPaymentFunc     func(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
+	GetPaymentStatusFunc  func(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error)
+	CancelPaymentFunc     func(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
 	RefundPaymentFunc     func(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
 	Complete3DPaymentFunc func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhookFunc   func(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
@@ -41,13 +41,13 @@ func (m *MockPaymentService) CreatePayment(ctx context.Context, environment, pro
 	}, nil
 }
 
-func (m *MockPaymentService) GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error) {
+func (m *MockPaymentService) GetPaymentStatus(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
 	if m.GetPaymentStatusFunc != nil {
-		return m.GetPaymentStatusFunc(ctx, environment, providerName, paymentID)
+		return m.GetPaymentStatusFunc(ctx, environment, providerName, request)
 	}
 	return &provider.PaymentResponse{
 		Success:       true,
-		PaymentID:     paymentID,
+		PaymentID:     request.PaymentID,
 		TransactionID: "test-tx-123",
 		Status:        "success",
 		Amount:        100.0,
@@ -56,13 +56,13 @@ func (m *MockPaymentService) GetPaymentStatus(ctx context.Context, environment, 
 	}, nil
 }
 
-func (m *MockPaymentService) CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error) {
+func (m *MockPaymentService) CancelPayment(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error) {
 	if m.CancelPaymentFunc != nil {
-		return m.CancelPaymentFunc(ctx, environment, providerName, paymentID, reason)
+		return m.CancelPaymentFunc(ctx, environment, providerName, request)
 	}
 	return &provider.PaymentResponse{
 		Success:   true,
-		PaymentID: paymentID,
+		PaymentID: request.PaymentID,
 		Status:    "cancelled",
 		Message:   "Payment cancelled",
 	}, nil
@@ -217,7 +217,7 @@ func TestPaymentHandler_GetPaymentStatus(t *testing.T) {
 		environment    string
 		provider       string
 		expectedStatus int
-		mockFunc       func(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
+		mockFunc       func(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error)
 	}{
 		{
 			name:           "successful status check",
@@ -246,7 +246,7 @@ func TestPaymentHandler_GetPaymentStatus(t *testing.T) {
 			environment:    "sandbox",
 			provider:       "iyzico",
 			expectedStatus: 500,
-			mockFunc: func(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error) {
+			mockFunc: func(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
 				return nil, errors.New("service error")
 			},
 		},
@@ -285,7 +285,7 @@ func TestPaymentHandler_CancelPayment(t *testing.T) {
 		environment    string
 		provider       string
 		expectedStatus int
-		mockFunc       func(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
+		mockFunc       func(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
 	}{
 		{
 			name:           "successful cancellation",
@@ -318,7 +318,7 @@ func TestPaymentHandler_CancelPayment(t *testing.T) {
 			environment:    "sandbox",
 			provider:       "iyzico",
 			expectedStatus: 500,
-			mockFunc: func(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error) {
+			mockFunc: func(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error) {
 				return nil, errors.New("cancellation failed")
 			},
 		},

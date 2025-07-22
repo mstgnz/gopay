@@ -224,7 +224,7 @@ func TestIntegration_GetPaymentStatus(t *testing.T) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel2()
 
-	statusResponse, err := nkolayProvider.GetPaymentStatus(ctx2, paymentResponse.PaymentID)
+	statusResponse, err := nkolayProvider.GetPaymentStatus(ctx2, provider.GetPaymentStatusRequest{PaymentID: paymentResponse.PaymentID})
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestIntegration_CancelPayment(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	response, err := nkolayProvider.CancelPayment(ctx, dummyPaymentID, "Test cancellation")
+	response, err := nkolayProvider.CancelPayment(ctx, provider.CancelRequest{PaymentID: dummyPaymentID, Reason: "Test cancellation"})
 
 	if err != nil {
 		t.Fatalf("CancelPayment failed: %v", err)
@@ -482,7 +482,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	t.Log("🔄 Step 2: Checking payment status...")
 
-	statusResponse, err := nkolayProvider.GetPaymentStatus(ctx, paymentResponse.PaymentID)
+	statusResponse, err := nkolayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: paymentResponse.PaymentID})
 	if err != nil {
 		t.Logf("⚠️ Status check failed (expected for test environment): %v", err)
 	} else {

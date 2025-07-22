@@ -130,6 +130,24 @@ type RefundRequest struct {
 	Description    string  `json:"description,omitempty"`
 	Currency       string  `json:"currency,omitempty"`
 	ConversationID string  `json:"conversationId,omitempty"`
+	LogID          int64   `json:"logId,omitempty"`
+}
+
+// CancelRequest contains information to request a cancel
+type CancelRequest struct {
+	PaymentID      string `json:"paymentId"`
+	Reason         string `json:"reason,omitempty"`
+	Description    string `json:"description,omitempty"`
+	Currency       string `json:"currency,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
+	LogID          int64  `json:"logId,omitempty"`
+}
+
+// GetPaymentStatusRequest contains information to request a payment status
+type GetPaymentStatusRequest struct {
+	PaymentID      string `json:"paymentId"`
+	ConversationID string `json:"conversationId,omitempty"`
+	LogID          int64  `json:"logId,omitempty"`
 }
 
 // RefundResponse contains the result of a refund request
@@ -326,10 +344,10 @@ type PaymentProvider interface {
 	Complete3DPayment(ctx context.Context, callbackState *CallbackState, data map[string]string) (*PaymentResponse, error)
 
 	// GetPaymentStatus retrieves the current status of a payment
-	GetPaymentStatus(ctx context.Context, paymentID string) (*PaymentResponse, error)
+	GetPaymentStatus(ctx context.Context, request GetPaymentStatusRequest) (*PaymentResponse, error)
 
 	// CancelPayment cancels a payment
-	CancelPayment(ctx context.Context, paymentID string, reason string) (*PaymentResponse, error)
+	CancelPayment(ctx context.Context, request CancelRequest) (*PaymentResponse, error)
 
 	// RefundPayment issues a refund for a payment
 	RefundPayment(ctx context.Context, request RefundRequest) (*RefundResponse, error)

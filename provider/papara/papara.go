@@ -144,17 +144,17 @@ func (p *PaparaProvider) Complete3DPayment(ctx context.Context, callbackState *p
 	}
 
 	// For Papara, typically we just need to check the payment status after 3D completion
-	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
+	return p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: callbackState.PaymentID})
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *PaparaProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PaparaProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("papara: paymentID is required")
 	}
 
 	// Papara API: /payments?id=paymentID (query parametreli)
-	endpoint := p.baseURL + "/payments?id=" + paymentID
+	endpoint := p.baseURL + "/payments?id=" + request.PaymentID
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -183,19 +183,19 @@ func (p *PaparaProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 }
 
 // CancelPayment cancels a payment
-func (p *PaparaProvider) CancelPayment(ctx context.Context, paymentID, reason string) (*provider.PaymentResponse, error) {
+func (p *PaparaProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
 	// Papara doesn't have a direct cancel endpoint, but we can treat this as a refund
 	// First get the payment details to determine the amount
-	paymentResp, err := p.GetPaymentStatus(ctx, paymentID)
+	paymentResp, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: request.PaymentID})
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a full refund request
 	refundReq := provider.RefundRequest{
-		PaymentID:    paymentID,
+		PaymentID:    request.PaymentID,
 		RefundAmount: paymentResp.Amount,
-		Reason:       reason,
+		Reason:       request.Reason,
 		Currency:     paymentResp.Currency,
 	}
 
@@ -210,7 +210,7 @@ func (p *PaparaProvider) CancelPayment(ctx context.Context, paymentID, reason st
 		Status:           provider.StatusCancelled,
 		Message:          refundResp.Message,
 		ErrorCode:        refundResp.ErrorCode,
-		PaymentID:        paymentID,
+		PaymentID:        request.PaymentID,
 		Amount:           refundResp.RefundAmount,
 		Currency:         paymentResp.Currency,
 		SystemTime:       refundResp.SystemTime,

@@ -193,12 +193,12 @@ func (p *PayUProvider) Complete3DPayment(ctx context.Context, callbackState *pro
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *PayUProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayUProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("payu: paymentID is required")
 	}
 
-	url := fmt.Sprintf(p.baseURL+endpointPaymentStatus, paymentID)
+	url := fmt.Sprintf(p.baseURL+endpointPaymentStatus, request.PaymentID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: failed to create request: %w", err)
@@ -226,14 +226,14 @@ func (p *PayUProvider) GetPaymentStatus(ctx context.Context, paymentID string) (
 }
 
 // CancelPayment cancels a payment
-func (p *PayUProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayUProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("payu: paymentID is required")
 	}
 
 	payuReq := map[string]any{
-		"paymentId": paymentID,
-		"reason":    reason,
+		"paymentId": request.PaymentID,
+		"reason":    request.Reason,
 	}
 
 	reqBody, err := json.Marshal(payuReq)

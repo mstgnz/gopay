@@ -254,7 +254,7 @@ func TestIntegration_GetPaymentStatus(t *testing.T) {
 	t.Logf("💳 Payment created with ID: %s", createResponse.PaymentID)
 
 	// Now check its status
-	statusResponse, err := iyzicoProvider.GetPaymentStatus(ctx, createResponse.PaymentID)
+	statusResponse, err := iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: createResponse.PaymentID})
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestIntegration_CancelPayment(t *testing.T) {
 
 	// Cancel the payment
 	t.Log("🚫 Attempting to cancel payment...")
-	cancelResponse, err := iyzicoProvider.CancelPayment(ctx, createResponse.PaymentID, "Integration test cancellation")
+	cancelResponse, err := iyzicoProvider.CancelPayment(ctx, provider.CancelRequest{PaymentID: createResponse.PaymentID, Reason: "Integration test cancellation"})
 	if err != nil {
 		t.Fatalf("CancelPayment failed: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// Step 2: Check payment status
 	t.Log("Step 2: Checking payment status...")
-	statusResponse, err := iyzicoProvider.GetPaymentStatus(ctx, createResponse.PaymentID)
+	statusResponse, err := iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: createResponse.PaymentID})
 	if err != nil || !statusResponse.Success {
 		t.Fatalf("Step 2 failed - GetPaymentStatus: %v", err)
 	}

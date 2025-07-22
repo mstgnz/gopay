@@ -166,22 +166,22 @@ func (p *PayTRProvider) Complete3DPayment(ctx context.Context, callbackState *pr
 
 	// For PayTR, 3D completion is handled via callback
 	// We typically just need to verify the callback data and get payment status
-	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
+	return p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: callbackState.PaymentID})
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *PayTRProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayTRProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("paytr: paymentID is required")
 	}
 
 	data := map[string]string{
 		"merchant_id":  p.merchantID,
-		"merchant_oid": paymentID,
+		"merchant_oid": request.PaymentID,
 	}
 
 	// Generate token hash for status inquiry
-	tokenHash := p.generateStatusQueryHash(paymentID)
+	tokenHash := p.generateStatusQueryHash(request.PaymentID)
 	data["paytr_token"] = tokenHash
 
 	response, err := p.sendRequest(ctx, endpointPaymentStatus, data)
@@ -189,12 +189,12 @@ func (p *PayTRProvider) GetPaymentStatus(ctx context.Context, paymentID string) 
 		return nil, fmt.Errorf("paytr: payment status inquiry failed: %w", err)
 	}
 
-	return p.mapToPaymentResponse(response, paymentID), nil
+	return p.mapToPaymentResponse(response, request.PaymentID), nil
 }
 
 // CancelPayment cancels a payment (PayTR handles this via refund with 0 commission)
-func (p *PayTRProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PayTRProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("paytr: paymentID is required")
 	}
 

@@ -726,7 +726,7 @@ func TestPayUProvider_Integration_GetPaymentStatus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	response, err := p.GetPaymentStatus(ctx, "pay_test_123")
+	response, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "pay_test_123"})
 
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)

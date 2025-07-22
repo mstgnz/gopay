@@ -391,7 +391,7 @@ func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := &NkolayProvider{
+	nkolayProvider := &NkolayProvider{
 		sxList:    testSxList,
 		secretKey: testSecretKey,
 		baseURL:   server.URL,
@@ -399,7 +399,7 @@ func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	response, err := provider.GetPaymentStatus(ctx, "test-payment-id")
+	response, err := nkolayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "test-payment-id"})
 
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)

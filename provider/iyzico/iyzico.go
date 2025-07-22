@@ -184,13 +184,13 @@ func (p *IyzicoProvider) Complete3DPayment(ctx context.Context, callbackState *p
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *IyzicoProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *IyzicoProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("iyzico: paymentID is required")
 	}
 
 	req := map[string]any{
-		"paymentId":      paymentID,
+		"paymentId":      request.PaymentID,
 		"locale":         defaultLocale,
 		"conversationId": uuid.New().String(),
 	}
@@ -199,21 +199,21 @@ func (p *IyzicoProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 }
 
 // CancelPayment cancels a payment
-func (p *IyzicoProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *IyzicoProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("iyzico: paymentID is required")
 	}
 
 	req := map[string]any{
-		"paymentId":      paymentID,
+		"paymentId":      request.PaymentID,
 		"ip":             "127.0.0.1", // Usually this would come from the client
 		"locale":         defaultLocale,
 		"conversationId": uuid.New().String(),
 	}
 
-	if reason != "" {
-		req["reason"] = reason
-		req["description"] = reason
+	if request.Reason != "" {
+		req["reason"] = request.Reason
+		req["description"] = request.Description
 	}
 
 	return p.sendPaymentRequest(ctx, endpointCancel, req)
@@ -287,7 +287,9 @@ func (p *IyzicoProvider) ValidateWebhook(ctx context.Context, data map[string]st
 		return false, nil, errors.New("iyzico: missing paymentId in webhook data")
 	}
 
-	response, err := p.GetPaymentStatus(ctx, paymentID)
+	response, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{
+		PaymentID: paymentID,
+	})
 	if err != nil {
 		return false, nil, fmt.Errorf("iyzico: failed to validate webhook: %w", err)
 	}

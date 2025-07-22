@@ -199,7 +199,7 @@ func TestOzanPayProvider_Integration_GetPaymentStatus(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Now check the payment status
-	statusResponse, err := ozanpayProvider.GetPaymentStatus(ctx, createResponse.PaymentID)
+	statusResponse, err := ozanpayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: createResponse.PaymentID})
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestOzanPayProvider_Integration_ErrorScenarios(t *testing.T) {
 	}
 
 	// Test missing payment ID for status check
-	_, err = ozanpayProvider.GetPaymentStatus(ctx, "")
+	_, err = ozanpayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
 	if err == nil {
 		t.Error("Expected error for empty payment ID")
 	}

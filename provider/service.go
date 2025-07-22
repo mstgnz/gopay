@@ -172,7 +172,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*PaymentResponse, error) {
+func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, providerName string, request GetPaymentStatusRequest) (*PaymentResponse, error) {
 	tenantID, err := getTenantIDFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -183,18 +183,19 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 	}
 
 	startTime := time.Now()
-	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "GET", "/payment/status", map[string]string{"paymentID": paymentID}, "", "")
+	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "GET", "/payment/status", request, "", "")
 	if err != nil {
 		logger.Warn("Failed to log status request", logger.LogContext{
 			Provider: providerName,
 			Fields: map[string]any{
-				"payment_id": paymentID,
+				"payment_id": request.PaymentID,
 				"error":      err.Error(),
 			},
 		})
 	}
 
-	response, err := provider.GetPaymentStatus(ctx, paymentID)
+	request.LogID = logID
+	response, err := provider.GetPaymentStatus(ctx, request)
 
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -205,7 +206,7 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": request.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})
@@ -216,7 +217,7 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": request.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})
@@ -228,7 +229,7 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 }
 
 // CancelPayment cancels a payment
-func (s *PaymentService) CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*PaymentResponse, error) {
+func (s *PaymentService) CancelPayment(ctx context.Context, environment, providerName string, request CancelRequest) (*PaymentResponse, error) {
 	tenantID, err := getTenantIDFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -239,19 +240,20 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 	}
 
 	startTime := time.Now()
-	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "POST", "/payment/cancel", map[string]string{"paymentID": paymentID, "reason": reason}, "", "")
+	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "POST", "/payment/cancel", request, "", "")
 	if err != nil {
 		logger.Warn("Failed to log cancel request", logger.LogContext{
 			Provider: providerName,
 			Fields: map[string]any{
-				"payment_id": paymentID,
-				"reason":     reason,
+				"payment_id": request.PaymentID,
+				"reason":     request.Reason,
 				"error":      err.Error(),
 			},
 		})
 	}
 
-	response, err := provider.CancelPayment(ctx, paymentID, reason)
+	request.LogID = logID
+	response, err := provider.CancelPayment(ctx, request)
 
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -262,7 +264,7 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": request.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})
@@ -273,7 +275,7 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": request.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})
@@ -307,6 +309,7 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 		})
 	}
 
+	request.LogID = logID
 	response, err := provider.RefundPayment(ctx, request)
 
 	processingMs := time.Since(startTime).Milliseconds()

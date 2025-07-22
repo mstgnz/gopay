@@ -255,7 +255,7 @@ func testPaymentStatusSuccess(t *testing.T, p provider.PaymentProvider) {
 	time.Sleep(2 * time.Second)
 
 	// Check payment status
-	statusResponse, err := p.GetPaymentStatus(ctx, paymentResponse.PaymentID)
+	statusResponse, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: paymentResponse.PaymentID})
 	if err != nil {
 		t.Fatalf("GetPaymentStatus failed: %v", err)
 	}
@@ -358,7 +358,7 @@ func testCancelPaymentSuccess(t *testing.T, p provider.PaymentProvider) {
 	}
 
 	// Attempt to cancel the payment
-	cancelResponse, err := p.CancelPayment(ctx, paymentResponse.PaymentID, "Integration test cancellation")
+	cancelResponse, err := p.CancelPayment(ctx, provider.CancelRequest{PaymentID: paymentResponse.PaymentID, Reason: "Integration test cancellation"})
 	if err != nil {
 		t.Logf("Cancel test failed (expected in test environment): %v", err)
 		return

@@ -668,7 +668,7 @@ func TestOzanPayProvider_GetPaymentStatus(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with valid payment ID
-	response, err := ozanPayProvider.GetPaymentStatus(ctx, "payment123")
+	response, err := ozanPayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "payment123"})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 		return
@@ -679,7 +679,7 @@ func TestOzanPayProvider_GetPaymentStatus(t *testing.T) {
 	}
 
 	// Test with empty payment ID
-	_, err = ozanPayProvider.GetPaymentStatus(ctx, "")
+	_, err = ozanPayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
 	if err == nil {
 		t.Error("Expected error for empty payment ID")
 	}

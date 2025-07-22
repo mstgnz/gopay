@@ -644,7 +644,7 @@ func TestIyzicoProvider_GetPaymentStatus(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with valid payment ID
-	response, err := iyzicoProvider.GetPaymentStatus(ctx, "payment123")
+	response, err := iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "payment123"})
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 		return
@@ -655,7 +655,7 @@ func TestIyzicoProvider_GetPaymentStatus(t *testing.T) {
 	}
 
 	// Test with empty payment ID
-	_, err = iyzicoProvider.GetPaymentStatus(ctx, "")
+	_, err = iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
 	if err == nil {
 		t.Error("Expected error for empty payment ID")
 	}

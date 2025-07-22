@@ -168,19 +168,19 @@ func (p *OzanPayProvider) Complete3DPayment(ctx context.Context, callbackState *
 
 	// For OzanPay, 3D completion is handled via status check
 	// The payment should be completed automatically after 3D authentication
-	return p.GetPaymentStatus(ctx, callbackState.PaymentID)
+	return p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: callbackState.PaymentID})
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("ozanpay: paymentID is required")
 	}
 
 	// Prepare status request according to documentation
 	statusData := map[string]any{
 		"apiKey":        p.apiKey,
-		"transactionId": paymentID,
+		"transactionId": request.PaymentID,
 	}
 
 	// Send request to get payment status
@@ -194,15 +194,15 @@ func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, paymentID string
 }
 
 // CancelPayment cancels a payment using OzanPay's cancel endpoint
-func (p *OzanPayProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *OzanPayProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("ozanpay: paymentID is required")
 	}
 
 	// Prepare cancel request according to documentation
 	cancelData := map[string]any{
 		"apiKey":        p.apiKey,
-		"transactionId": paymentID,
+		"transactionId": request.PaymentID,
 	}
 
 	// Send cancel request
@@ -216,7 +216,7 @@ func (p *OzanPayProvider) CancelPayment(ctx context.Context, paymentID string, r
 	paymentResp := &provider.PaymentResponse{
 		Success:          response["status"] == statusApproved,
 		Status:           provider.StatusCancelled,
-		PaymentID:        paymentID,
+		PaymentID:        request.PaymentID,
 		ProviderResponse: response,
 		SystemTime:       &now,
 	}

@@ -237,7 +237,10 @@ func TestPaycellProvider_RealAPI_CancelPayment(t *testing.T) {
 	fmt.Printf("Testing Cancel Payment with real Paycell API...\n")
 	fmt.Printf("Payment ID: %s\n", testPaymentID)
 
-	response, err := p.CancelPayment(ctx, testPaymentID, "Test cancellation")
+	response, err := p.CancelPayment(ctx, provider.CancelRequest{PaymentID: testPaymentID, Reason: "Test cancellation"})
+	if err != nil {
+		t.Fatalf("Failed to cancel payment: %v", err)
+	}
 
 	if err != nil {
 		fmt.Printf("Cancel Payment error: %v\n", err)
@@ -313,7 +316,7 @@ func TestPaycellProvider_RealAPI_GetPaymentStatus(t *testing.T) {
 
 	fmt.Printf("Testing payment status for PaymentID: %s\n", testPaymentID)
 
-	response, err := p.GetPaymentStatus(ctx, testPaymentID)
+	response, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: testPaymentID})
 
 	if err != nil {
 		fmt.Printf("Payment status error: %v\n", err)

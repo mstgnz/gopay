@@ -119,7 +119,7 @@ func TestPayTRIntegration_PaymentStatusInquiry(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Query payment status
-	statusResponse, err := paytrProvider.GetPaymentStatus(context.Background(), paymentResponse.PaymentID)
+	statusResponse, err := paytrProvider.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: paymentResponse.PaymentID})
 	if err != nil {
 		t.Fatalf("Status inquiry failed: %v", err)
 	}

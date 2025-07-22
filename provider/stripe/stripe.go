@@ -151,12 +151,12 @@ func (p *StripeProvider) Complete3DPayment(ctx context.Context, callbackState *p
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *StripeProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("stripe: paymentID is required")
 	}
 
-	pi, err := p.client.V1PaymentIntents.Retrieve(ctx, paymentID, nil)
+	pi, err := p.client.V1PaymentIntents.Retrieve(ctx, request.PaymentID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("stripe: failed to get payment intent: %w", err)
 	}
@@ -165,16 +165,16 @@ func (p *StripeProvider) GetPaymentStatus(ctx context.Context, paymentID string)
 }
 
 // CancelPayment cancels a payment
-func (p *StripeProvider) CancelPayment(ctx context.Context, paymentID string, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *StripeProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("stripe: paymentID is required")
 	}
 
 	params := &stripe.PaymentIntentCancelParams{
-		CancellationReason: stripe.String("requested_by_customer"),
+		CancellationReason: stripe.String(request.Reason),
 	}
 
-	pi, err := p.client.V1PaymentIntents.Cancel(ctx, paymentID, params)
+	pi, err := p.client.V1PaymentIntents.Cancel(ctx, request.PaymentID, params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe: failed to cancel payment intent: %w", err)
 	}

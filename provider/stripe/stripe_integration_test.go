@@ -93,7 +93,7 @@ func TestStripeIntegration_DirectPayment(t *testing.T) {
 	}
 
 	// Test payment status inquiry
-	statusResponse, err := stripeProvider.GetPaymentStatus(ctx, response.PaymentID)
+	statusResponse, err := stripeProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: response.PaymentID})
 	if err != nil {
 		t.Errorf("Failed to get payment status: %v", err)
 	} else {
@@ -261,7 +261,7 @@ func TestStripeIntegration_PaymentCancellation(t *testing.T) {
 	t.Logf("Created payment for cancellation: %s", response.PaymentID)
 
 	// Now cancel the payment
-	cancelResponse, err := stripeProvider.CancelPayment(ctx, response.PaymentID, "Integration test cancellation")
+	cancelResponse, err := stripeProvider.CancelPayment(ctx, provider.CancelRequest{PaymentID: response.PaymentID, Reason: "Integration test cancellation"})
 
 	if err != nil {
 		t.Errorf("Failed to cancel payment: %v", err)

@@ -83,7 +83,7 @@ func TestPaparaProvider_Integration(t *testing.T) {
 
 		// Test GetPaymentStatus with the created payment
 		t.Run("GetPaymentStatus", func(t *testing.T) {
-			statusResponse, err := p.GetPaymentStatus(ctx, response.PaymentID)
+			statusResponse, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: response.PaymentID})
 			if err != nil {
 				t.Fatalf("GetPaymentStatus failed: %v", err)
 			}
@@ -297,14 +297,14 @@ func TestPaparaProvider_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("GetPaymentStatus_EmptyPaymentID", func(t *testing.T) {
-		_, err := p.GetPaymentStatus(ctx, "")
+		_, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
 		if err == nil {
 			t.Error("GetPaymentStatus should fail with empty paymentID")
 		}
 	})
 
 	t.Run("CancelPayment_EmptyPaymentID", func(t *testing.T) {
-		_, err := p.CancelPayment(ctx, "", "test reason")
+		_, err := p.CancelPayment(ctx, provider.CancelRequest{PaymentID: "", Reason: "test reason"})
 		if err == nil {
 			t.Error("CancelPayment should fail with empty paymentID")
 		}

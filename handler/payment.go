@@ -20,8 +20,8 @@ import (
 // PaymentServiceInterface defines the interface for payment operations
 type PaymentServiceInterface interface {
 	CreatePayment(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
-	GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
-	CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
+	GetPaymentStatus(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error)
+	CancelPayment(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
 	RefundPayment(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
 	Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhook(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
@@ -100,7 +100,9 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	// Get payment status
-	resp, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, paymentID)
+	resp, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, provider.GetPaymentStatusRequest{
+		PaymentID: paymentID,
+	})
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to get payment status", err)
 		return
@@ -139,7 +141,10 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cancel payment
-	resp, err := h.paymentService.CancelPayment(ctx, environment, providerName, paymentID, req.Reason)
+	resp, err := h.paymentService.CancelPayment(ctx, environment, providerName, provider.CancelRequest{
+		PaymentID: paymentID,
+		Reason:    req.Reason,
+	})
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to cancel payment", err)
 		return
@@ -401,7 +406,9 @@ func (h *PaymentHandler) processWebhookAsync(ctx context.Context, environment, p
 	}
 
 	// Get current payment status from provider
-	currentStatus, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, paymentID)
+	currentStatus, err := h.paymentService.GetPaymentStatus(ctx, environment, providerName, provider.GetPaymentStatusRequest{
+		PaymentID: paymentID,
+	})
 	if err != nil {
 		h.logWebhookError(providerName, "status_check_failed", err, rawWebhookData)
 		return

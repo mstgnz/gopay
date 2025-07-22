@@ -353,25 +353,25 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 }
 
 // GetPaymentStatus retrieves the current status of a payment
-func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
 	// Get reference number from log
-	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
 
 	// Get amount from log
-	amountStr, err := provider.GetProviderRequestFromLog("paycell", paymentID, "amount")
+	amountStr, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "amount")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get amount: %w", err)
 	}
 
 	// Get card token from log
-	cardToken, err := provider.GetProviderRequestFromLog("paycell", paymentID, "cardToken")
+	cardToken, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "cardToken")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get card token: %w", err)
 	}
@@ -444,7 +444,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 	now := time.Now()
 	response := &provider.PaymentResponse{
 		Success:          inquireResp.ResponseHeader.ResponseCode == "0",
-		PaymentID:        paymentID,
+		PaymentID:        request.PaymentID,
 		TransactionID:    inquireResp.ResponseHeader.TransactionID,
 		SystemTime:       &now,
 		ProviderResponse: inquireResp,
@@ -484,19 +484,19 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 }
 
 // CancelPayment cancels a payment (reverse operation)
-func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
+func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if request.PaymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
 	// Get original reference number from log
-	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
 
 	// Get amount from log for reverse operation
-	amountStr, err := provider.GetProviderRequestFromLog("paycell", paymentID, "amount")
+	amountStr, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "amount")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get amount: %w", err)
 	}
@@ -565,7 +565,7 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason s
 	now := time.Now()
 	response := &provider.PaymentResponse{
 		Success:          reverseResp.ResponseHeader.ResponseCode == "0",
-		PaymentID:        paymentID,
+		PaymentID:        request.PaymentID,
 		TransactionID:    reverseResp.ResponseHeader.TransactionID,
 		SystemTime:       &now,
 		ProviderResponse: reverseResp,
