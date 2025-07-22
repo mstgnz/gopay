@@ -386,15 +386,12 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		TransactionID:       transactionID,
 	}
 
-	// Convert amount to kuruş (multiply by 100)
-	amountInKurus := strconv.FormatFloat(request.RefundAmount*100, 'f', 0, 64)
-
 	paycellReq := PaycellRefundRequest{
 		RequestHeader:           requestHeader,
 		OriginalReferenceNumber: request.PaymentID,
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
-		Amount:                  amountInKurus,
+		Amount:                  fmt.Sprintf("%.2f", request.RefundAmount),
 		PaymentType:             "REFUND",
 	}
 
@@ -674,7 +671,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
-		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
+		Amount:           fmt.Sprintf("%.2f", request.Amount),
 		CardToken:        cardToken,
 		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
@@ -809,11 +806,11 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 		status = provider.StatusSuccessful
 	}
 
-	// Convert amount back from kuruş to TRY
+	// Use amount as received from response
 	amount := 0.0
 	if paycellResp.Amount != "" {
-		if amountInt, err := strconv.ParseFloat(paycellResp.Amount, 64); err == nil {
-			amount = amountInt / 100
+		if amountFloat, err := strconv.ParseFloat(paycellResp.Amount, 64); err == nil {
+			amount = amountFloat
 		}
 	}
 
@@ -920,7 +917,7 @@ func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _
 			"transactionId":       transactionID,
 		},
 		"acquirerBankCode":        nil,
-		"amount":                  fmt.Sprintf("%.0f", request.Amount*100), // Convert to cents
+		"amount":                  fmt.Sprintf("%.2f", request.Amount),
 		"cardId":                  nil,
 		"cardToken":               nil,
 		"currency":                request.Currency,
@@ -940,10 +937,8 @@ func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _
 
 // mapToPaymentResponse converts Paycell response to standard payment response (for backward compatibility)
 func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *provider.PaymentResponse {
-	// Parse amount from string - Paycell returns amount in kuruş
+	// Parse amount from string - use amount as received
 	amount, _ := strconv.ParseFloat(paycellResp.Amount, 64)
-	// Convert from kuruş to TRY (divide by 100)
-	amount = amount / 100
 
 	// Use OrderID as PaymentID if PaymentID is empty
 	paymentID := paycellResp.PaymentID
