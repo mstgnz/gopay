@@ -6,14 +6,14 @@ This documentation explains GoPay's İyzico payment provider integration.
 
 ## Features
 
-- ✅ **Standard Card Payments**: Regular card payments
-- ✅ **3D Secure Payments**: Secure 3D authenticated payments
-- ✅ **Payment Inquiry**: Payment status checking
-- ✅ **Payment Cancellation**: Payment cancellation
-- ✅ **Refund Operations**: Full and partial refunds
-- ✅ **Webhook Support**: Payment notifications
-- ✅ **Test/Production Environment**: Sandbox and production support
-- ✅ **Secure Callbacks**: Protected return URL management
+- **Standard Card Payments**: Regular card payments
+- **3D Secure Payments**: Secure 3D authenticated payments
+- **Payment Inquiry**: Payment status checking
+- **Payment Cancellation**: Payment cancellation
+- **Refund Operations**: Full and partial refunds
+- **Webhook Support**: Payment notifications
+- **Test/Production Environment**: Sandbox and production support
+- **Secure Callbacks**: Protected return URL management
 
 ## Configuration
 
@@ -296,7 +296,7 @@ GoPay İyzico integration includes comprehensive real API tests that verify the 
 
 ### Test Coverage
 
-#### ✅ **Unit Tests** (`iyzico_test.go`)
+#### **Unit Tests** (`iyzico_test.go`)
 
 - Provider initialization and configuration
 - Request validation and mapping
@@ -304,7 +304,7 @@ GoPay İyzico integration includes comprehensive real API tests that verify the 
 - Authentication string generation
 - Mock HTTP server scenarios
 
-#### ✅ **Integration Tests** (`iyzico_integration_test.go`)
+#### **Integration Tests** (`iyzico_integration_test.go`)
 
 - **Real İyzico Sandbox API**: Tests against actual İyzico endpoints
 - **Payment Processing**: Create payments with test cards

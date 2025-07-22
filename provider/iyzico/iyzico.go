@@ -161,14 +161,14 @@ func (p *IyzicoProvider) Create3DPayment(ctx context.Context, request provider.P
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *IyzicoProvider) Complete3DPayment(ctx context.Context, paymentID string, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
-	if paymentID == "" {
-		return nil, errors.New("iyzico: paymentID is required for 3D completion")
+func (p *IyzicoProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	if callbackState.PaymentID == "" || callbackState.ConversationID == "" {
+		return nil, errors.New("iyzico: paymentID and conversationID are required for 3D completion")
 	}
 
 	req := map[string]any{
-		"paymentId":      paymentID,
-		"conversationId": conversationID,
+		"paymentId":      callbackState.PaymentID,
+		"conversationId": callbackState.ConversationID,
 		"locale":         defaultLocale,
 	}
 
@@ -474,24 +474,31 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 
 	// Add 3D specific fields
 	if is3D {
-		// Build GoPay's own callback URL with user's original callback URL as parameter
-		if request.CallbackURL != "" {
-			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/iyzico?originalCallbackUrl=%s",
-				p.gopayBaseURL,
-				request.CallbackURL)
-			// Add tenant ID to callback URL for proper tenant identification
+		// Create encrypted state with all necessary callback information
+		state := provider.CallbackState{
+			TenantID:         int(request.TenantID),
+			PaymentID:        conversationID, // Use conversationID as payment identifier
+			OriginalCallback: request.CallbackURL,
+			Amount:           request.Amount,
+			Currency:         request.Currency,
+			ConversationID:   conversationID,
+			LogID:            p.logID,
+			Provider:         "iyzico",
+			Environment:      map[bool]string{true: "production", false: "sandbox"}[p.isProduction],
+			Timestamp:        time.Now(),
+		}
+
+		// Use common encryption utility
+		gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "iyzico", state)
+		if err != nil {
+			// Fallback to old method if encryption fails
+			gopayCallbackURL = fmt.Sprintf("%s/v1/callback/iyzico?originalCallbackUrl=%s",
+				p.gopayBaseURL, request.CallbackURL)
 			if request.TenantID != 0 {
 				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
 			}
-			req["callbackUrl"] = gopayCallbackURL
-		} else {
-			// If no callback URL provided, use GoPay's callback without redirect
-			gopayCallbackURL := fmt.Sprintf("%s/v1/callback/iyzico", p.gopayBaseURL)
-			if request.TenantID != 0 {
-				gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
-			}
-			req["callbackUrl"] = gopayCallbackURL
 		}
+		req["callbackUrl"] = gopayCallbackURL
 	}
 
 	return req

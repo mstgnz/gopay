@@ -13,37 +13,27 @@ import (
 // Integration tests for İyzico real API
 //
 // This file contains integration tests that make actual HTTP requests to İyzico's sandbox API.
-// To run these tests successfully:
-//
-// 1. Register at https://sandbox-merchant.iyzipay.com/ to get your sandbox credentials
-// 2. Replace the placeholder API key and secret key in getTestProvider() function
-// 3. Run tests with: go test -v ./provider/iyzico/ -run TestIntegration
+// Uses İyzico's public sandbox test credentials for testing.
 //
 // Test Cards (from İyzico documentation):
 // - Success: 5528790000000008 (12/2030, CVV: 123)
 // - Insufficient funds: 5528790000000016
 // - Invalid card: 5528790000000032
-//
-// Note: Tests are designed to work with real API responses and will skip if placeholder credentials are used.
+
+// İyzico public sandbox test credentials
+const (
+	testAPIKey    = "sandbox-iYV8BNMt9a4tx0Aq"
+	testSecretKey = "sandbox-7LZdTLtRfaDrpQN2klBNJ7vVsRIpHFH8"
+)
 
 func getTestProvider(t *testing.T) *IyzicoProvider {
-	// İyzico public test credentials - register at sandbox-merchant.iyzipay.com for your own
-	// These are placeholder values - replace with real sandbox credentials for actual testing
-	apiKey := "sandbox-iYV8BNMt9a4tx0Aq"                    // Your sandbox API key
-	secretKey := "sandbox-7LZdTLtRfaDrpQN2klBNJ7vVsRIpHFH8" // Your sandbox secret key
-
-	// Skip tests if using placeholder values
-	if apiKey == "sandbox-iYV8BNMt9a4tx0Aq" {
-		t.Skip("Using placeholder test credentials. Please set real İyzico sandbox credentials")
-	}
-
 	// Create provider instance
 	iyzicoProvider := NewProvider().(*IyzicoProvider)
 
 	// Configure with test environment
 	config := map[string]string{
-		"apiKey":       apiKey,
-		"secretKey":    secretKey,
+		"apiKey":       testAPIKey,
+		"secretKey":    testSecretKey,
 		"environment":  "sandbox",                        // Always use sandbox for tests
 		"gopayBaseURL": "https://test-gopay.example.com", // Test callback URL
 	}
@@ -58,7 +48,7 @@ func getTestProvider(t *testing.T) *IyzicoProvider {
 		t.Fatal("Test provider must use sandbox environment, not production")
 	}
 
-	t.Logf("✅ İyzico provider initialized with sandbox environment (API URL: %s)", iyzicoProvider.baseURL)
+	t.Logf("İyzico provider initialized with sandbox environment (API URL: %s)", iyzicoProvider.baseURL)
 	return iyzicoProvider
 }
 
@@ -137,7 +127,7 @@ func TestIntegration_CreatePayment_Success(t *testing.T) {
 		t.Errorf("Expected currency %s, got %s", request.Currency, response.Currency)
 	}
 
-	t.Logf("✅ Payment successful - ID: %s, Amount: %.2f %s",
+	t.Logf("Payment successful - ID: %s, Amount: %.2f %s",
 		response.PaymentID, response.Amount, response.Currency)
 }
 
@@ -170,7 +160,7 @@ func TestIntegration_CreatePayment_InsufficientFunds(t *testing.T) {
 		t.Errorf("Expected error code %s, got %s", errorCodeNotEnoughMoney, response.ErrorCode)
 	}
 
-	t.Logf("✅ Insufficient funds error handled correctly - Code: %s, Message: %s",
+	t.Logf("Insufficient funds error handled correctly - Code: %s, Message: %s",
 		response.ErrorCode, response.Message)
 }
 
@@ -203,7 +193,7 @@ func TestIntegration_CreatePayment_InvalidCard(t *testing.T) {
 		t.Errorf("Expected error code %s, got %s", errorCodeInvalidCard, response.ErrorCode)
 	}
 
-	t.Logf("✅ Invalid card error handled correctly - Code: %s, Message: %s",
+	t.Logf("Invalid card error handled correctly - Code: %s, Message: %s",
 		response.ErrorCode, response.Message)
 }
 
@@ -242,7 +232,7 @@ func TestIntegration_Create3DPayment(t *testing.T) {
 		t.Error("Expected either HTML content or redirect URL for 3D payment")
 	}
 
-	t.Logf("✅ 3D Payment initiated - ID: %s, HTML: %t, RedirectURL: %t",
+	t.Logf("3D Payment initiated - ID: %s, HTML: %t, RedirectURL: %t",
 		response.PaymentID, response.HTML != "", response.RedirectURL != "")
 }
 
@@ -282,7 +272,7 @@ func TestIntegration_GetPaymentStatus(t *testing.T) {
 		t.Errorf("Expected status successful, got: %v", statusResponse.Status)
 	}
 
-	t.Logf("✅ Payment status retrieved - ID: %s, Status: %s",
+	t.Logf("Payment status retrieved - ID: %s, Status: %s",
 		statusResponse.PaymentID, statusResponse.Status)
 }
 
@@ -338,7 +328,7 @@ func TestIntegration_RefundPayment(t *testing.T) {
 		t.Errorf("Expected refund amount 50.00, got %.2f", refundResponse.RefundAmount)
 	}
 
-	t.Logf("✅ Refund successful - Payment ID: %s, Refund ID: %s, Amount: %.2f TRY",
+	t.Logf("Refund successful - Payment ID: %s, Refund ID: %s, Amount: %.2f TRY",
 		refundResponse.PaymentID, refundResponse.RefundID, refundResponse.RefundAmount)
 }
 
@@ -379,7 +369,7 @@ func TestIntegration_CancelPayment(t *testing.T) {
 		t.Errorf("Expected payment ID %s, got %s", createResponse.PaymentID, cancelResponse.PaymentID)
 	}
 
-	t.Logf("✅ Payment cancelled - ID: %s, Status: %s",
+	t.Logf("Payment cancelled - ID: %s, Status: %s",
 		cancelResponse.PaymentID, cancelResponse.Status)
 }
 
@@ -416,7 +406,7 @@ func TestIntegration_AuthenticationFailure(t *testing.T) {
 		t.Logf("🚫 Expected authentication error received: %s (Code: %s)", response.Message, response.ErrorCode)
 	}
 
-	t.Logf("✅ Authentication failure handled correctly")
+	t.Logf("Authentication failure handled correctly")
 }
 
 func TestIntegration_RequestTimeout(t *testing.T) {
@@ -434,7 +424,7 @@ func TestIntegration_RequestTimeout(t *testing.T) {
 		t.Error("Expected timeout error with very short context timeout")
 	}
 
-	t.Logf("✅ Request timeout handled correctly: %v", err)
+	t.Logf("Request timeout handled correctly: %v", err)
 }
 
 // Benchmark tests for performance
@@ -472,7 +462,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil || !createResponse.Success {
 		t.Fatalf("Step 1 failed - CreatePayment: %v", err)
 	}
-	t.Logf("✅ Step 1 complete - Payment ID: %s", createResponse.PaymentID)
+	t.Logf("Step 1 complete - Payment ID: %s", createResponse.PaymentID)
 
 	// Step 2: Check payment status
 	t.Log("Step 2: Checking payment status...")
@@ -480,7 +470,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil || !statusResponse.Success {
 		t.Fatalf("Step 2 failed - GetPaymentStatus: %v", err)
 	}
-	t.Logf("✅ Step 2 complete - Status: %s", statusResponse.Status)
+	t.Logf("Step 2 complete - Status: %s", statusResponse.Status)
 
 	// Step 3: Wait and perform partial refund
 	t.Log("Step 3: Processing partial refund...")
@@ -497,7 +487,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil || !refundResponse.Success {
 		t.Fatalf("Step 3 failed - RefundPayment: %v", err)
 	}
-	t.Logf("✅ Step 3 complete - Refund ID: %s, Amount: %.2f",
+	t.Logf("Step 3 complete - Refund ID: %s, Amount: %.2f",
 		refundResponse.RefundID, refundResponse.RefundAmount)
 
 	t.Log("🎉 Full workflow completed successfully!")
