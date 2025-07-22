@@ -3,7 +3,6 @@ package nkolay
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,13 +11,7 @@ import (
 )
 
 // Integration tests for Nkolay real API
-// These tests use the real test credentials provided:
-// - sx (Token): 118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw==
-// - Merchant Secret Key: _YckdxUbv4vrnMUZ6VQsr
-// - URL: https://paynkolaytest.nkolayislem.com.tr/Vpos
-//
-// Test can be controlled with environment variable:
-// NKOLAY_TEST_ENABLED=true
+// These tests use the real test credentials for sandbox environment
 
 func getTestProvider(t *testing.T) *NkolayProvider {
 	nkolayProvider := NewProvider().(*NkolayProvider)
@@ -38,6 +31,7 @@ func getTestProvider(t *testing.T) *NkolayProvider {
 		t.Fatalf("Failed to initialize provider: %v", err)
 	}
 
+	t.Logf("Nkolay provider initialized successfully")
 	return nkolayProvider
 }
 
@@ -114,10 +108,10 @@ func TestIntegration_CreatePayment(t *testing.T) {
 
 	// Check if it's a successful payment or 3D redirect
 	if response.Success && response.Status == provider.StatusSuccessful {
-		t.Logf("✅ Payment successful - ID: %s, Amount: %.2f %s",
+		t.Logf("Payment successful - ID: %s, Amount: %.2f %s",
 			response.PaymentID, response.Amount, response.Currency)
 	} else if response.Success && response.Status == provider.StatusPending && response.HTML != "" {
-		t.Logf("✅ 3D Secure form received - ID: %s, HTML length: %d",
+		t.Logf("3D Secure form received - ID: %s, HTML length: %d",
 			response.PaymentID, len(response.HTML))
 	} else {
 		t.Logf("⚠️ Unexpected response - Success: %v, Status: %v, Message: %s",
@@ -148,19 +142,19 @@ func TestIntegration_Create3DPayment(t *testing.T) {
 	// For 3D payments, we expect either success or a form for 3D authentication
 	if response.Success && response.Status == provider.StatusPending {
 		if response.HTML != "" {
-			t.Logf("✅ 3D Secure form received - ID: %s, HTML length: %d",
+			t.Logf("3D Secure form received - ID: %s, HTML length: %d",
 				response.PaymentID, len(response.HTML))
 
 			// Check if HTML contains form
 			if strings.Contains(response.HTML, "<form") {
-				t.Logf("✅ HTML contains form for 3D authentication")
+				t.Logf("HTML contains form for 3D authentication")
 			}
 		} else if response.RedirectURL != "" {
-			t.Logf("✅ 3D Secure redirect URL received - ID: %s, URL: %s",
+			t.Logf("3D Secure redirect URL received - ID: %s, URL: %s",
 				response.PaymentID, response.RedirectURL)
 		}
 	} else if response.Success && response.Status == provider.StatusSuccessful {
-		t.Logf("✅ Direct payment successful (no 3D required) - ID: %s", response.PaymentID)
+		t.Logf("Direct payment successful (no 3D required) - ID: %s", response.PaymentID)
 	} else {
 		t.Logf("⚠️ Unexpected 3D response - Success: %v, Status: %v, Message: %s, Error: %s",
 			response.Success, response.Status, response.Message, response.ErrorCode)
@@ -200,7 +194,7 @@ func TestIntegration_PaymentWithDifferentCard(t *testing.T) {
 
 	// Log result
 	if response.Success {
-		t.Logf("✅ Payment with different card successful - ID: %s, Status: %v",
+		t.Logf("Payment with different card successful - ID: %s, Status: %v",
 			response.PaymentID, response.Status)
 	} else {
 		t.Logf("❌ Payment with different card failed - Error: %s, Message: %s",
@@ -244,7 +238,7 @@ func TestIntegration_GetPaymentStatus(t *testing.T) {
 		t.Errorf("Expected payment ID %s, got %s", paymentResponse.PaymentID, statusResponse.PaymentID)
 	}
 
-	t.Logf("✅ Payment status check completed - ID: %s, Success: %v",
+	t.Logf("Payment status check completed - ID: %s, Success: %v",
 		statusResponse.PaymentID, statusResponse.Success)
 }
 
@@ -269,7 +263,7 @@ func TestIntegration_CancelPayment(t *testing.T) {
 
 	// Log result
 	if response.Success {
-		t.Logf("✅ Payment cancellation successful - ID: %s", response.PaymentID)
+		t.Logf("Payment cancellation successful - ID: %s", response.PaymentID)
 	} else {
 		t.Logf("⚠️ Payment cancellation result - Success: %v, Message: %s",
 			response.Success, response.Message)
@@ -310,7 +304,7 @@ func TestIntegration_RefundPayment(t *testing.T) {
 
 	// Log result
 	if response.Success {
-		t.Logf("✅ Payment refund successful - Refund ID: %s, Amount: %.2f",
+		t.Logf("Payment refund successful - Refund ID: %s, Amount: %.2f",
 			response.RefundID, response.RefundAmount)
 	} else {
 		t.Logf("⚠️ Payment refund result - Success: %v, Message: %s",
@@ -360,7 +354,7 @@ func TestIntegration_ValidateWebhook(t *testing.T) {
 			webhookData["referenceCode"], validatedData["referenceCode"])
 	}
 
-	t.Logf("✅ Webhook validation successful - Reference: %s, Status: %s",
+	t.Logf("Webhook validation successful - Reference: %s, Status: %s",
 		validatedData["referenceCode"], validatedData["status"])
 }
 
@@ -375,10 +369,18 @@ func TestIntegration_Complete3DPayment(t *testing.T) {
 		"message":       "3D payment completed",
 	}
 
+	// Create callback state for testing
+	callbackState := &provider.CallbackState{
+		PaymentID: "gopay_12345",
+		TenantID:  1,
+		Amount:    10.04,
+		Currency:  "TRY",
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	response, err := nkolayProvider.Complete3DPayment(ctx, "gopay_12345", "conv_123", callbackData)
+	response, err := nkolayProvider.Complete3DPayment(ctx, callbackState, callbackData)
 
 	if err != nil {
 		t.Fatalf("Complete3DPayment failed: %v", err)
@@ -397,7 +399,7 @@ func TestIntegration_Complete3DPayment(t *testing.T) {
 		t.Errorf("Expected payment ID gopay_12345, got %s", response.PaymentID)
 	}
 
-	t.Logf("✅ 3D Payment completion successful - ID: %s, Amount: %.2f",
+	t.Logf("3D Payment completion successful - ID: %s, Amount: %.2f",
 		response.PaymentID, response.Amount)
 }
 
@@ -419,15 +421,15 @@ func TestIntegration_PaymentEndpoints(t *testing.T) {
 		t.Error("Expected secret key to be set")
 	}
 
-	t.Logf("✅ Nkolay provider properly configured")
+	t.Logf("Nkolay provider properly configured")
 	t.Logf("Base URL: %s", nkolayProvider.baseURL)
 	t.Logf("SX Token: %s...", nkolayProvider.sx[:50]) // Log first 50 chars
 	t.Logf("Secret Key: %s", nkolayProvider.secretKey)
 }
 
 func BenchmarkIntegration_CreatePayment(b *testing.B) {
-	if os.Getenv("NKOLAY_TEST_ENABLED") != "true" {
-		b.Skip("Nkolay integration tests disabled")
+	if testSx == "" || testSecretKey == "" {
+		b.Skip("Nkolay test credentials not set")
 	}
 
 	nkolayProvider := NewProvider().(*NkolayProvider)
@@ -474,7 +476,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 		t.Fatalf("Failed to create payment: %v", err)
 	}
 
-	t.Logf("✅ Step 1 completed - Payment ID: %s", paymentResponse.PaymentID)
+	t.Logf("Step 1 completed - Payment ID: %s", paymentResponse.PaymentID)
 
 	// 2. Check payment status
 	time.Sleep(1 * time.Second)
@@ -484,7 +486,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Logf("⚠️ Status check failed (expected for test environment): %v", err)
 	} else {
-		t.Logf("✅ Step 2 completed - Status: %v", statusResponse.Status)
+		t.Logf("Step 2 completed - Status: %v", statusResponse.Status)
 	}
 
 	// 3. Simulate webhook
@@ -499,7 +501,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Logf("⚠️ Webhook validation failed: %v", err)
 	} else if isValid {
-		t.Log("✅ Step 3 completed - Webhook validated")
+		t.Log("Step 3 completed - Webhook validated")
 	}
 
 	t.Log("🎉 Full workflow test completed!")

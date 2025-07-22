@@ -196,7 +196,7 @@ func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.P
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *NkolayProvider) Complete3DPayment(ctx context.Context, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
+func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
 	// For Nkolay, 3D completion happens automatically via callback
 	// This method will validate the callback data and return status
 
@@ -207,7 +207,7 @@ func (p *NkolayProvider) Complete3DPayment(ctx context.Context, paymentID, conve
 	}
 
 	response := &provider.PaymentResponse{
-		PaymentID:        paymentID,
+		PaymentID:        callbackState.PaymentID,
 		TransactionID:    data["referenceCode"],
 		Success:          status == statusSuccess,
 		Message:          data["message"],
@@ -429,13 +429,26 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	if use3D {
 		formData["use3D"] = "true"
 		// Build callback URLs through GoPay
-		successUrl := fmt.Sprintf("%s/v1/callback/nkolay", p.gopayBaseURL)
-		failUrl := fmt.Sprintf("%s/v1/callback/nkolay", p.gopayBaseURL)
 
-		if request.CallbackURL != "" {
-			successUrl += "?originalCallbackUrl=" + request.CallbackURL + "&status=success"
-			failUrl += "?originalCallbackUrl=" + request.CallbackURL + "&status=failed"
+		state := provider.CallbackState{
+			PaymentID:        request.ID,
+			TenantID:         request.TenantID,
+			Amount:           request.Amount,
+			Currency:         request.Currency,
+			LogID:            request.LogID,
+			Provider:         "nkolay",
+			Environment:      request.Environment,
+			Timestamp:        time.Now(),
+			OriginalCallback: request.CallbackURL,
 		}
+
+		gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "nkolay", state)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
+		}
+
+		successUrl := fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=success", p.gopayBaseURL, gopayCallbackURL)
+		failUrl := fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=failed", p.gopayBaseURL, gopayCallbackURL)
 
 		formData["successUrl"] = successUrl
 		formData["failUrl"] = failUrl

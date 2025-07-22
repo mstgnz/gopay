@@ -8,13 +8,13 @@ Nkolay is a Turkish payment gateway provider that offers secure payment processi
 
 ## Features
 
-- ✅ **Non-3D Payments**: Direct payment processing without 3D Secure
-- ✅ **3D Secure Payments**: Enhanced security with 3D authentication
-- ✅ **Payment Status Inquiry**: Real-time payment status checking
-- ✅ **Refund Operations**: Full and partial refund support
-- ✅ **Payment Cancellation**: Cancel authorized payments
-- ✅ **Webhook Validation**: Secure webhook notification handling
-- ✅ **Multi-currency Support**: Support for TRY and other currencies
+- **Non-3D Payments**: Direct payment processing without 3D Secure
+- **3D Secure Payments**: Enhanced security with 3D authentication
+- **Payment Status Inquiry**: Real-time payment status checking
+- **Refund Operations**: Full and partial refund support
+- **Payment Cancellation**: Cancel authorized payments
+- **Webhook Validation**: Secure webhook notification handling
+- **Multi-currency Support**: Support for TRY and other currencies
 
 ## Configuration
 
