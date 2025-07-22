@@ -396,12 +396,15 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		TransactionID:       transactionID,
 	}
 
+	// Convert amount to kuruş (multiply by 100)
+	amountInKurus := strconv.FormatFloat(request.RefundAmount*100, 'f', 0, 64)
+
 	paycellReq := PaycellRefundRequest{
 		RequestHeader:           requestHeader,
 		OriginalReferenceNumber: request.PaymentID,
 		ReferenceNumber:         p.generateReferenceNumber(),
 		MerchantCode:            p.merchantID,
-		Amount:                  fmt.Sprintf("%.0f", request.RefundAmount*100), // Convert TL to kuruş (multiply by 100)
+		Amount:                  amountInKurus,
 		PaymentType:             "REFUND",
 	}
 
@@ -591,11 +594,14 @@ func (p *PaycellProvider) provisionWithToken(ctx context.Context, request provid
 		TransactionID:       transactionID,
 	}
 
+	// Convert amount to kuruş (multiply by 100)
+	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
+
 	paycellReq := PaycellProvisionRequest{
 		ExtraParameters:         nil,
 		RequestHeader:           requestHeader,
 		AcquirerBankCode:        nil,
-		Amount:                  fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
+		Amount:                  amountInKurus,
 		CardID:                  nil,
 		CardToken:               &cardToken,
 		Currency:                request.Currency,
@@ -662,7 +668,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 
 // getThreeDSession gets 3D session for secure payment
 func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider.PaymentRequest, cardToken string) (*PaycellGetThreeDSessionResponse, error) {
-	endpoint := p.baseURL + endpointGetThreeDSession
+	endpoint := endpointGetThreeDSession
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
@@ -678,7 +684,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
-		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
+		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
 		CardToken:        cardToken,
 		InstallmentCount: 0,
 		MerchantCode:     p.merchantID,
@@ -687,47 +693,27 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		TransactionType:  "AUTH",
 	}
 
-	// Send request directly (not through sendProvisionRequest since response format is different)
-	jsonData, err := json.Marshal(paycellReq)
+	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal getThreeDSession request: %v", err)
+		return nil, err
 	}
 
-	fmt.Printf("getThreeDSession Request: %s\n", string(jsonData))
-	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", paycellReq, p.logID)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create getThreeDSession request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send getThreeDSession request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read getThreeDSession response: %v", err)
-	}
-
-	fmt.Printf("getThreeDSession Response: %s\n", string(body))
-
-	var threeDSessionResp PaycellGetThreeDSessionResponse
-	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal getThreeDSession response: %v. Response: %s", err, string(body))
-	}
-
-	// Check for success
-	if threeDSessionResp.ResponseHeader.ResponseCode != "0" {
-		return nil, fmt.Errorf("getThreeDSession error: %s - %s", threeDSessionResp.ResponseHeader.ResponseCode, threeDSessionResp.ResponseHeader.ResponseDescription)
-	}
-
-	return &threeDSessionResp, nil
+	// Convert response to 3D session response
+	return &PaycellGetThreeDSessionResponse{
+		ResponseHeader: struct {
+			TransactionID       string `json:"transactionId"`
+			ResponseDateTime    string `json:"responseDateTime"`
+			ResponseCode        string `json:"responseCode"`
+			ResponseDescription string `json:"responseDescription"`
+		}{
+			TransactionID:       response.TransactionID,
+			ResponseDateTime:    time.Now().Format("20060102150405000"),
+			ResponseCode:        "0",
+			ResponseDescription: "Success",
+		},
+		ExtraParameters: nil,
+		ThreeDSessionId: response.PaymentID,
+	}, nil
 }
 
 // submit3DForm submits the 3D secure form to Paycell and returns the redirect URL
@@ -832,11 +818,11 @@ func (p *PaycellProvider) mapProvisionToPaymentResponse(paycellResp PaycellProvi
 		status = provider.StatusSuccessful
 	}
 
-	// Use amount as received from response
+	// Convert amount back from kuruş to TRY
 	amount := 0.0
 	if paycellResp.Amount != "" {
-		if amountFloat, err := strconv.ParseFloat(paycellResp.Amount, 64); err == nil {
-			amount = amountFloat
+		if amountInt, err := strconv.ParseFloat(paycellResp.Amount, 64); err == nil {
+			amount = amountInt / 100
 		}
 	}
 
@@ -1075,7 +1061,7 @@ type PaycellResponseHeader struct {
 // PaycellGetCardTokenSecureRequest represents getCardTokenSecure request
 type PaycellGetCardTokenSecureRequest struct {
 	Header          PaycellRequestHeader `json:"header"`
-	CCAuthor        string               `json:"ccAuthor,omitempty"`
+	CCAuthor        string               `json:"ccAuthor"`
 	CreditCardNo    string               `json:"creditCardNo"`
 	ExpireDateMonth string               `json:"expireDateMonth"`
 	ExpireDateYear  string               `json:"expireDateYear"`
@@ -1130,6 +1116,7 @@ type PaycellGetThreeDSessionRequest struct {
 	InstallmentCount int                  `json:"installmentCount"`
 	MerchantCode     string               `json:"merchantCode"`
 	Msisdn           string               `json:"msisdn"`
+	ReferenceNumber  string               `json:"referenceNumber"`
 	Target           string               `json:"target"`
 	TransactionType  string               `json:"transactionType"`
 }
