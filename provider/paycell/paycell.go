@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -64,14 +63,6 @@ const (
 	statusCancelled  = "CANCELLED"
 	statusRefunded   = "REFUNDED"
 	statusProcessing = "PROCESSING"
-
-	// Paycell Error Codes
-	errorCodeInsufficientFunds = "INSUFFICIENT_FUNDS"
-	errorCodeInvalidCard       = "INVALID_CARD"
-	errorCodeExpiredCard       = "EXPIRED_CARD"
-	errorCodeFraudulent        = "FRAUDULENT_TRANSACTION"
-	errorCodeDeclined          = "CARD_DECLINED"
-	errorCodeSystemError       = "SYSTEM_ERROR"
 
 	// Paycell Response Codes
 	responseCodeSuccess = "0"
@@ -266,37 +257,94 @@ func (p *PaycellProvider) Create3DPayment(ctx context.Context, request provider.
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (p *PaycellProvider) Complete3DPayment(ctx context.Context, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
+func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	paymentID := callbackState.PaymentID
 	if paymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	// Get 3D session result after authentication
-	threeDSessionID, ok := data["threeDSessionId"]
-	if !ok || threeDSessionID == "" {
-		return nil, errors.New("paycell: threeDSessionId is required")
-	}
-
-	endpoint := endpointGetThreeDSessionResult
+	// Prepare request according to PayCell documentation
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
-	requestHeader := PaycellRequestHeader{
-		ApplicationName:     p.username,
-		ApplicationPwd:      p.password,
-		ClientIPAddress:     p.clientIP,
-		TransactionDateTime: transactionDateTime,
-		TransactionID:       transactionID,
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"merchantCode":    p.merchantID,
+		"msisdn":          p.phoneNumber,
+		"threeDSessionId": callbackState.PaymentID,
+		"requestHeader": map[string]any{
+			"transactionId":       transactionID,
+			"transactionDateTime": transactionDateTime,
+			"clientIPAddress":     p.clientIP,
+			"applicationName":     p.username,
+			"applicationPwd":      p.password,
+		},
 	}
 
-	paycellReq := PaycellGetThreeDSessionResultRequest{
-		RequestHeader:   requestHeader,
-		MerchantCode:    p.merchantID,
-		MSISDN:          p.phoneNumber,
-		ThreeDSessionID: threeDSessionID,
+	// Make HTTP request to getThreeDSessionResult endpoint
+	url := p.baseURL + endpointGetThreeDSessionResult
+
+	jsonData, err := json.Marshal(paycellReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal getThreeDSessionResult request: %w", err)
 	}
 
-	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Add provider request to client request log
+	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create getThreeDSessionResult request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send getThreeDSessionResult request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read getThreeDSessionResult response: %w", err)
+	}
+
+	var threeDSessionResp PaycellGetThreeDSessionResultResponse
+	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, string(body))
+	}
+
+	// Convert to standard payment response
+	now := time.Now()
+	response := &provider.PaymentResponse{
+		Success:          threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0",
+		PaymentID:        paymentID,
+		TransactionID:    threeDSessionResp.ThreeDOperationResult.ResponseHeader.TransactionID,
+		Amount:           callbackState.Amount,
+		Currency:         callbackState.Currency,
+		SystemTime:       &now,
+		ProviderResponse: threeDSessionResp,
+	}
+
+	// Set status and message based on 3D result
+	if threeDSessionResp.ThreeDOperationResult.ThreeDResult == "0" {
+		response.Status = provider.StatusSuccessful
+		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+	} else {
+		response.Status = provider.StatusFailed
+		response.Message = threeDSessionResp.MdErrorMessage
+		if response.Message == "" {
+			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
+		}
+		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
+	}
+
+	// Enhance response with callback state info using common helper
+	provider.EnhanceResponseWithCallbackState(response, callbackState)
+
+	return response, nil
 }
 
 // GetPaymentStatus retrieves the current status of a payment
@@ -305,65 +353,230 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, paymentID string
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	// get spesific key in log jsonb
+	// Get reference number from log
 	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
 
-	endpoint := endpointInquireAll
+	// Get amount from log
+	amountStr, err := provider.GetProviderRequestFromLog("paycell", paymentID, "amount")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get amount: %w", err)
+	}
+
+	// Get card token from log
+	cardToken, err := provider.GetProviderRequestFromLog("paycell", paymentID, "cardToken")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get card token: %w", err)
+	}
+
+	// Set clientIP for inquire operation - use a default if not available
+	if p.clientIP == "" {
+		p.clientIP = "127.0.0.1" // Default fallback
+	}
+
+	// Prepare request according to PayCell documentation
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
-	requestHeader := PaycellRequestHeader{
-		ApplicationName:     p.username,
-		ApplicationPwd:      p.password,
-		ClientIPAddress:     p.clientIP,
-		TransactionDateTime: transactionDateTime,
-		TransactionID:       transactionID,
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"paymentMethodType":       "CREDIT_CARD",
+		"merchantCode":            p.merchantID,
+		"msisdn":                  p.phoneNumber,
+		"originalReferenceNumber": originalReferenceNumber,
+		"referenceNumber":         p.generateReferenceNumber(),
+		"amount":                  amountStr,
+		"currency":                "TRY",
+		"paymentType":             "SALE",
+		"cardToken":               cardToken,
+		"requestHeader": map[string]any{
+			"transactionId":       transactionID,
+			"transactionDateTime": transactionDateTime,
+			"clientIPAddress":     p.clientIP,
+			"applicationName":     p.username,
+			"applicationPwd":      p.password,
+		},
 	}
 
-	paycellReq := PaycellInquireRequest{
-		RequestHeader:           requestHeader,
-		OriginalReferenceNumber: originalReferenceNumber,
-		ReferenceNumber:         p.generateReferenceNumber(),
-		MerchantCode:            p.merchantID,
-		MSISDN:                  p.phoneNumber,
-		PaymentMethodType:       "CREDIT_CARD",
+	// Make HTTP request to inquireAll endpoint
+	url := p.baseURL + endpointInquireAll
+
+	jsonData, err := json.Marshal(paycellReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal inquire request: %w", err)
 	}
 
-	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Add provider request to client request log
+	_ = provider.AddProviderRequestToClientRequest("paycell", "inquireRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create inquire request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send inquire request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read inquire response: %w", err)
+	}
+
+	var inquireResp PaycellInquireResponse
+	if err := json.Unmarshal(body, &inquireResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, string(body))
+	}
+
+	// Convert to standard payment response
+	now := time.Now()
+	response := &provider.PaymentResponse{
+		Success:          inquireResp.ResponseHeader.ResponseCode == "0",
+		PaymentID:        paymentID,
+		TransactionID:    inquireResp.ResponseHeader.TransactionID,
+		SystemTime:       &now,
+		ProviderResponse: inquireResp,
+	}
+
+	// Set status and message based on inquire result
+	if inquireResp.ResponseHeader.ResponseCode == "0" {
+		// Map PayCell status to provider status
+		switch inquireResp.Status {
+		case "SALE":
+			response.Status = provider.StatusSuccessful
+		case "PENDING":
+			response.Status = provider.StatusPending
+		case "REFUNDED":
+			response.Status = provider.StatusSuccessful // Treat refunded as successful
+		case "CANCELLED":
+			response.Status = provider.StatusCancelled
+		default:
+			response.Status = provider.StatusPending
+		}
+		response.Message = inquireResp.ResponseHeader.ResponseDescription
+
+		// Get amount from provision list if available
+		if len(inquireResp.ProvisionList) > 0 {
+			provision := inquireResp.ProvisionList[0]
+			if amountFloat, err := strconv.ParseFloat(provision.Amount, 64); err == nil {
+				response.Amount = amountFloat / 100 // Convert from kuruş to TRY
+			}
+		}
+	} else {
+		response.Status = provider.StatusFailed
+		response.Message = inquireResp.ResponseHeader.ResponseDescription
+		response.ErrorCode = inquireResp.ResponseHeader.ResponseCode
+	}
+
+	return response, nil
 }
 
 // CancelPayment cancels a payment (reverse operation)
 func (p *PaycellProvider) CancelPayment(ctx context.Context, paymentID, reason string) (*provider.PaymentResponse, error) {
-	// get spesific key in log jsonb
+	if paymentID == "" {
+		return nil, errors.New("paycell: paymentID is required")
+	}
+
+	// Get original reference number from log
 	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", paymentID, "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %w", err)
 	}
 
-	endpoint := endpointReverse
+	// Get amount from log for reverse operation
+	amountStr, err := provider.GetProviderRequestFromLog("paycell", paymentID, "amount")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get amount: %w", err)
+	}
+
+	// Set clientIP for reverse operation - use a default if not available
+	if p.clientIP == "" {
+		p.clientIP = "127.0.0.1" // Default fallback
+	}
+
+	// Prepare request according to PayCell documentation
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
-	requestHeader := PaycellRequestHeader{
-		ApplicationName:     p.username,
-		ApplicationPwd:      p.password,
-		ClientIPAddress:     p.clientIP,
-		TransactionDateTime: transactionDateTime,
-		TransactionID:       transactionID,
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"merchantCode":            p.merchantID,
+		"msisdn":                  p.phoneNumber,
+		"originalReferenceNumber": originalReferenceNumber,
+		"referenceNumber":         p.generateReferenceNumber(),
+		"amount":                  amountStr,
+		"requestHeader": map[string]any{
+			"applicationName":     p.username,
+			"applicationPwd":      p.password,
+			"clientIPAddress":     p.clientIP,
+			"transactionDateTime": transactionDateTime,
+			"transactionId":       transactionID,
+		},
 	}
 
-	paycellReq := PaycellReverseRequest{
-		RequestHeader:           requestHeader,
-		OriginalReferenceNumber: originalReferenceNumber,
-		ReferenceNumber:         p.generateReferenceNumber(),
-		MerchantCode:            p.merchantID,
-		PaymentType:             "REVERSE",
+	// Make HTTP request to reverse endpoint
+	url := p.baseURL + endpointReverse
+
+	jsonData, err := json.Marshal(paycellReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal reverse request: %w", err)
 	}
 
-	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Add provider request to client request log
+	_ = provider.AddProviderRequestToClientRequest("paycell", "reverseRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create reverse request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send reverse request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read reverse response: %w", err)
+	}
+
+	var reverseResp PaycellReverseResponse
+	if err := json.Unmarshal(body, &reverseResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal reverse response: %w. Response body: %s", err, string(body))
+	}
+
+	// Convert to standard payment response
+	now := time.Now()
+	response := &provider.PaymentResponse{
+		Success:          reverseResp.ResponseHeader.ResponseCode == "0",
+		PaymentID:        paymentID,
+		TransactionID:    reverseResp.ResponseHeader.TransactionID,
+		SystemTime:       &now,
+		ProviderResponse: reverseResp,
+	}
+
+	// Set status and message based on reverse result
+	if reverseResp.ResponseHeader.ResponseCode == "0" {
+		response.Status = provider.StatusCancelled
+		response.Message = reverseResp.ResponseHeader.ResponseDescription
+	} else {
+		response.Status = provider.StatusFailed
+		response.Message = reverseResp.ResponseHeader.ResponseDescription
+		response.ErrorCode = reverseResp.ResponseHeader.ResponseCode
+	}
+
+	return response, nil
 }
 
 // RefundPayment refunds a payment
@@ -376,47 +589,97 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		return nil, errors.New("paycell: refund amount must be greater than 0")
 	}
 
-	endpoint := endpointRefund
+	// Get original reference number from log
+	originalReferenceNumber, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "referenceNumber")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get reference number: %w", err)
+	}
+
+	// Set clientIP for refund operation - use a default if not available
+	if p.clientIP == "" {
+		p.clientIP = "127.0.0.1" // Default fallback
+	}
+
+	// Prepare request according to PayCell documentation
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
-
-	requestHeader := PaycellRequestHeader{
-		ApplicationName:     p.username,
-		ApplicationPwd:      p.password,
-		ClientIPAddress:     p.clientIP,
-		TransactionDateTime: transactionDateTime,
-		TransactionID:       transactionID,
-	}
 
 	// Convert amount to kuruş (multiply by 100)
 	amountInKurus := strconv.FormatFloat(request.RefundAmount*100, 'f', 0, 64)
 
-	paycellReq := PaycellRefundRequest{
-		RequestHeader:           requestHeader,
-		OriginalReferenceNumber: request.PaymentID,
-		ReferenceNumber:         p.generateReferenceNumber(),
-		MerchantCode:            p.merchantID,
-		Amount:                  amountInKurus,
-		PaymentType:             "REFUND",
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"msisdn":                  p.phoneNumber,
+		"merchantCode":            p.merchantID,
+		"originalReferenceNumber": originalReferenceNumber,
+		"referenceNumber":         p.generateReferenceNumber(),
+		"amount":                  amountInKurus,
+		"pointAmount":             "", // Empty as shown in example
+		"requestHeader": map[string]any{
+			"applicationName":     p.username,
+			"applicationPwd":      p.password,
+			"clientIPAddress":     p.clientIP,
+			"transactionDateTime": transactionDateTime,
+			"transactionId":       transactionID,
+		},
 	}
 
-	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Make HTTP request to refundAll endpoint
+	url := p.baseURL + endpointRefundAll
+
+	jsonData, err := json.Marshal(paycellReq)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal refund request: %w", err)
 	}
 
+	// Add provider request to client request log
+	_ = provider.AddProviderRequestToClientRequest("paycell", "refundRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refund request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send refund request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read refund response: %w", err)
+	}
+
+	var refundResp PaycellReverseResponse // Using same response structure as reverse
+	if err := json.Unmarshal(body, &refundResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal refund response: %w. Response body: %s", err, string(body))
+	}
+
+	// Convert to standard refund response
 	now := time.Now()
-	return &provider.RefundResponse{
-		Success:      response.Success,
-		RefundID:     response.TransactionID,
+	response := &provider.RefundResponse{
+		Success:      refundResp.ResponseHeader.ResponseCode == "0",
+		RefundID:     refundResp.ResponseHeader.TransactionID,
 		PaymentID:    request.PaymentID,
 		RefundAmount: request.RefundAmount,
-		Status:       string(response.Status),
-		Message:      response.Message,
-		ErrorCode:    response.ErrorCode,
+		Status:       "refunded",
+		Message:      refundResp.ResponseHeader.ResponseDescription,
 		SystemTime:   &now,
-		RawResponse:  response,
-	}, nil
+		RawResponse:  refundResp,
+	}
+
+	// Set status and error code based on refund result
+	if refundResp.ResponseHeader.ResponseCode != "0" {
+		response.Success = false
+		response.Status = "failed"
+		response.ErrorCode = refundResp.ResponseHeader.ResponseCode
+	}
+
+	return response, nil
 }
 
 // ValidateWebhook validates Paycell webhook data
@@ -620,19 +883,23 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 		return nil, fmt.Errorf("failed to get 3D session: %w", err)
 	}
 
-	// Build callback URL through GoPay (like other providers)
-	gopayCallbackURL := fmt.Sprintf("%s/v1/callback/paycell", p.gopayBaseURL)
-	if request.CallbackURL != "" {
-		gopayCallbackURL += "?originalCallbackUrl=" + request.CallbackURL
-		// Add tenant ID to callback URL for proper tenant identification
-		if request.TenantID != 0 {
-			gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
-		}
-	} else {
-		// Add tenant ID to callback URL for proper tenant identification
-		if request.TenantID != 0 {
-			gopayCallbackURL += fmt.Sprintf("?tenantId=%d", request.TenantID)
-		}
+	// Create encrypted state with all necessary callback information
+	state := provider.CallbackState{
+		TenantID:         int(request.TenantID),
+		PaymentID:        threeDSession.ThreeDSessionId,
+		OriginalCallback: request.CallbackURL,
+		Amount:           request.Amount,
+		Currency:         request.Currency,
+		LogID:            p.logID,
+		Provider:         "paycell",
+		Environment:      map[bool]string{true: "production", false: "sandbox"}[p.isProduction],
+		Timestamp:        time.Now(),
+	}
+
+	// Use common encryption utility
+	gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "paycell", state)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
 	}
 
 	now := time.Now()
@@ -719,51 +986,6 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 	}
 
 	return &threeDSessionResp, nil
-}
-
-// submit3DForm submits the 3D secure form to Paycell and returns the redirect URL
-func (p *PaycellProvider) submit3DForm(ctx context.Context, threeDSessionID, callbackURL string) (string, error) {
-	formData := url.Values{}
-	formData.Set("threeDSessionId", threeDSessionID)
-	formData.Set("callbackurl", callbackURL)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.paymentManagementURL+endpointThreeDSecure, bytes.NewBufferString(formData.Encode()))
-	if err != nil {
-		return "", fmt.Errorf("failed to create 3D form submission request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to submit 3D form: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read 3D form response: %v", err)
-	}
-
-	// Check if response is HTML (3D secure page)
-	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") || strings.HasPrefix(string(body), "<") {
-		// This is normal for 3D secure - return the 3D secure URL
-		return p.paymentManagementURL + endpointThreeDSecure, nil
-	}
-
-	// Try to parse as JSON if it's not HTML
-	var paycellResp PaycellProvisionResponse
-	if err := json.Unmarshal(body, &paycellResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal 3D form response: %v", err)
-	}
-
-	// Check for success
-	if paycellResp.ResponseHeader.ResponseCode != "0" {
-		return "", fmt.Errorf("3D form submission error: %s - %s", paycellResp.ResponseHeader.ResponseCode, paycellResp.ResponseHeader.ResponseDescription)
-	}
-
-	// Return the redirect URL from the response
-	return p.paymentManagementURL + endpointThreeDSecure, nil
 }
 
 // generate3DSecureHTML generates HTML form for 3D secure authentication according to Paycell docs
@@ -898,153 +1120,6 @@ func (p *PaycellProvider) generateSignature(data string) string {
 	// Simple hash for testing
 	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", hash)
-}
-
-// mapToPaycellRequest converts a standard payment request to Paycell format (for backward compatibility)
-func (p *PaycellProvider) mapToPaycellRequest(request provider.PaymentRequest, _ bool) map[string]any {
-	// Create transaction datetime in Paycell format (YmdHisu - 17 chars)
-	transactionDateTime := p.generateTransactionDateTime()
-	transactionID := p.generateTransactionID()
-
-	// Extract MSISDN (remove country code if present)
-	msisdn := request.Customer.PhoneNumber
-	if strings.HasPrefix(msisdn, "+90") {
-		msisdn = msisdn[3:]
-	} else if strings.HasPrefix(msisdn, "90") {
-		msisdn = msisdn[2:]
-	}
-	if len(msisdn) > 10 {
-		msisdn = msisdn[len(msisdn)-10:] // Take last 10 digits
-	}
-
-	// Create reference number (use transactionID as default)
-	referenceNumber := transactionID
-	if request.ConversationID != "" {
-		referenceNumber = request.ConversationID
-	}
-
-	// Paycell request structure according to real API
-	paycellReq := map[string]any{
-		"extraParameters": nil,
-		"requestHeader": map[string]any{
-			"applicationName":     p.username,
-			"applicationPwd":      p.password,
-			"clientIPAddress":     p.clientIP,
-			"transactionDateTime": transactionDateTime,
-			"transactionId":       transactionID,
-		},
-		"acquirerBankCode":        nil,
-		"amount":                  fmt.Sprintf("%.0f", request.Amount*100), // Convert TL to kuruş (multiply by 100)
-		"cardId":                  nil,
-		"cardToken":               nil,
-		"currency":                request.Currency,
-		"installmentCount":        nil,
-		"merchantCode":            p.merchantID,
-		"msisdn":                  msisdn,
-		"originalReferenceNumber": nil,
-		"paymentType":             "SALE", // Payment type for provision
-		"pin":                     nil,
-		"pointAmount":             nil,
-		"referenceNumber":         referenceNumber,
-		"threeDSessionId":         nil,
-	}
-
-	return paycellReq
-}
-
-// mapToPaymentResponse converts Paycell response to standard payment response (for backward compatibility)
-func (p *PaycellProvider) mapToPaymentResponse(paycellResp PaycellResponse) *provider.PaymentResponse {
-	// Parse amount from string - use amount as received
-	amount, _ := strconv.ParseFloat(paycellResp.Amount, 64)
-
-	// Use OrderID as PaymentID if PaymentID is empty
-	paymentID := paycellResp.PaymentID
-	if paymentID == "" {
-		paymentID = paycellResp.OrderID
-	}
-
-	// Get message from different sources
-	message := paycellResp.Message
-	if message == "" {
-		message = paycellResp.ErrorMessage
-	}
-	if message == "" {
-		message = paycellResp.ResponseMessage
-	}
-	if message == "" && paycellResp.ResponseHeader.ResponseDescription != "" {
-		message = paycellResp.ResponseHeader.ResponseDescription
-	}
-	if message == "" && paycellResp.Header.ResponseDescription != "" {
-		message = paycellResp.Header.ResponseDescription
-	}
-
-	// Get transaction ID from response header if available
-	transactionID := paycellResp.TransactionID
-	if transactionID == "" && paycellResp.ResponseHeader.TransactionID != "" {
-		transactionID = paycellResp.ResponseHeader.TransactionID
-	}
-	if transactionID == "" && paycellResp.Header.TransactionID != "" {
-		transactionID = paycellResp.Header.TransactionID
-	}
-
-	// Get error code from response header if available
-	errorCode := paycellResp.ErrorCode
-	if errorCode == "" && paycellResp.ResponseHeader.ResponseCode != "" {
-		errorCode = paycellResp.ResponseHeader.ResponseCode
-	}
-	if errorCode == "" && paycellResp.Header.ResponseCode != "" {
-		errorCode = paycellResp.Header.ResponseCode
-	}
-
-	now := time.Now()
-	response := &provider.PaymentResponse{
-		Success:          paycellResp.Success,
-		PaymentID:        paymentID,
-		TransactionID:    transactionID,
-		Amount:           amount,
-		Currency:         paycellResp.Currency,
-		Message:          message,
-		ErrorCode:        errorCode,
-		SystemTime:       &now,
-		ProviderResponse: paycellResp,
-	}
-
-	// Determine success based on response code
-	responseCode := ""
-	if paycellResp.ResponseHeader.ResponseCode != "" {
-		responseCode = paycellResp.ResponseHeader.ResponseCode
-	} else if paycellResp.Header.ResponseCode != "" {
-		responseCode = paycellResp.Header.ResponseCode
-	}
-
-	// Add 3D secure information if present
-	if paycellResp.RedirectURL != "" {
-		response.RedirectURL = paycellResp.RedirectURL
-		response.Status = provider.StatusPending
-		response.Success = true // Pending is still successful initiation
-		// Also preserve HTML if provided
-		if paycellResp.HTML != "" {
-			response.HTML = paycellResp.HTML
-		}
-	} else if paycellResp.HTML != "" {
-		response.HTML = paycellResp.HTML
-		response.Status = provider.StatusPending
-		response.Success = true // Pending is still successful initiation
-	} else if paycellResp.Status == statusPending {
-		response.Status = provider.StatusPending
-		response.Success = false // Pending without redirect means waiting
-	} else if paycellResp.Status == statusCancelled {
-		response.Status = provider.StatusCancelled
-		response.Success = false
-	} else if responseCode == responseCodeSuccess {
-		response.Success = true
-		response.Status = provider.StatusSuccessful
-	} else {
-		response.Success = false
-		response.Status = provider.StatusFailed
-	}
-
-	return response
 }
 
 // PaycellRequestHeader represents the common request header for Paycell API
@@ -1203,4 +1278,52 @@ type PaycellResponse struct {
 	ReconciliationDate      string         `json:"reconciliationDate,omitempty"`
 	IyzPaymentID            string         `json:"iyzPaymentId,omitempty"`
 	IyzPaymentTransactionID string         `json:"iyzPaymentTransactionId,omitempty"`
+}
+
+// PaycellGetThreeDSessionResultResponse represents the response from getThreeDSessionResult endpoint
+type PaycellGetThreeDSessionResultResponse struct {
+	ExtraParameters       any                          `json:"extraParameters"`
+	CurrentStep           string                       `json:"currentStep"`
+	MdErrorMessage        string                       `json:"mdErrorMessage"`
+	MdStatus              string                       `json:"mdStatus"`
+	ThreeDOperationResult PaycellThreeDOperationResult `json:"threeDOperationResult"`
+}
+
+// PaycellThreeDOperationResult represents the 3D operation result within getThreeDSessionResult response
+type PaycellThreeDOperationResult struct {
+	ThreeDResult            string                `json:"threeDResult"`
+	ThreeDResultDescription string                `json:"threeDResultDescription"`
+	ResponseHeader          PaycellResponseHeader `json:"responseHeader"`
+}
+
+// PaycellReverseResponse represents the response from reverse endpoint
+type PaycellReverseResponse struct {
+	ReconciliationDate     string                `json:"reconciliationDate"`
+	ApprovalCode           string                `json:"approvalCode"`
+	RetryStatusCode        *string               `json:"retryStatusCode"`
+	RetryStatusDescription *string               `json:"retryStatusDescription"`
+	ResponseHeader         PaycellResponseHeader `json:"responseHeader"`
+}
+
+// PaycellInquireResponse represents the response from inquireAll endpoint
+type PaycellInquireResponse struct {
+	ExtraParameters   any                        `json:"extraParameters"`
+	OrderID           string                     `json:"orderId"`
+	AcquirerBankCode  string                     `json:"acquirerBankCode"`
+	Status            string                     `json:"status"`
+	PaymentMethodType string                     `json:"paymentMethodType"`
+	ProvisionList     []PaycellProvisionListItem `json:"provisionList"`
+	ResponseHeader    PaycellResponseHeader      `json:"responseHeader"`
+}
+
+// PaycellProvisionListItem represents an item in the provision list
+type PaycellProvisionListItem struct {
+	ProvisionType       string `json:"provisionType"`
+	TransactionID       string `json:"transactionId"`
+	Amount              string `json:"amount"`
+	ApprovalCode        string `json:"approvalCode"`
+	DateTime            string `json:"dateTime"`
+	ReconciliationDate  string `json:"reconciliationDate"`
+	ResponseCode        string `json:"responseCode"`
+	ResponseDescription string `json:"responseDescription"`
 }
