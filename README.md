@@ -120,16 +120,16 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 
 ## 🏪 Supported Payment Providers
 
-| Provider    | Status        | Region | Features                    |
-| ----------- | ------------- | ------ | --------------------------- |
-| **İyzico**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **OzanPay** | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **Paycell** | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **Papara**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **Nkolay**  | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **PayTR**   | ✅ Production | Turkey | Payment, 3D, Refund, Cancel |
-| **PayU**    | ✅ Production | Global | Payment, 3D, Refund, Cancel |
-| **Stripe**  | ✅ Production | Global | Payment, 3D, Refund, Cancel |
+| Provider    | Status      | Region | Features                    |
+| ----------- | ----------- | ------ | --------------------------- |
+| **Paycell** | Production  | Turkey | Payment, 3D, Refund, Cancel |
+| **Nkolay**  | Production  | Turkey | Payment, 3D, Refund, Cancel |
+| **İyzico**  | Development | Turkey | Payment, 3D, Refund, Cancel |
+| **OzanPay** | Development | Turkey | Payment, 3D, Refund, Cancel |
+| **Papara**  | Development | Turkey | Payment, 3D, Refund, Cancel |
+| **PayTR**   | Development | Turkey | Payment, 3D, Refund, Cancel |
+| **PayU**    | Development | Global | Payment, 3D, Refund, Cancel |
+| **Stripe**  | Development | Global | Payment, 3D, Refund, Cancel |
 
 ## 🚦 Quick Start
 
