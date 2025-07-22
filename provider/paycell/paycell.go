@@ -209,19 +209,19 @@ func (p *PaycellProvider) ValidateConfig(config map[string]string) error {
 
 // Initialize sets up the Paycell payment provider with authentication credentials
 func (p *PaycellProvider) Initialize(conf map[string]string) error {
-	p.username = conf["username"]
-	p.password = conf["password"]
-	p.merchantID = conf["merchantId"]
-	p.secureCode = conf["secureCode"]
-
-	if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
-		return errors.New("paycell: username, password, merchantId and secureCode are required")
-	}
-
-	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
-
 	p.isProduction = conf["environment"] == "production"
+
 	if p.isProduction {
+		// Production environment - use provided credentials
+		p.username = conf["username"]
+		p.password = conf["password"]
+		p.merchantID = conf["merchantId"]
+		p.secureCode = conf["secureCode"]
+
+		if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
+			return errors.New("paycell: username, password, merchantId and secureCode are required for production")
+		}
+
 		p.baseURL = apiProductionURL
 		p.paymentManagementURL = paymentManagementProductionURL
 		// Production environment - use secure TLS
@@ -229,6 +229,14 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 			Timeout: defaultTimeout,
 		}
 	} else {
+		// Test environment - use test credentials for integration tests [[memory:2471205]]
+		p.username = testApplicationName
+		p.password = testApplicationPwd
+		p.merchantID = testMerchantCode
+		p.secureCode = testSecureCode
+
+		fmt.Printf("Using test credentials - Username: %s, MerchantID: %s\n", p.username, p.merchantID)
+
 		p.baseURL = apiSandboxURL
 		p.paymentManagementURL = paymentManagementSandboxURL
 		// Sandbox environment - skip TLS verification for test endpoints
@@ -239,6 +247,8 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 			},
 		}
 	}
+
+	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	return nil
 }
@@ -511,7 +521,6 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("failed to marshal card token request: %v", err)
 	}
 
-	fmt.Printf("getCardTokenSecure Request: %s\n", string(jsonData))
 	// add provider request to client request
 	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", cardTokenRequest, p.logID)
 
@@ -533,11 +542,9 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("failed to read card token response: %v", err)
 	}
 
-	fmt.Printf("getCardTokenSecure Response: %s\n", string(body))
-
 	var cardTokenResp PaycellGetCardTokenSecureResponse
 	if err := json.Unmarshal(body, &cardTokenResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal card token response: %v", err)
+		return "", fmt.Errorf("failed to unmarshal card token response: %v. Response body: %s", err, string(body))
 	}
 
 	// Check for success
@@ -655,7 +662,7 @@ func (p *PaycellProvider) provision3DWithToken(ctx context.Context, request prov
 
 // getThreeDSession gets 3D session for secure payment
 func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider.PaymentRequest, cardToken string) (*PaycellGetThreeDSessionResponse, error) {
-	endpoint := endpointGetThreeDSession
+	endpoint := p.baseURL + endpointGetThreeDSession
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
@@ -680,27 +687,47 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		TransactionType:  "AUTH",
 	}
 
-	response, err := p.sendProvisionRequest(ctx, endpoint, paycellReq)
+	// Send request directly (not through sendProvisionRequest since response format is different)
+	jsonData, err := json.Marshal(paycellReq)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal getThreeDSession request: %v", err)
 	}
 
-	// Convert response to 3D session response
-	return &PaycellGetThreeDSessionResponse{
-		ResponseHeader: struct {
-			TransactionID       string `json:"transactionId"`
-			ResponseDateTime    string `json:"responseDateTime"`
-			ResponseCode        string `json:"responseCode"`
-			ResponseDescription string `json:"responseDescription"`
-		}{
-			TransactionID:       response.TransactionID,
-			ResponseDateTime:    time.Now().Format("20060102150405000"),
-			ResponseCode:        "0",
-			ResponseDescription: "Success",
-		},
-		ExtraParameters: nil,
-		ThreeDSessionId: response.PaymentID,
-	}, nil
+	fmt.Printf("getThreeDSession Request: %s\n", string(jsonData))
+	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", paycellReq, p.logID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create getThreeDSession request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send getThreeDSession request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read getThreeDSession response: %v", err)
+	}
+
+	fmt.Printf("getThreeDSession Response: %s\n", string(body))
+
+	var threeDSessionResp PaycellGetThreeDSessionResponse
+	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSession response: %v. Response: %s", err, string(body))
+	}
+
+	// Check for success
+	if threeDSessionResp.ResponseHeader.ResponseCode != "0" {
+		return nil, fmt.Errorf("getThreeDSession error: %s - %s", threeDSessionResp.ResponseHeader.ResponseCode, threeDSessionResp.ResponseHeader.ResponseDescription)
+	}
+
+	return &threeDSessionResp, nil
 }
 
 // submit3DForm submits the 3D secure form to Paycell and returns the redirect URL
@@ -1048,7 +1075,7 @@ type PaycellResponseHeader struct {
 // PaycellGetCardTokenSecureRequest represents getCardTokenSecure request
 type PaycellGetCardTokenSecureRequest struct {
 	Header          PaycellRequestHeader `json:"header"`
-	CCAuthor        string               `json:"ccAuthor"`
+	CCAuthor        string               `json:"ccAuthor,omitempty"`
 	CreditCardNo    string               `json:"creditCardNo"`
 	ExpireDateMonth string               `json:"expireDateMonth"`
 	ExpireDateYear  string               `json:"expireDateYear"`
@@ -1060,6 +1087,7 @@ type PaycellGetCardTokenSecureRequest struct {
 type PaycellGetCardTokenSecureResponse struct {
 	Header    PaycellResponseHeader `json:"header"`
 	CardToken string                `json:"cardToken"`
+	HashData  string                `json:"hashData"`
 }
 
 // PaycellProvisionRequest represents provision request according to official docs
