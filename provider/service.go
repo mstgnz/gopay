@@ -114,29 +114,30 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
-func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*PaymentResponse, error) {
-	tenantID, err := getTenantIDFromContext(ctx)
+func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*PaymentResponse, error) {
+	callbackState, err := HandleEncryptedCallbackState(state)
 	if err != nil {
 		return nil, err
 	}
-	provider, err := GetProvider(tenantID, providerName, environment)
+
+	provider, err := GetProvider(callbackState.TenantID, providerName, callbackState.Environment)
 	if err != nil {
 		return nil, err
 	}
 
 	startTime := time.Now()
-	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "POST", "/payment/3d/complete", data, "", "")
+	logID, err := s.logger.LogRequest(ctx, callbackState.TenantID, providerName, "POST", "/payment/3d/complete", data, "", "")
 	if err != nil {
 		logger.Warn("Failed to log 3D completion request", logger.LogContext{
 			Provider: providerName,
 			Fields: map[string]any{
-				"payment_id": paymentID,
+				"payment_id": callbackState.PaymentID,
 				"error":      err.Error(),
 			},
 		})
 	}
 
-	response, err := provider.Complete3DPayment(ctx, paymentID, conversationID, data)
+	response, err := provider.Complete3DPayment(ctx, callbackState, data)
 
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -147,7 +148,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, pro
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": callbackState.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})
@@ -158,7 +159,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, environment, pro
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id":     logID,
-						"payment_id": paymentID,
+						"payment_id": callbackState.PaymentID,
 						"error":      logErr.Error(),
 					},
 				})

@@ -69,8 +69,8 @@ func RequestValidationMiddleware() func(http.Handler) http.Handler {
 				contentType := r.Header.Get("Content-Type")
 
 				// Special case for callback endpoints (banks send form-urlencoded)
-				isCallbackEndpoint := strings.HasPrefix(r.URL.Path, "/callback") ||
-					strings.HasPrefix(r.URL.Path, "/webhooks")
+				isCallbackEndpoint := strings.HasPrefix(r.URL.Path, "/v1/callback") ||
+					strings.HasPrefix(r.URL.Path, "/v1/webhooks")
 
 				if contentType != "" {
 					if isCallbackEndpoint {

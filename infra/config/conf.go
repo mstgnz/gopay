@@ -13,9 +13,10 @@ import (
 type CKey string
 
 type Config struct {
-	DB        *conn.DB
-	Validator *validator.Validate
-	SecretKey string
+	DB         *conn.DB
+	Validator  *validator.Validate
+	SecretKey  string
+	EncryptKey string
 }
 
 // AppConfig represents the application configuration
@@ -37,8 +38,9 @@ func App() *Config {
 			DB:        &conn.DB{},
 			Validator: validator.New(),
 			// the secret key will change every time the application is restarted.
-			SecretKey: GetEnv("SECRET_KEY", "default-secret-key"),
+			SecretKey: GetEnv("JWT_SECRET", "default-secret-key"),
 			//SecretKey: uuid.New().String(), // every time the application is restarted, the secret key will change.
+			EncryptKey: GetEnv("ENCRYPT_SECRET", "default-encrypt-key"),
 		}
 		instance.DB.ConnectDatabase()
 	}

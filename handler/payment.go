@@ -23,7 +23,7 @@ type PaymentServiceInterface interface {
 	GetPaymentStatus(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
 	CancelPayment(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
 	RefundPayment(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
-	Complete3DPayment(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
+	Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhook(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
 }
 
@@ -198,23 +198,9 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
-	}
-
-	// Get conversationID and paymentID from query parameters
-	paymentID := r.URL.Query().Get("paymentId")
-	conversationID := r.URL.Query().Get("conversationId")
-
-	if paymentID == "" {
-		response.Error(w, http.StatusBadRequest, "Missing payment ID", nil)
-		return
-	}
-
-	// Parse callback data from POST form and query parameters
-	if err := r.ParseForm(); err != nil {
-		response.Error(w, http.StatusBadRequest, "Failed to parse form data", err)
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		response.Error(w, http.StatusBadRequest, "Missing state", nil)
 		return
 	}
 
@@ -232,7 +218,7 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Complete 3D payment
-	resp, err := h.paymentService.Complete3DPayment(ctx, environment, providerName, paymentID, conversationID, callbackData)
+	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
 
 	// Enhanced redirect handling with better URL parsing
 	originalCallbackURL := r.URL.Query().Get("originalCallbackUrl")

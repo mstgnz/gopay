@@ -22,7 +22,7 @@ type MockPaymentService struct {
 	GetPaymentStatusFunc  func(ctx context.Context, environment, providerName, paymentID string) (*provider.PaymentResponse, error)
 	CancelPaymentFunc     func(ctx context.Context, environment, providerName, paymentID, reason string) (*provider.PaymentResponse, error)
 	RefundPaymentFunc     func(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
-	Complete3DPaymentFunc func(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
+	Complete3DPaymentFunc func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhookFunc   func(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
 }
 
@@ -81,13 +81,13 @@ func (m *MockPaymentService) RefundPayment(ctx context.Context, environment, pro
 	}, nil
 }
 
-func (m *MockPaymentService) Complete3DPayment(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
+func (m *MockPaymentService) Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error) {
 	if m.Complete3DPaymentFunc != nil {
-		return m.Complete3DPaymentFunc(ctx, environment, providerName, paymentID, conversationID, data)
+		return m.Complete3DPaymentFunc(ctx, providerName, state, data)
 	}
 	return &provider.PaymentResponse{
 		Success:       true,
-		PaymentID:     paymentID,
+		PaymentID:     "test-payment-123",
 		TransactionID: "test-tx-123",
 		Status:        "success",
 		Amount:        100.0,
@@ -435,14 +435,12 @@ func TestPaymentHandler_HandleCallback(t *testing.T) {
 		formData       map[string]string
 		expectedStatus int
 		expectRedirect bool
-		mockFunc       func(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error)
+		mockFunc       func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	}{
 		{
 			name: "successful callback with redirect",
 			queryParams: map[string]string{
-				"environment":         "sandbox",
-				"paymentId":           "test-payment-123",
-				"conversationId":      "test-conv-123",
+				"state":               "test-encrypted-state",
 				"originalCallbackUrl": "https://example.com/callback",
 			},
 			expectedStatus: 302,
@@ -451,24 +449,15 @@ func TestPaymentHandler_HandleCallback(t *testing.T) {
 		{
 			name: "successful callback without redirect",
 			queryParams: map[string]string{
-				"environment": "sandbox",
-				"paymentId":   "test-payment-123",
+				"state": "test-encrypted-state",
 			},
 			expectedStatus: 200,
 			expectRedirect: false,
 		},
 		{
-			name: "missing payment ID",
+			name: "missing state",
 			queryParams: map[string]string{
-				"environment": "sandbox",
-			},
-			expectedStatus: 400,
-			expectRedirect: false,
-		},
-		{
-			name: "missing environment",
-			queryParams: map[string]string{
-				"paymentId": "test-payment-123",
+				"originalCallbackUrl": "https://example.com/callback",
 			},
 			expectedStatus: 400,
 			expectRedirect: false,
@@ -476,12 +465,11 @@ func TestPaymentHandler_HandleCallback(t *testing.T) {
 		{
 			name: "3D payment completion error",
 			queryParams: map[string]string{
-				"environment": "sandbox",
-				"paymentId":   "test-payment-123",
+				"state": "test-encrypted-state",
 			},
 			expectedStatus: 500,
 			expectRedirect: false,
-			mockFunc: func(ctx context.Context, environment, providerName, paymentID, conversationID string, data map[string]string) (*provider.PaymentResponse, error) {
+			mockFunc: func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error) {
 				return nil, errors.New("3D completion failed")
 			},
 		},
