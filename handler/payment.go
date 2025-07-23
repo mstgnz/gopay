@@ -279,84 +279,23 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 // Enhanced success handling with better URL construction
 func (h *PaymentHandler) handleCallbackSuccess(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
-	if originalCallbackURL != "" {
-		// Parse success URL from original callback URL
-		if successURL := r.URL.Query().Get("successUrl"); successURL != "" {
-			redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s&transactionId=%s&amount=%.2f",
-				successURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount)
-			http.Redirect(w, r, redirectURL, http.StatusFound)
-			return
-		}
-
-		// Enhanced parameter passing to original callback URL
-		redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s&transactionId=%s&amount=%.2f&currency=%s",
-			originalCallbackURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount, resp.Currency)
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	// Legacy: Direct success URL redirect
-	if resp.Success && r.URL.Query().Get("successUrl") != "" {
-		successURL := r.URL.Query().Get("successUrl")
-		redirectURL := fmt.Sprintf("%s?paymentId=%s&status=%s&transactionId=%s",
-			successURL, resp.PaymentID, resp.Status, resp.TransactionID)
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	// Otherwise return JSON response
-	response.Success(w, http.StatusOK, "Payment completed successfully", resp)
+	redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s&transactionId=%s&amount=%.2f&currency=%s",
+		originalCallbackURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount, resp.Currency)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // Enhanced error handling with better error information
 func (h *PaymentHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, originalCallbackURL string) {
-	if originalCallbackURL != "" {
-		// Parse error URL from original callback URL
-		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-			redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s",
-				errorURL, err.Error(), "CALLBACK_ERROR")
-			http.Redirect(w, r, redirectURL, http.StatusFound)
-			return
-		}
-
-		// Redirect to original callback URL with error
-		redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s",
-			originalCallbackURL, err.Error(), "CALLBACK_ERROR")
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	// Legacy: Direct error URL redirect
-	if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-		redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s",
-			errorURL, err.Error(), "CALLBACK_ERROR")
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	response.Error(w, http.StatusInternalServerError, "Failed to complete payment", err)
+	redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s",
+		originalCallbackURL, err.Error(), "CALLBACK_ERROR")
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // Enhanced failure handling for payment failures
 func (h *PaymentHandler) handleCallbackFailure(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
-	if originalCallbackURL != "" {
-		// Parse error URL from original callback URL
-		if errorURL := r.URL.Query().Get("errorUrl"); errorURL != "" {
-			redirectURL := fmt.Sprintf("%s?error=%s&errorCode=%s&paymentId=%s",
-				errorURL, resp.Message, resp.ErrorCode, resp.PaymentID)
-			http.Redirect(w, r, redirectURL, http.StatusFound)
-			return
-		}
-
-		// Redirect to original callback URL with failure details
-		redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s&paymentId=%s&status=%s",
-			originalCallbackURL, resp.Message, resp.ErrorCode, resp.PaymentID, resp.Status)
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	// Otherwise return JSON response
-	response.Success(w, http.StatusOK, "Payment failed", resp)
+	redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s&paymentId=%s&status=%s",
+		originalCallbackURL, resp.Message, resp.ErrorCode, resp.PaymentID, resp.Status)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // Enhanced HandleWebhook with async processing and retry logic

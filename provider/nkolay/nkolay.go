@@ -283,19 +283,17 @@ func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.P
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
-	// Extract payment status from callback data
 	status := data["status"]
-	if status == "" {
-		status = data["State"]
-	}
 
 	response := &provider.PaymentResponse{
 		PaymentID:        callbackState.PaymentID,
-		TransactionID:    data["referenceCode"],
+		TransactionID:    callbackState.PaymentID,
 		Success:          status == statusSuccess,
-		Message:          data["message"],
+		Message:          "3D payment completed successfully",
 		SystemTime:       timePtr(time.Now()),
 		ProviderResponse: data,
+		Amount:           callbackState.Amount,
+		Currency:         callbackState.Currency,
 		RedirectURL:      callbackState.OriginalCallback,
 	}
 
