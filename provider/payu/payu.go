@@ -132,6 +132,11 @@ func (p *PayUProvider) Initialize(conf map[string]string) error {
 	return nil
 }
 
+// GetInstallmentCount returns the installment count for a payment
+func (p *PayUProvider) GetInstallmentCount(ctx context.Context, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
+	return provider.InstallmentInquireResponse{}, nil
+}
+
 // CreatePayment makes a non-3D payment request
 func (p *PayUProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.logID = request.LogID

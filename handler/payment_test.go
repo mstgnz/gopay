@@ -18,12 +18,13 @@ import (
 
 // MockPaymentService implements PaymentServiceInterface for testing
 type MockPaymentService struct {
-	CreatePaymentFunc     func(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
-	GetPaymentStatusFunc  func(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error)
-	CancelPaymentFunc     func(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
-	RefundPaymentFunc     func(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
-	Complete3DPaymentFunc func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
-	ValidateWebhookFunc   func(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
+	CreatePaymentFunc       func(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error)
+	GetPaymentStatusFunc    func(ctx context.Context, environment, providerName string, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error)
+	CancelPaymentFunc       func(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
+	RefundPaymentFunc       func(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
+	Complete3DPaymentFunc   func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
+	ValidateWebhookFunc     func(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
+	GetInstallmentCountFunc func(ctx context.Context, environment, providerName string, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error)
 }
 
 func (m *MockPaymentService) CreatePayment(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
@@ -104,6 +105,13 @@ func (m *MockPaymentService) ValidateWebhook(ctx context.Context, environment, p
 		"paymentId": "test-payment-123",
 		"status":    "success",
 	}, nil
+}
+
+func (m *MockPaymentService) GetInstallmentCount(ctx context.Context, environment, providerName string, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
+	if m.GetInstallmentCountFunc != nil {
+		return m.GetInstallmentCountFunc(ctx, environment, providerName, request)
+	}
+	return provider.InstallmentInquireResponse{}, nil
 }
 
 func TestNewPaymentHandler(t *testing.T) {

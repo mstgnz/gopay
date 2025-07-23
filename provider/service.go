@@ -344,6 +344,59 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 	return response, err
 }
 
+func (s *PaymentService) GetInstallmentCount(ctx context.Context, environment, providerName string, request InstallmentInquireRequest) (InstallmentInquireResponse, error) {
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return InstallmentInquireResponse{}, err
+	}
+	provider, err := GetProvider(tenantID, providerName, environment)
+	if err != nil {
+		return InstallmentInquireResponse{}, err
+	}
+
+	startTime := time.Now()
+	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "POST", "/payment/installment", request, "", "")
+	if err != nil {
+		logger.Warn("Failed to log installment count request", logger.LogContext{
+			Provider: providerName,
+			Fields: map[string]any{
+				"error": err.Error(),
+			},
+		})
+	}
+
+	request.LogID = logID
+	response, err := provider.GetInstallmentCount(ctx, request)
+
+	processingMs := time.Since(startTime).Milliseconds()
+
+	if logID > 0 {
+		if err != nil {
+			if logErr := s.logger.LogError(ctx, logID, "INSTALLMENT_COUNT_ERROR", err.Error(), processingMs); logErr != nil {
+				logger.Warn("Failed to log installment count error", logger.LogContext{
+					Provider: providerName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
+			}
+		} else {
+			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
+				logger.Warn("Failed to log installment count response", logger.LogContext{
+					Provider: providerName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
+			}
+		}
+	}
+
+	return response, err
+}
+
 // ValidateWebhook validates an incoming webhook notification
 func (s *PaymentService) ValidateWebhook(ctx context.Context, environment, providerName string, data, headers map[string]string) (bool, map[string]string, error) {
 	tenantID, err := getTenantIDFromContext(ctx)

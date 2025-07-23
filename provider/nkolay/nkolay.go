@@ -29,7 +29,7 @@ const (
 
 	// Real API Endpoints from postman collection
 	endpointPayment             = "/Vpos/v1/Payment"
-	endpointPaymentInstallments = "/Vpos/Payment/PaymentInstallments"
+	endpointPaymentInstallments = "/Vpos/Payment/GetMerchandInformation"
 	endpointPaymentForm         = "/Vpos/Payment/Payment"
 	endpointCancelRefund        = "/Vpos/v1/CancelRefundPayment"
 	endpointPartialRefund       = "/Vpos/Payment/PartialRefundPayment"
@@ -174,6 +174,91 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 	}
 
 	return nil
+}
+
+// GetInstallmentCount returns the installment count for a payment
+func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
+	formData := map[string]string{
+		"sx":     p.sx,
+		"amount": fmt.Sprintf("%.2f", request.Amount),
+	}
+
+	responseBody, err := p.sendFormRequest(ctx, endpointPaymentInstallments, formData)
+	if err != nil {
+		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: failed to get installment count: %w", err)
+	}
+
+	// Parse response as map first
+	var rawResponse map[string]any
+	if err := json.Unmarshal(responseBody, &rawResponse); err != nil {
+		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: failed to unmarshal installment count response: %w", err)
+	}
+
+	// Initialize response structure
+	response := provider.InstallmentInquireResponse{
+		Amount:       request.Amount,
+		Message:      "Installment options retrieved successfully",
+		Installments: make(map[string][]provider.InstallmentInfo),
+	}
+
+	// Extract commission list from response
+	commissionList, ok := rawResponse["COMMISSION_LIST"].([]interface{})
+	if !ok || len(commissionList) == 0 {
+		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: no commission list found in response")
+	}
+
+	// Process each commission entry (bank/card type)
+	for _, entry := range commissionList {
+		entryMap, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Get card type code (PARAF, AXESS, etc.)
+		cardType, ok := entryMap["CODE"].(string)
+		if !ok {
+			continue
+		}
+
+		// Get installment data array
+		dataArray, ok := entryMap["DATA"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		// Process installment options for this card type
+		var installmentInfos []provider.InstallmentInfo
+		for _, dataEntry := range dataArray {
+			dataMap, ok := dataEntry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Extract installment number
+			installmentNum, ok := dataMap["INSTALLMENT"].(float64)
+			if !ok {
+				continue
+			}
+
+			// Extract commission rate
+			commission, ok := dataMap["MERCHANT_COMMISSION"].(float64)
+			if !ok {
+				continue
+			}
+
+			installmentInfos = append(installmentInfos, provider.InstallmentInfo{
+				Installment: int(installmentNum),
+				Commission:  commission,
+			})
+		}
+
+		// Add to response if we have valid data
+		if len(installmentInfos) > 0 {
+			response.Installments[cardType] = installmentInfos
+		}
+	}
+
+	return response, nil
 }
 
 // CreatePayment makes a non-3D payment request
@@ -438,8 +523,26 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"amount":          fmt.Sprintf("%.2f", request.Amount),
 		"transactionType": "SALES",
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
-		"installmentNo":   "1",
+		"installmentNo":   strconv.Itoa(request.InstallmentCount),
 		"ECOMM_PLATFORM":  "GOPAY",
+	}
+
+	if request.InstallmentCount > 0 {
+		// get installment count from nkolay
+		installmentCount, err := p.GetInstallmentCount(ctx, provider.InstallmentInquireRequest{
+			Amount: request.Amount,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get installment count: %w", err)
+		}
+		// ana tutarı + ( ana tutar * komisyon oranı /100)
+		// find installment count in installmentCount.Installments["OTHERS"]
+		for _, installment := range installmentCount.Installments["OTHERS"] {
+			if installment.Installment == request.InstallmentCount {
+				request.Amount = request.Amount + (request.Amount * installment.Commission / 100)
+				break
+			}
+		}
 	}
 
 	// Add 3D settings

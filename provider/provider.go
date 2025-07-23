@@ -180,6 +180,27 @@ type CallbackState struct {
 	ClientIP         string    `json:"clientIp"`
 }
 
+// InquireRequest contains information to request an installment count
+type InstallmentInquireRequest struct {
+	LogID       int64   `json:"logId,omitempty"`
+	CardNumber  string  `json:"cardNumber,omitempty"`
+	ExpireMonth string  `json:"expireMonth,omitempty"`
+	ExpireYear  string  `json:"expireYear,omitempty"`
+	CVV         string  `json:"cvv,omitempty"`
+	Amount      float64 `json:"amount"`
+}
+
+type InstallmentInfo struct {
+	Installment int     `json:"installment"`
+	Commission  float64 `json:"commission"`
+}
+
+type InstallmentInquireResponse struct {
+	Amount       float64                      `json:"amount"`
+	Message      string                       `json:"message"`
+	Installments map[string][]InstallmentInfo `json:"installments"`
+}
+
 var callbackEncryptor *CallbackEncryptor
 
 // CallbackEncryptor provides secure encryption/decryption for callback state
@@ -469,6 +490,9 @@ type PaymentProvider interface {
 
 	// GetRequiredConfig returns the configuration fields required for this provider
 	GetRequiredConfig(environment string) []ConfigField
+
+	// GetInstallmentCount returns the installment count for a payment
+	GetInstallmentCount(ctx context.Context, request InstallmentInquireRequest) (InstallmentInquireResponse, error)
 
 	// ValidateConfig validates the provided configuration against provider requirements
 	ValidateConfig(config map[string]string) error

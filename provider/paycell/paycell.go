@@ -234,6 +234,11 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	return nil
 }
 
+// GetInstallmentCount returns the installment count for a payment
+func (p *PaycellProvider) GetInstallmentCount(ctx context.Context, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
+	return provider.InstallmentInquireResponse{}, nil
+}
+
 // CreatePayment makes a non-3D payment request
 func (p *PaycellProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.clientIP = request.ClientIP
@@ -908,21 +913,21 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	paycellReq := PaycellProvisionRequest{
 		ExtraParameters:         nil,
 		RequestHeader:           requestHeader,
-		AcquirerBankCode:        nil,
+		AcquirerBankCode:        "",
 		Amount:                  amountInKurus,
-		CardID:                  nil,
-		CardToken:               &cardToken,
+		CardID:                  "",
+		CardToken:               cardToken,
 		Currency:                request.Currency,
-		InstallmentCount:        nil,
+		InstallmentCount:        request.InstallmentCount,
 		MerchantCode:            p.merchantID,
 		MSISDN:                  request.Customer.PhoneNumber,
-		OriginalReferenceNumber: nil,
+		OriginalReferenceNumber: "",
 		PaymentType:             "SALE",
 		PaymentMethodType:       "CREDIT_CARD",
-		Pin:                     nil,
-		PointAmount:             nil,
+		Pin:                     "",
+		PointAmount:             "",
 		ReferenceNumber:         p.generateReferenceNumber(),
-		ThreeDSessionID:         &threeDSessionID,
+		ThreeDSessionID:         threeDSessionID,
 	}
 
 	return p.sendProvisionRequest(ctx, endpoint, paycellReq)
@@ -993,7 +998,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		MerchantCode:     p.merchantID,
 		Msisdn:           msisdn,
 		Amount:           fmt.Sprintf("%.0f", request.Amount*100), // Convert to kuruş
-		InstallmentCount: 1,
+		InstallmentCount: request.InstallmentCount,
 		CardToken:        cardToken,
 		TransactionType:  "AUTH",
 		Target:           "MERCHANT",
@@ -1214,21 +1219,21 @@ type PaycellGetCardTokenSecureResponse struct {
 type PaycellProvisionRequest struct {
 	ExtraParameters         map[string]any       `json:"extraParameters"`
 	RequestHeader           PaycellRequestHeader `json:"requestHeader"`
-	AcquirerBankCode        *string              `json:"acquirerBankCode"`
+	AcquirerBankCode        string               `json:"acquirerBankCode"`
 	Amount                  string               `json:"amount"`
-	CardID                  *string              `json:"cardId"`
-	CardToken               *string              `json:"cardToken"`
+	CardID                  string               `json:"cardId"`
+	CardToken               string               `json:"cardToken"`
 	Currency                string               `json:"currency"`
-	InstallmentCount        *int                 `json:"installmentCount"`
+	InstallmentCount        int                  `json:"installmentCount"`
 	MerchantCode            string               `json:"merchantCode"`
 	MSISDN                  string               `json:"msisdn"`
-	OriginalReferenceNumber *string              `json:"originalReferenceNumber"`
+	OriginalReferenceNumber string               `json:"originalReferenceNumber"`
 	PaymentType             string               `json:"paymentType"`
 	PaymentMethodType       string               `json:"paymentMethodType"`
-	Pin                     *string              `json:"pin"`
-	PointAmount             *string              `json:"pointAmount"`
+	Pin                     string               `json:"pin"`
+	PointAmount             string               `json:"pointAmount"`
 	ReferenceNumber         string               `json:"referenceNumber"`
-	ThreeDSessionID         *string              `json:"threeDSessionId"`
+	ThreeDSessionID         string               `json:"threeDSessionId"`
 }
 
 // PaycellProvisionResponse represents provision response

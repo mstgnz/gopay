@@ -670,6 +670,81 @@ components:
           example: "Customer request"
           description: Cancellation reason
 
+    # Installment Related Schemas
+    InstallmentInquireRequest:
+      type: object
+      required: [amount]
+      properties:
+        cardNumber:
+          type: string
+          example: "5528790000000008"
+          description: Card number for installment inquiry (optional)
+        expireMonth:
+          type: string
+          pattern: '^(0[1-9]|1[0-2])$'
+          example: "12"
+          description: Card expiration month (optional)
+        expireYear:
+          type: string
+          pattern: '^20[2-9][0-9]$'
+          example: "2030"
+          description: Card expiration year (optional)
+        cvv:
+          type: string
+          pattern: '^[0-9]{3,4}$'
+          example: "123"
+          description: Card verification value (optional)
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 100.50
+          description: Payment amount for installment calculation
+
+    InstallmentInfo:
+      type: object
+      properties:
+        installment:
+          type: integer
+          example: 2
+          description: Number of installments
+        commission:
+          type: number
+          format: float
+          example: 6.13
+          description: Commission rate percentage
+
+    InstallmentInquireResponse:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Requested amount
+        message:
+          type: string
+          example: "Installment options retrieved successfully"
+          description: Response message
+        installments:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/InstallmentInfo'
+          example:
+            PARAF:
+              - installment: 1
+                commission: 3.3
+              - installment: 2
+                commission: 6.13
+            AXESS:
+              - installment: 1
+                commission: 3.3
+              - installment: 2
+                commission: 6.13
+          description: Installment options by card type/bank
+
     # Configuration Schemas
     SetEnvResponse:
       type: object
@@ -1361,6 +1436,166 @@ paths:
           description: Payment not found
         '500':
           description: Internal server error
+
+  # Installment Operations
+  /v1/payments/{provider}/installments:
+    post:
+      summary: Get installment options with specific provider
+      description: |
+        Retrieves available installment options for a payment amount using a specific provider.
+        Provider configuration is automatically loaded from JWT token context.
+        
+        **Available Providers:**
+        - `nkolay` - Nkolay (Turkey) - Full installment support
+        - `iyzico` - İyzico (Turkey) - Installment support
+        - `paycell` - Paycell (Turkey) - Basic installment support
+        
+        **Use Cases:**
+        - Display installment options to customer before payment
+        - Calculate commission rates for different installment counts
+        - Show available card types and their installment options
+        
+        **Provider-Specific Behavior:**
+        - **Nkolay**: Returns detailed installment options by card type (PARAF, AXESS, etc.)
+        - **İyzico**: Returns general installment options
+        - **Other Providers**: May return empty response if not supported
+      tags: [Installments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: nkolay
+        - name: environment
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallmentInquireRequest'
+            examples:
+              nkolay_request:
+                summary: Nkolay Installment Request
+                value:
+                  amount: 100.50
+              iyzico_request:
+                summary: İyzico Installment Request (with card info)
+                value:
+                  cardNumber: "5528790000000008"
+                  expireMonth: "12"
+                  expireYear: "2030"
+                  cvv: "123"
+                  amount: 150.75
+      responses:
+        '200':
+          description: Installment options retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InstallmentInquireResponse'
+              examples:
+                nkolay_success:
+                  summary: Nkolay Response with Multiple Card Types
+                  value:
+                    success: true
+                    message: "Installment options retrieved successfully"
+                    data:
+                      amount: 100.50
+                      message: "Installment options retrieved successfully"
+                      installments:
+                        PARAF:
+                          - installment: 1
+                            commission: 3.3
+                          - installment: 2
+                            commission: 6.13
+                          - installment: 3
+                            commission: 8.06
+                        AXESS:
+                          - installment: 1
+                            commission: 3.3
+                          - installment: 2
+                            commission: 6.13
+                          - installment: 3
+                            commission: 8.06
+                        BONUS:
+                          - installment: 1
+                            commission: 3.3
+                          - installment: 2
+                            commission: 6.13
+                iyzico_success:
+                  summary: İyzico Response
+                  value:
+                    success: true
+                    message: "Installment options retrieved successfully"
+                    data:
+                      amount: 150.75
+                      message: "Installment options retrieved successfully"
+                      installments:
+                        GENERAL:
+                          - installment: 1
+                            commission: 2.5
+                          - installment: 2
+                            commission: 5.0
+                          - installment: 3
+                            commission: 7.5
+                unsupported_provider:
+                  summary: Unsupported Provider
+                  value:
+                    success: true
+                    message: "Installment inquiry not supported for this provider"
+                    data:
+                      amount: 100.50
+                      message: "Installment inquiry not supported for this provider"
+                      installments: {}
+        '400':
+          description: Invalid request or provider not supported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_amount:
+                  summary: Invalid Amount
+                  value:
+                    success: false
+                    message: "Invalid installment request"
+                    error: "Amount must be greater than 0"
+                provider_error:
+                  summary: Provider Error
+                  value:
+                    success: false
+                    message: "Provider configuration error"
+                    error: "Nkolay configuration not found for tenant"
+        '401':
+          description: Unauthorized - Invalid JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # 3D Secure Callbacks
   /v1/callback/{provider}:
