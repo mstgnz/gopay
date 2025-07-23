@@ -440,6 +440,28 @@ func HandleCallbackState(ctx context.Context, state string) (*CallbackState, err
 	return encryptor.DecryptCallbackState(state)
 }
 
+// UpdateCallbackState updates callback state in database
+func UpdateCallbackState(ctx context.Context, stateID string, referenceCode string) error {
+	db := config.App().DB
+	if db == nil {
+		return errors.New("database connection not available")
+	}
+
+	query := `
+		UPDATE callbacks 
+		SET payment_id = $1,
+		    state_data = jsonb_set(state_data::jsonb, '{paymentId}', to_jsonb($2::text))
+		WHERE id = $3
+	`
+
+	_, err := db.ExecContext(ctx, query, referenceCode, referenceCode, stateID)
+	if err != nil {
+		return fmt.Errorf("failed to update callback state: %w", err)
+	}
+
+	return nil
+}
+
 // PaymentProvider defines the interface that all payment gateways must implement
 type PaymentProvider interface {
 	// Initialize sets up the payment provider with authentication and configuration

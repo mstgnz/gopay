@@ -12,6 +12,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -198,9 +200,6 @@ func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.P
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
-	// For Nkolay, 3D completion happens automatically via callback
-	// This method will validate the callback data and return status
-
 	// Extract payment status from callback data
 	status := data["status"]
 	if status == "" {
@@ -446,6 +445,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	// Add 3D settings
+	stateId := ""
 	if use3D {
 		formData["use3D"] = "true"
 		// Build callback URLs through GoPay
@@ -466,6 +466,11 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "nkolay", state)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create short callback URL: %w", err)
+		}
+
+		// Extract state ID from the callback URL
+		if parsedURL, err := url.Parse(gopayCallbackURL); err == nil {
+			stateId = parsedURL.Query().Get("state")
 		}
 
 		formData["successUrl"] = gopayCallbackURL + "&status=success"
@@ -502,7 +507,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	// add provider request to client request
 	_ = provider.AddProviderRequestToClientRequest("nkolay", "providerRequest", formData, p.logID)
 
-	return p.parsePaymentResponse(responseBody, clientRefCode, request.Amount)
+	return p.parsePaymentResponse(responseBody, clientRefCode, request.Amount, stateId)
 }
 
 // generateSHA1Hash generates SHA1 hash and encodes it in base64 (Nkolay official format)
@@ -565,7 +570,7 @@ func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, f
 }
 
 // parsePaymentResponse parses Nkolay payment response
-func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID string, amount float64) (*provider.PaymentResponse, error) {
+func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID string, amount float64, stateId string) (*provider.PaymentResponse, error) {
 	response := &provider.PaymentResponse{
 		PaymentID:  paymentID,
 		Amount:     amount,
@@ -592,6 +597,11 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		// Update payment ID to use reference code if available
 		if refCode, ok := referenceCode.(string); ok && refCode != "" {
 			response.PaymentID = refCode
+			// nkolay işlemlerinde referans kodu sonradan geldiği için 3d complete işlemlerine akarılamıyor.
+			// bunu çözmek için burada atmamız gerek onun içinde callbacks state güncellememiz gerekiyor.
+			if stateId != "" {
+				provider.UpdateCallbackState(context.Background(), stateId, refCode)
+			}
 		}
 
 		// Store additional data in provider response
@@ -764,11 +774,14 @@ func (p *NkolayProvider) cleanHTMLForClient(htmlStr string) string {
 	cleanHTML = strings.ReplaceAll(cleanHTML, "\\\"", "\"")
 	cleanHTML = strings.ReplaceAll(cleanHTML, "\\/", "/")
 
+	// Fix JavaScript onload attribute quotation issue
+	// Replace: onload=document.forms["form"].submit()
+	// With: onload="document.forms['form'].submit()"
+	cleanHTML = strings.ReplaceAll(cleanHTML, `onload=document.forms["form"].submit()`, `onload="document.forms['form'].submit()"`)
+
 	// Remove extra spaces between tags and attributes
-	cleanHTML = strings.ReplaceAll(cleanHTML, ">    <", "><")
-	cleanHTML = strings.ReplaceAll(cleanHTML, ">   <", "><")
-	cleanHTML = strings.ReplaceAll(cleanHTML, ">  <", "><")
-	cleanHTML = strings.ReplaceAll(cleanHTML, "> <", "><")
+	onloadRegex := regexp.MustCompile(`>\s*<`)
+	cleanHTML = onloadRegex.ReplaceAllString(cleanHTML, "><")
 
 	// Clean script tag formatting
 	cleanHTML = strings.ReplaceAll(cleanHTML, ">    var ", "> var ")
