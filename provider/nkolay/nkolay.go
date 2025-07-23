@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -415,7 +414,6 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"amount":          fmt.Sprintf("%.2f", request.Amount),
 		"transactionType": "SALES",
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
-		"currencyNumber":  currencyCodeTRY,
 		"installmentNo":   "1",
 		"ECOMM_PLATFORM":  "GOPAY",
 	}
@@ -442,33 +440,30 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
 		}
 
-		formData["successUrl"] = fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=success", p.gopayBaseURL, gopayCallbackURL)
-		formData["failUrl"] = fmt.Sprintf("%s/v1/callback/nkolay?state=%s&status=failed", p.gopayBaseURL, gopayCallbackURL)
+		formData["successUrl"] = gopayCallbackURL + "&status=success"
+		formData["failUrl"] = gopayCallbackURL + "&status=failed"
 
 	}
 
-	// Add optional fields
-	if request.Customer.Name != "" {
-		formData["namesurname"] = request.Customer.Name + " " + request.Customer.Surname
+	if request.CardInfo.CardHolderName != "" {
+		formData["cardHolderName"] = request.CardInfo.CardHolderName
 	}
-	if request.Customer.Email != "" {
-		formData["email"] = request.Customer.Email
+	if request.CardInfo.ExpireMonth != "" {
+		formData["month"] = request.CardInfo.ExpireMonth
 	}
-	if request.Customer.PhoneNumber != "" {
-		// Remove country code and + sign
-		phone := strings.ReplaceAll(request.Customer.PhoneNumber, "+90", "")
-		phone = strings.ReplaceAll(phone, "+", "")
-		formData["phone"] = phone
+	if request.CardInfo.ExpireYear != "" {
+		formData["year"] = request.CardInfo.ExpireYear
 	}
-	if request.Description != "" {
-		formData["description"] = request.Description
+	if request.CardInfo.CVV != "" {
+		formData["cvv"] = request.CardInfo.CVV
+	}
+	if request.CardInfo.CardNumber != "" {
+		formData["cardNumber"] = request.CardInfo.CardNumber
 	}
 
 	// Generate hash according to Nkolay documentation
 	// Hash format varies by endpoint, for payment it's specific fields + secret key
 	formData["hashData"] = p.generatePaymentHash(formData)
-
-	log.Println("formData formData formData formData formData", formData)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointPayment, formData)
 	if err != nil {
@@ -491,13 +486,8 @@ func (p *NkolayProvider) generatePaymentHash(formData map[string]string) string 
 // generateSHA1Hash generates SHA1 hash and encodes it in base64 (Nkolay official format)
 func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
 	// Official Nkolay hash format from documentation:
-	// sx + clientRefCode + amount + successUrl + failUrl + rnd + merchantSecretKey + customerKey
-	customerKey := formData["customerKey"]
-	if customerKey == "" {
-		customerKey = "" // Use empty string if not provided
-	}
-
-	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey + customerKey
+	// sx + clientRefCode + amount + successUrl + failUrl + rnd + merchantSecretKey
+	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey
 
 	// PHP equivalent: base64_encode(pack('H*', sha1($hashstr)))
 	// This means: SHA1 -> hex string -> binary -> base64
