@@ -335,6 +335,9 @@ func loadProviderFromDB(tenantID int, providerName, environment string) (Payment
 		return nil, fmt.Errorf("no configuration found for tenant: %d, provider: %s, environment: %s", tenantID, providerName, environment)
 	}
 
+	// Add environment to configs map (critical fix!)
+	configs["environment"] = environment
+
 	// Get provider factory from registry
 	providerFactory, err := Get(providerName)
 	if err != nil {
