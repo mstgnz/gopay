@@ -596,13 +596,6 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 			cleanHTML := p.cleanHTMLForClient(bankRequestMessage)
 			response.HTML = cleanHTML
 
-			// Extract redirect URL from form action
-			if actionStart := strings.Index(bankRequestMessage, `action="`); actionStart != -1 {
-				actionStart += 8 // len(`action="`)
-				if actionEnd := strings.Index(bankRequestMessage[actionStart:], `"`); actionEnd != -1 {
-					response.RedirectURL = bankRequestMessage[actionStart : actionStart+actionEnd]
-				}
-			}
 			return response, nil
 		}
 
@@ -613,13 +606,6 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 			response.Message = "3D Secure authentication required"
 			response.HTML = htmlStr
 
-			// Extract redirect URL from form action
-			if actionStart := strings.Index(htmlStr, `action="`); actionStart != -1 {
-				actionStart += 8 // len(`action="`)
-				if actionEnd := strings.Index(htmlStr[actionStart:], `"`); actionEnd != -1 {
-					response.RedirectURL = htmlStr[actionStart : actionStart+actionEnd]
-				}
-			}
 			return response, nil
 		}
 
@@ -690,14 +676,6 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		response.Status = provider.StatusPending
 		response.Message = "3D Secure authentication required"
 		response.HTML = responseStr
-
-		// Extract redirect URL from form action
-		if actionStart := strings.Index(responseStr, `action="`); actionStart != -1 {
-			actionStart += 8 // len(`action="`)
-			if actionEnd := strings.Index(responseStr[actionStart:], `"`); actionEnd != -1 {
-				response.RedirectURL = responseStr[actionStart : actionStart+actionEnd]
-			}
-		}
 	} else if strings.Contains(responseStr, "SUCCESS") || strings.Contains(responseStr, "APPROVED") {
 		// Payment successful
 		response.Success = true
@@ -733,12 +711,29 @@ func timePtr(t time.Time) *time.Time {
 	return &t
 }
 
-// cleanHTMLForClient cleans HTML by removing escape characters
+// cleanHTMLForClient cleans HTML by removing escape characters and formatting properly
 func (p *NkolayProvider) cleanHTMLForClient(htmlStr string) string {
-	// Remove escape characters
-	cleanHTML := strings.ReplaceAll(htmlStr, "\r", "")
+	// Remove common escape characters
+	cleanHTML := strings.ReplaceAll(htmlStr, "\\r", "")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\\n", "")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\\t", "")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\r", "")
 	cleanHTML = strings.ReplaceAll(cleanHTML, "\n", "")
 	cleanHTML = strings.ReplaceAll(cleanHTML, "\t", "")
+
+	// Remove JSON escape characters
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\\\"", "\"")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "\\/", "/")
+
+	// Remove extra spaces between tags and attributes
+	cleanHTML = strings.ReplaceAll(cleanHTML, ">    <", "><")
+	cleanHTML = strings.ReplaceAll(cleanHTML, ">   <", "><")
+	cleanHTML = strings.ReplaceAll(cleanHTML, ">  <", "><")
+	cleanHTML = strings.ReplaceAll(cleanHTML, "> <", "><")
+
+	// Clean script tag formatting
+	cleanHTML = strings.ReplaceAll(cleanHTML, ">    var ", "> var ")
+	cleanHTML = strings.ReplaceAll(cleanHTML, ";    ", "; ")
 
 	return cleanHTML
 }
