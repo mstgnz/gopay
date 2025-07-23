@@ -297,6 +297,33 @@ CREATE TABLE "public"."payu" (
     PRIMARY KEY ("id")
 );
 
+-- Sequence and defined type
+CREATE SEQUENCE IF NOT EXISTS callbacks_id_seq;
+
+-- Table Definition
+CREATE TABLE "public"."callbacks" (
+    "id" int4 NOT NULL DEFAULT nextval('callbacks_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "provider" varchar(50) NOT NULL,
+    "payment_id" varchar(100) NOT NULL,
+    "original_callback" varchar(1000),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "conversation_id" varchar(100),
+    "log_id" int8,
+    "environment" varchar(20),
+    "client_ip" varchar(45),
+    "state_data" jsonb NOT NULL,
+    "created_at" timestamp DEFAULT now(),
+    "expires_at" timestamp NOT NULL,
+    "used" boolean DEFAULT false,
+    PRIMARY KEY ("id")
+);
+
+-- Create index for cleanup queries
+CREATE INDEX callbacks_tenant_id ON public.callbacks USING btree (tenant_id);
+ALTER TABLE "public"."callbacks" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+
 INSERT INTO "public"."providers" ("name", "active") VALUES
 ('iyzico', true),
 ('ozanpay', true),
