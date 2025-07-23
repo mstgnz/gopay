@@ -574,8 +574,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			stateId = parsedURL.Query().Get("state")
 		}
 
-		formData["successUrl"] = gopayCallbackURL + "&status=success"
-		formData["failUrl"] = gopayCallbackURL + "&status=failed"
+		formData["successUrl"] = gopayCallbackURL + "&status=SUCCESS"
+		formData["failUrl"] = gopayCallbackURL + "&status=FAILED"
 
 	}
 
