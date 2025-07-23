@@ -234,6 +234,24 @@ func main() {
 		_ = response.WriteJSON(w, http.StatusUnauthorized, response.Response{Success: false, Message: "Not Found"})
 	})
 
+	// Start background task for cleaning expired callback states
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute) // Cleanup every 15 minutes
+		defer ticker.Stop()
+
+		for range ticker.C {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if err := provider.CleanupExpiredCallbackStates(cleanupCtx); err != nil {
+				logger.Warn("Failed to cleanup expired callback states", logger.LogContext{
+					Fields: map[string]any{
+						"error": err.Error(),
+					},
+				})
+			}
+			cancel()
+		}
+	}()
+
 	// Create a context that listens for interrupt and terminate signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 	defer stop()
