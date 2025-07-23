@@ -10,9 +10,10 @@ info:
     - 🔌 **Plug-and-Play Architecture**: Easily switch between payment providers without code changes
     - 🏢 **Provider Agnostic**: Add new payment gateways without disrupting existing implementations
     - 🏢 **Multi-Tenant Support**: Multiple projects can use different provider configurations simultaneously
-    - 🔐 **3D Secure Support**: Complete 3D Secure payment flow with callback handling
+    - 🔐 **3D Secure Support**: Complete 3D Secure payment flow with POST redirect callback handling
     - 💰 **Full Payment Lifecycle**: Process, track, cancel, and refund payments
     - 🎯 **Webhook Integration**: Receive real-time payment notifications
+    - 📝 **POST Redirect Callbacks**: Auto-submitted HTML forms preserve session state across 3D Secure flows
     - 🛡️ **Secure by Design**: Built-in authentication and security features
     - 🔐 **JWT Authentication**: Secure user authentication with token-based access
     - 💾 **PostgreSQL Database**: Persistent configuration and comprehensive payment logging
@@ -140,10 +141,12 @@ info:
        │
        └─► [GoPay] processes result
            │
-           └─► [GoPay] ──Redirect──► [App]
-               │ URL: app.com/callback?success=true&paymentId=123&status=successful
+           └─► [GoPay] ──POST Redirect──► [App]
+               │ Method: POST (via auto-submitted HTML form)
+               │ URL: app.com/callback
+               │ Data: { success: "true", paymentId: "123", status: "successful" }
                │
-               └─► [App] shows success/failure page to user
+               └─► [App] receives POST data and shows result page
     ```
 
     **Complete 3D Secure Flow:**
@@ -164,13 +167,29 @@ info:
     - ✅ **Cross-Domain**: Browser maintains session across domains
     - ⚠️ **Timeout Considerations**: Ensure session timeout > payment duration
 
-    ### 🔗 Callback URL Transformation
-    **GoPay automatically transforms your callback URLs:**
+    ### 🔗 Callback URL Transformation & POST Redirect
+    **GoPay automatically transforms your callback URLs and uses POST redirect:**
     ```
     Your Original:  "https://app.com/payment-callback"
     GoPay Sends:    "https://gopay.com/v1/callback/iyzico?originalCallbackUrl=https://app.com/payment-callback"
     Provider Returns: "https://gopay.com/v1/callback/iyzico?originalCallbackUrl=...&paymentId=123&status=success"
-    GoPay Redirects: "https://app.com/payment-callback?success=true&paymentId=123&status=successful"
+    GoPay POST Redirects to: "https://app.com/payment-callback"
+    ```
+    
+    **⚠️ Important: Your callback URL must accept POST requests**
+    
+    **POST Data Structure:**
+    ```json
+    {
+      "success": "true",
+      "paymentId": "payment123",
+      "status": "successful",
+      "message": "Payment completed",
+      "errorCode": "",
+      "transactionId": "txn456",
+      "amount": "100.50",
+      "currency": "TRY"
+    }
     ```
 
     ## Contact
@@ -490,7 +509,7 @@ components:
           type: string
           format: uri
           example: "https://yoursite.com/payment-callback"
-          description: 3D Secure callback URL (required for 3D payments)
+          description: 3D Secure callback URL (required for 3D payments). Must accept POST requests with payment result data.
         use3D:
           type: boolean
           default: false
@@ -1607,12 +1626,14 @@ paths:
         
         **🔄 Callback Flow:**
         ```
-        [Provider] → [GoPay Callback] → [Your App]
+        [Provider] → [GoPay Callback] → [POST Redirect] → [Your App]
         ```
         
-        **URL Transformation:**
+        **URL Transformation & POST Redirect:**
         - **Provider sends to GoPay:** `gopay.com/v1/callback/iyzico?originalCallbackUrl=app.com/callback&paymentId=123&status=success`
-        - **GoPay processes and redirects to:** `app.com/callback?success=true&paymentId=123&status=successful`
+        - **GoPay processes and POST redirects to:** `app.com/callback` (using auto-submitted HTML form)
+        
+        **⚠️ Critical: Your callback URL must handle POST requests**
         
         **Session Preservation:**
         - ✅ Your app's session (PHP, Node.js, etc.) is preserved
@@ -1665,18 +1686,25 @@ paths:
           description: URL to redirect on error
       responses:
         '200':
-          description: 3D Secure authentication completed
+          description: Auto-submitted HTML form for POST redirect
           content:
-            application/json:
+            text/html:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '302':
-          description: Redirect to success/error URL
+                type: string
+                example: |
+                  <!DOCTYPE html>
+                  <html>
+                  <head><title>Processing...</title></head>
+                  <body>
+                    <form id="redirectForm" method="POST" action="https://yourapp.com/callback">
+                      <input type="hidden" name="success" value="true">
+                      <input type="hidden" name="paymentId" value="payment123">
+                      <input type="hidden" name="status" value="successful">
+                    </form>
+                    <script>document.getElementById('redirectForm').submit();</script>
+                  </body>
+                  </html>
+                description: HTML page that automatically submits a POST form to your callback URL
         '400':
           description: Invalid callback data
         '500':
@@ -1690,12 +1718,14 @@ paths:
         
         **🔄 Callback Flow:**
         ```
-        [Provider] → [GoPay Callback] → [Your App]
+        [Provider] → [GoPay Callback] → [POST Redirect] → [Your App]
         ```
         
-        **URL Transformation:**
+        **URL Transformation & POST Redirect:**
         - **Provider sends to GoPay:** `gopay.com/v1/callback/iyzico?originalCallbackUrl=app.com/callback&paymentId=123&status=success`
-        - **GoPay processes and redirects to:** `app.com/callback?success=true&paymentId=123&status=successful`
+        - **GoPay processes and POST redirects to:** `app.com/callback` (using auto-submitted HTML form)
+        
+        **⚠️ Critical: Your callback URL must handle POST requests**
         
         **Session Preservation:**
         - ✅ Your app's session (PHP, Node.js, etc.) is preserved
@@ -1743,18 +1773,25 @@ paths:
                   description: 3D authentication result
       responses:
         '200':
-          description: 3D Secure authentication completed
+          description: Auto-submitted HTML form for POST redirect
           content:
-            application/json:
+            text/html:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/PaymentResponse'
-        '302':
-          description: Redirect to success/error URL
+                type: string
+                example: |
+                  <!DOCTYPE html>
+                  <html>
+                  <head><title>Processing...</title></head>
+                  <body>
+                    <form id="redirectForm" method="POST" action="https://yourapp.com/callback">
+                      <input type="hidden" name="success" value="true">
+                      <input type="hidden" name="paymentId" value="payment123">
+                      <input type="hidden" name="status" value="successful">
+                    </form>
+                    <script>document.getElementById('redirectForm').submit();</script>
+                  </body>
+                  </html>
+                description: HTML page that automatically submits a POST form to your callback URL
         '400':
           description: Invalid callback data
         '500':

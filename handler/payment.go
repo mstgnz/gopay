@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -266,36 +267,54 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
 
 	if err != nil {
-		h.handleCallbackError(w, r, err, resp.RedirectURL)
+		h.postRedirect(w, resp.RedirectURL, map[string]string{
+			"success":   "false",
+			"status":    "failed",
+			"errorCode": "500",
+			"message":   err.Error(),
+		})
 		return
 	}
 
-	if resp.Success {
-		h.handleCallbackSuccess(w, r, resp, resp.RedirectURL)
-	} else {
-		h.handleCallbackFailure(w, r, resp, resp.RedirectURL)
+	h.postRedirect(w, resp.RedirectURL, map[string]string{
+		"success":       strconv.FormatBool(resp.Success),
+		"paymentId":     resp.PaymentID,
+		"status":        string(resp.Status),
+		"message":       resp.Message,
+		"errorCode":     resp.ErrorCode,
+		"transactionId": resp.TransactionID,
+		"amount":        fmt.Sprintf("%.2f", resp.Amount),
+		"currency":      resp.Currency,
+	})
+}
+
+// postRedirect creates an HTML form and auto-submits it to perform POST redirect
+func (h *PaymentHandler) postRedirect(w http.ResponseWriter, url string, data map[string]string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+    <title>Processing...</title>
+</head>
+<body>
+    <form id="redirectForm" method="POST" action="%s">`, url)
+
+	for key, value := range data {
+		html += fmt.Sprintf(`
+        <input type="hidden" name="%s" value="%s">`, key, value)
 	}
-}
 
-// Enhanced success handling with better URL construction
-func (h *PaymentHandler) handleCallbackSuccess(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
-	redirectURL := fmt.Sprintf("%s?success=true&paymentId=%s&status=%s&transactionId=%s&amount=%.2f&currency=%s",
-		originalCallbackURL, resp.PaymentID, resp.Status, resp.TransactionID, resp.Amount, resp.Currency)
-	http.Redirect(w, r, redirectURL, http.StatusFound)
-}
+	html += `
+    </form>
+    <script>
+        document.getElementById('redirectForm').submit();
+    </script>
+</body>
+</html>`
 
-// Enhanced error handling with better error information
-func (h *PaymentHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, originalCallbackURL string) {
-	redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s",
-		originalCallbackURL, err.Error(), "CALLBACK_ERROR")
-	http.Redirect(w, r, redirectURL, http.StatusFound)
-}
-
-// Enhanced failure handling for payment failures
-func (h *PaymentHandler) handleCallbackFailure(w http.ResponseWriter, r *http.Request, resp *provider.PaymentResponse, originalCallbackURL string) {
-	redirectURL := fmt.Sprintf("%s?success=false&error=%s&errorCode=%s&paymentId=%s&status=%s",
-		originalCallbackURL, resp.Message, resp.ErrorCode, resp.PaymentID, resp.Status)
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(html))
 }
 
 // Enhanced HandleWebhook with async processing and retry logic
