@@ -298,21 +298,24 @@ func TestNkolayProvider_GeneratePaymentHash(t *testing.T) {
 		"rnd":           "02-01-2006 15:04:05",
 	}
 
-	hash := provider.generatePaymentHash(formData)
+	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["rnd"] + provider.secretKey
+	hash := provider.generateSHA1Hash(input)
 
 	if hash == "" {
 		t.Error("Expected non-empty hash")
 	}
 
 	// Test that same data produces same hash
-	hash2 := provider.generatePaymentHash(formData)
+	input2 := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["rnd"] + provider.secretKey
+	hash2 := provider.generateSHA1Hash(input2)
 	if hash != hash2 {
 		t.Error("Expected same hash for same data")
 	}
 
 	// Test that different data produces different hash
 	formData["amount"] = "20.00"
-	hash3 := provider.generatePaymentHash(formData)
+	input3 := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["rnd"] + provider.secretKey
+	hash3 := provider.generateSHA1Hash(input3)
 	if hash == hash3 {
 		t.Error("Expected different hash for different data")
 	}

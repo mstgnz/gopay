@@ -256,7 +256,8 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 	}
 
 	// Generate hash: sx+startDate+endDate+clientRefCode+secretkey
-	formData["hashData"] = p.generateSHA1Hash(formData)
+	input := formData["sx"] + formData["startDate"] + formData["endDate"] + formData["clientRefCode"] + p.secretKey
+	formData["hashData"] = p.generateSHA1Hash(input)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointPaymentList, formData)
 	if err != nil {
@@ -283,15 +284,28 @@ func (p *NkolayProvider) CancelPayment(ctx context.Context, request provider.Can
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
+	systemTime, err := provider.GetProviderRequestFromLog("nkolay", request.PaymentID, "systemTime")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get systemTime: %s %w", request.PaymentID, err)
+	}
+
+	// Convert systemTime from "2025-07-23T11:30:21.163704+03" to "2025.07.23" format
+	trxDate, err := p.formatDateForNkolay(systemTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format trxDate: %w", err)
+	}
+
 	formData := map[string]string{
 		"sx":            p.sxCancel,
 		"referenceCode": request.PaymentID,
 		"type":          "cancel",
-		"trxDate":       time.Now().Format("2006.01.02"),
+		"trxDate":       trxDate,
+		"resultUrl":     "json",
 	}
 
 	// Generate hash: sx+referenceCode+type+trxDate+secretkey
-	formData["hashData"] = p.generateSHA1Hash(formData)
+	input := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["trxDate"] + p.secretKey
+	formData["hashData"] = p.generateSHA1Hash(input)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
@@ -316,6 +330,17 @@ func (p *NkolayProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
+	systemTime, err := provider.GetProviderRequestFromLog("nkolay", request.PaymentID, "systemTime")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get systemTime: %s %w", request.PaymentID, err)
+	}
+
+	// Convert systemTime from "2025-07-23T11:30:21.163704+03" to "2025.07.23" format
+	trxDate, err := p.formatDateForNkolay(systemTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format trxDate: %w", err)
+	}
+
 	refundAmount := request.RefundAmount
 	if refundAmount <= 0 {
 		return nil, errors.New("nkolay: refund amount must be greater than 0")
@@ -325,12 +350,14 @@ func (p *NkolayProvider) RefundPayment(ctx context.Context, request provider.Ref
 		"sx":            p.sxCancel,
 		"referenceCode": request.PaymentID,
 		"type":          "refund",
-		"trxDate":       time.Now().Format("2006.01.02"),
+		"trxDate":       trxDate,
 		"amount":        fmt.Sprintf("%.2f", refundAmount),
+		"resultUrl":     "json",
 	}
 
 	// Generate hash: sx+referenceCode+type+amount+trxDate+secretkey
-	formData["hashData"] = p.generateSHA1Hash(formData)
+	input := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["amount"] + formData["trxDate"] + p.secretKey
+	formData["hashData"] = p.generateSHA1Hash(input)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
@@ -464,7 +491,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 
 	// Generate hash according to Nkolay documentation
 	// Hash format varies by endpoint, for payment it's specific fields + secret key
-	formData["hashData"] = p.generatePaymentHash(formData)
+	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey
+	formData["hashData"] = p.generateSHA1Hash(input)
 
 	responseBody, err := p.sendFormRequest(ctx, endpointPayment, formData)
 	if err != nil {
@@ -477,18 +505,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	return p.parsePaymentResponse(responseBody, clientRefCode, request.Amount)
 }
 
-// generatePaymentHash generates the payment hash according to Nkolay specs
-func (p *NkolayProvider) generatePaymentHash(formData map[string]string) string {
-	// According to Nkolay docs: specific fields + secret key
-	// This is a simplified version - real implementation would need exact field order
-	return p.generateSHA1Hash(formData)
-}
-
 // generateSHA1Hash generates SHA1 hash and encodes it in base64 (Nkolay official format)
-func (p *NkolayProvider) generateSHA1Hash(formData map[string]string) string {
-	// Official Nkolay hash format from documentation:
-	// sx + clientRefCode + amount + successUrl + failUrl + rnd + merchantSecretKey
-	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey
+func (p *NkolayProvider) generateSHA1Hash(input string) string {
 
 	// PHP equivalent: base64_encode(pack('H*', sha1($hashstr)))
 	// This means: SHA1 -> hex string -> binary -> base64
@@ -704,6 +722,27 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 	}
 
 	return response, nil
+}
+
+// formatDateForNkolay converts systemTime from "2025-07-23T11:30:21.163704+03" to "2025.07.23" format
+func (p *NkolayProvider) formatDateForNkolay(systemTime string) (string, error) {
+	// Parse the systemTime which is in format "2025-07-23T11:30:21.163704+03"
+	// We want to extract just the date part and format as "2025.07.23"
+
+	// Find the first 'T' to split date and time
+	datepart := systemTime
+	if tIndex := strings.Index(systemTime, "T"); tIndex != -1 {
+		datepart = systemTime[:tIndex]
+	}
+
+	// Parse the date part "2025-07-23"
+	parsedTime, err := time.Parse("2006-01-02", datepart)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse date %s: %w", datepart, err)
+	}
+
+	// Format as "2025.07.23"
+	return parsedTime.Format("2006.01.02"), nil
 }
 
 // timePtr returns a pointer to the given time
