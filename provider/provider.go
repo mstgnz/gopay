@@ -6,11 +6,13 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/mstgnz/gopay/infra/config"
@@ -288,19 +290,158 @@ func (e *CallbackEncryptor) deriveEncryptionKey() []byte {
 	return hash[:]
 }
 
-// CreateSecureCallbackURL creates a secure callback URL with encrypted state
-func CreateSecureCallbackURL(gopayBaseURL, provider string, state CallbackState) (string, error) {
-	encryptor := NewCallbackEncryptor()
-	encryptedState, err := encryptor.EncryptCallbackState(state)
-	if err != nil {
-		return "", fmt.Errorf("failed to encrypt callback state: %w", err)
+// StoreCallbackState stores callback state in database and returns short ID
+func StoreCallbackState(ctx context.Context, state CallbackState) (string, error) {
+	db := config.App().DB
+	if db == nil {
+		return "", errors.New("database connection not available")
 	}
 
-	return fmt.Sprintf("%s/v1/callback/%s?state=%s", gopayBaseURL, provider, encryptedState), nil
+	// Serialize state data
+	stateData, err := json.Marshal(state)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	// Set expiration (30 minutes from now)
+	expiresAt := time.Now().Add(30 * time.Minute)
+
+	// Insert into database and get auto-generated ID
+	query := `
+		INSERT INTO callbacks (
+			tenant_id, provider, payment_id, original_callback, 
+			amount, currency, conversation_id, log_id, environment, 
+			client_ip, state_data, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id
+	`
+
+	var stateID int
+	err = db.QueryRowContext(ctx, query,
+		state.TenantID, state.Provider, state.PaymentID, state.OriginalCallback,
+		state.Amount, state.Currency, state.ConversationID, state.LogID, state.Environment,
+		state.ClientIP, string(stateData), expiresAt,
+	).Scan(&stateID)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to store callback state: %w", err)
+	}
+
+	return fmt.Sprintf("%d", stateID), nil
 }
 
-// HandleEncryptedCallbackState is a helper function for providers to handle encrypted callback state
+// RetrieveCallbackState retrieves callback state from database using ID
+func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState, error) {
+	db := config.App().DB
+	if db == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	// Convert string ID to integer
+	id, err := strconv.Atoi(stateID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid callback state ID format: %w", err)
+	}
+
+	var stateData string
+	var used bool
+	var expiresAt time.Time
+
+	query := `
+		SELECT state_data, used, expires_at 
+		FROM callbacks 
+		WHERE id = $1
+	`
+
+	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &used, &expiresAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("callback state not found")
+		}
+		return nil, fmt.Errorf("failed to retrieve callback state: %w", err)
+	}
+
+	// Check if expired
+	if time.Now().After(expiresAt) {
+		return nil, errors.New("callback state expired")
+	}
+
+	// Check if already used (optional security measure)
+	if used {
+		return nil, errors.New("callback state already used")
+	}
+
+	// Mark as used (optional - prevents replay attacks)
+	_, err = db.ExecContext(ctx, "UPDATE callbacks SET used = true WHERE id = $1", id)
+	if err != nil {
+		// Log error but don't fail the callback
+		fmt.Printf("Warning: failed to mark callback state as used: %v\n", err)
+	}
+
+	// Deserialize state data
+	var state CallbackState
+	if err := json.Unmarshal([]byte(stateData), &state); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
+	}
+
+	return &state, nil
+}
+
+// CleanupExpiredCallbackStates removes expired callback states from database
+func CleanupExpiredCallbackStates(ctx context.Context) error {
+	db := config.App().DB
+	if db == nil {
+		return errors.New("database connection not available")
+	}
+
+	query := "DELETE FROM callbacks WHERE expires_at < NOW()"
+	_, err := db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup expired callback states: %w", err)
+	}
+
+	return nil
+}
+
+// CreateSecureCallbackURL creates a secure callback URL with encrypted state (DEPRECATED - use CreateShortCallbackURL)
+func CreateSecureCallbackURL(gopayBaseURL, provider string, state CallbackState) (string, error) {
+	// For backward compatibility, use short callback URL
+	return CreateShortCallbackURL(context.Background(), gopayBaseURL, provider, state)
+}
+
+// CreateShortCallbackURL creates a callback URL with short database-stored state ID
+func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, state CallbackState) (string, error) {
+	stateID, err := StoreCallbackState(ctx, state)
+	if err != nil {
+		return "", fmt.Errorf("failed to store callback state: %w", err)
+	}
+
+	return fmt.Sprintf("%s/v1/callback/%s?state=%s", gopayBaseURL, provider, stateID), nil
+}
+
+// HandleEncryptedCallbackState is a helper function for providers to handle encrypted callback state (DEPRECATED)
 func HandleEncryptedCallbackState(state string) (*CallbackState, error) {
+	// Try new short ID system first
+	if callbackState, err := RetrieveCallbackState(context.Background(), state); err == nil {
+		return callbackState, nil
+	}
+
+	// Fallback to old encrypted system for backward compatibility
+	encryptor := NewCallbackEncryptor()
+	return encryptor.DecryptCallbackState(state)
+}
+
+// HandleCallbackState handles both new integer ID and old encrypted callback states
+func HandleCallbackState(ctx context.Context, state string) (*CallbackState, error) {
+	// Try new integer ID system first (primary method)
+	if _, err := strconv.Atoi(state); err == nil {
+		// It's a valid integer, try database lookup
+		if callbackState, err := RetrieveCallbackState(ctx, state); err == nil {
+			return callbackState, nil
+		}
+	}
+
+	// Fallback to old encrypted system for backward compatibility
 	encryptor := NewCallbackEncryptor()
 	return encryptor.DecryptCallbackState(state)
 }
