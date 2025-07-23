@@ -433,11 +433,12 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			Environment:      request.Environment,
 			Timestamp:        time.Now(),
 			OriginalCallback: request.CallbackURL,
+			ClientIP:         request.ClientIP,
 		}
 
-		gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "nkolay", state)
+		gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "nkolay", state)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
+			return nil, fmt.Errorf("failed to create short callback URL: %w", err)
 		}
 
 		formData["successUrl"] = gopayCallbackURL + "&status=success"
