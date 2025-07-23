@@ -471,6 +471,12 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
 	}
 
+	msisdn, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "msisdn")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get phone number: %s %w", request.PaymentID, err)
+	}
+	p.phoneNumber = msisdn
+
 	// Set clientIP for reverse operation - use a default if not available
 	if p.clientIP == "" {
 		p.clientIP = "127.0.0.1" // Default fallback
@@ -569,6 +575,12 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
+
+	msisdn, err := provider.GetProviderRequestFromLog("paycell", request.PaymentID, "msisdn")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get phone number: %s %w", request.PaymentID, err)
+	}
+	p.phoneNumber = msisdn
 
 	// Set clientIP for refund operation - use a default if not available
 	if p.clientIP == "" {
