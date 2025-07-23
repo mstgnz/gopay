@@ -950,10 +950,10 @@ func (p *PaycellProvider) provision3D(ctx context.Context, request provider.Paym
 		ClientIP:         request.ClientIP,
 	}
 
-	// Use common encryption utility
-	gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "paycell", state)
+	// Use short callback URL system with database storage
+	gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "paycell", state)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create secure callback URL: %w", err)
+		return nil, fmt.Errorf("failed to create short callback URL: %w", err)
 	}
 
 	now := time.Now()

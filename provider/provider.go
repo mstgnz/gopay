@@ -403,12 +403,6 @@ func CleanupExpiredCallbackStates(ctx context.Context) error {
 	return nil
 }
 
-// CreateSecureCallbackURL creates a secure callback URL with encrypted state (DEPRECATED - use CreateShortCallbackURL)
-func CreateSecureCallbackURL(gopayBaseURL, provider string, state CallbackState) (string, error) {
-	// For backward compatibility, use short callback URL
-	return CreateShortCallbackURL(context.Background(), gopayBaseURL, provider, state)
-}
-
 // CreateShortCallbackURL creates a callback URL with short database-stored state ID
 func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, state CallbackState) (string, error) {
 	stateID, err := StoreCallbackState(ctx, state)

@@ -491,15 +491,11 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 			Timestamp:        time.Now(),
 		}
 
-		// Use common encryption utility
-		gopayCallbackURL, err := provider.CreateSecureCallbackURL(p.gopayBaseURL, "iyzico", state)
+		// Use short callback URL system with fallback
+		gopayCallbackURL, err := provider.CreateShortCallbackURL(context.Background(), p.gopayBaseURL, "iyzico", state)
 		if err != nil {
-			// Fallback to old method if encryption fails
-			gopayCallbackURL = fmt.Sprintf("%s/v1/callback/iyzico?originalCallbackUrl=%s",
-				p.gopayBaseURL, request.CallbackURL)
-			if request.TenantID != 0 {
-				gopayCallbackURL += fmt.Sprintf("&tenantId=%d", request.TenantID)
-			}
+			// Fallback to basic callback URL
+			gopayCallbackURL = fmt.Sprintf("%s/v1/callback/iyzico?originalCallbackUrl=%s", p.gopayBaseURL, request.CallbackURL)
 		}
 		req["callbackUrl"] = gopayCallbackURL
 	}
