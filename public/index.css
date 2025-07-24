@@ -650,9 +650,9 @@ body {
     background: white;
     border-radius: 15px;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    width: 80%;
-    max-width: 80%;
-    max-height: 80vh;
+    width: 90%;
+    max-width: 1200px;
+    max-height: 85vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -726,7 +726,15 @@ body {
 .json-viewer-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 30px;
+    gap: 20px;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.json-section {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .json-section h4 {
@@ -748,19 +756,25 @@ body {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     overflow: hidden;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .json-content {
     background: #1e293b;
     color: #e2e8f0;
-    padding: 20px;
+    padding: 15px;
     margin: 0;
     overflow-x: auto;
-    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    max-height: 300px;
     overflow-y: auto;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    max-height: 250px;
+    max-width: 100%;
+    white-space: pre;
+    word-wrap: break-word;
+    box-sizing: border-box;
 }
 
 /* JSON Syntax Highlighting */
@@ -907,16 +921,23 @@ body {
 @media (max-width: 768px) {
     .modal-content {
         width: 95%;
+        max-width: 95%;
         margin: 10px;
     }
     
     .json-viewer-container {
         grid-template-columns: 1fr;
-        gap: 20px;
+        gap: 15px;
     }
     
     .modal-body {
         padding: 20px;
+    }
+    
+    .json-content {
+        font-size: 0.75rem;
+        max-height: 200px;
+        padding: 12px;
     }
     
     .endpoints-list {
