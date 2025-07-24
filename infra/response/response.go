@@ -24,6 +24,17 @@ func Success(w http.ResponseWriter, statusCode int, message string, data any) {
 	WriteJSON(w, statusCode, resp)
 }
 
+// Return writes a response with data
+func Return(w http.ResponseWriter, statusCode int, success bool, message string, data any) {
+	resp := Response{
+		Code:    statusCode,
+		Success: success,
+		Message: message,
+		Data:    data,
+	}
+	WriteJSON(w, statusCode, resp)
+}
+
 // Error writes an error response
 func Error(w http.ResponseWriter, statusCode int, message string, err error) {
 	resp := Response{

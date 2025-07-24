@@ -74,13 +74,6 @@ func init() {
 }
 
 func main() {
-	// Use structured logging from now on
-	logger.Info("Starting GoPay application", logger.LogContext{
-		Fields: map[string]any{
-			"port":             PORT,
-			"postgres_enabled": postgresLogger != nil,
-		},
-	})
 
 	// Initialize global services for callback handlers
 	paymentLogger := provider.NewDBPaymentLogger(config.App().DB)
@@ -112,7 +105,6 @@ func main() {
 	if postgresLogger != nil {
 		r.Use(middle.PaymentLoggingMiddleware(postgresLogger))
 		r.Use(middle.LoggingStatsMiddleware(postgresLogger))
-		logger.Info("Payment logging middleware enabled")
 	}
 
 	// CORS

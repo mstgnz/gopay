@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
@@ -32,6 +33,17 @@ func PanicRecoveryMiddleware() func(http.Handler) http.Handler {
 
 					// Log stack trace separately to avoid log line length issues
 					log.Printf("PANIC STACK TRACE: %s", string(stack))
+
+					logger.Error("Panic recovered", fmt.Errorf("%v", err), logger.LogContext{
+						Provider: "gopay",
+						TenantID: tenantID,
+						Fields: map[string]any{
+							"request_id": requestID,
+							"method":     r.Method,
+							"url":        r.URL.String(),
+							"stack":      string(stack),
+						},
+					})
 
 					// Set headers to prevent caching of error response
 					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")

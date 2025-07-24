@@ -202,14 +202,14 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 	}
 
 	// Extract commission list from response
-	commissionList, ok := rawResponse["COMMISSION_LIST"].([]interface{})
+	commissionList, ok := rawResponse["COMMISSION_LIST"].([]any)
 	if !ok || len(commissionList) == 0 {
 		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: no commission list found in response")
 	}
 
 	// Process each commission entry (bank/card type)
 	for _, entry := range commissionList {
-		entryMap, ok := entry.(map[string]interface{})
+		entryMap, ok := entry.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -221,7 +221,7 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 		}
 
 		// Get installment data array
-		dataArray, ok := entryMap["DATA"].([]interface{})
+		dataArray, ok := entryMap["DATA"].([]any)
 		if !ok {
 			continue
 		}
@@ -229,7 +229,7 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 		// Process installment options for this card type
 		var installmentInfos []provider.InstallmentInfo
 		for _, dataEntry := range dataArray {
-			dataMap, ok := dataEntry.(map[string]interface{})
+			dataMap, ok := dataEntry.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -283,6 +283,8 @@ func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.P
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
+	p.logID = callbackState.LogID
+
 	status := data["status"]
 
 	response := &provider.PaymentResponse{
@@ -364,7 +366,7 @@ func (p *NkolayProvider) CancelPayment(ctx context.Context, request provider.Can
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
-	systemTime, err := provider.GetProviderRequestFromLog("nkolay", request.PaymentID, "systemTime")
+	systemTime, err := provider.GetProviderRequestFromLogWithPaymentID("nkolay", request.PaymentID, "systemTime")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get systemTime: %s %w", request.PaymentID, err)
 	}
@@ -410,7 +412,7 @@ func (p *NkolayProvider) RefundPayment(ctx context.Context, request provider.Ref
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
-	systemTime, err := provider.GetProviderRequestFromLog("nkolay", request.PaymentID, "systemTime")
+	systemTime, err := provider.GetProviderRequestFromLogWithPaymentID("nkolay", request.PaymentID, "systemTime")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get systemTime: %s %w", request.PaymentID, err)
 	}

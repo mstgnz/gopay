@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -79,7 +80,7 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Return response
-	response.Success(w, http.StatusOK, "Payment processed", resp)
+	response.Return(w, http.StatusOK, resp.Success, "Payment processed", resp)
 }
 
 // GetPaymentStatus handles payment status requests
@@ -111,7 +112,7 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 	}
 
 	// Return response
-	response.Success(w, http.StatusOK, "Payment status retrieved", resp)
+	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
 }
 
 // CancelPayment handles payment cancellation requests
@@ -153,7 +154,7 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return response
-	response.Success(w, http.StatusOK, "Payment cancelled", resp)
+	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
 }
 
 // RefundPayment handles payment refund requests
@@ -190,7 +191,7 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return response
-	response.Success(w, http.StatusOK, "Payment refunded", resp)
+	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
 }
 
 func (h *PaymentHandler) GetInstallments(w http.ResponseWriter, r *http.Request) {
@@ -252,22 +253,38 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 	// Combine form and query parameters
 	callbackData := make(map[string]string)
+	// form data
 	for key, values := range r.Form {
 		if len(values) > 0 {
 			callbackData[key] = values[0]
 		}
 	}
+	// query parameters
 	for key, values := range r.URL.Query() {
 		if len(values) > 0 {
 			callbackData[key] = values[0]
 		}
 	}
+	// json body
+	if r.Header.Get("Content-Type") == "application/json" {
+		var jsonData map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&jsonData); err == nil {
+			for k, v := range jsonData {
+				if str, ok := v.(string); ok {
+					callbackData[k] = str
+				} else {
+					callbackData[k] = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+	}
 
 	// Complete 3D payment
-	resp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
+	response, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
+	log.Println("RESPONSE 3D", response, err)
 
 	if err != nil {
-		h.postRedirect(w, resp.RedirectURL, map[string]string{
+		h.postRedirect(w, response.RedirectURL, map[string]string{
 			"success":   "false",
 			"status":    "failed",
 			"errorCode": "500",
@@ -276,15 +293,15 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.postRedirect(w, resp.RedirectURL, map[string]string{
-		"success":       strconv.FormatBool(resp.Success),
-		"paymentId":     resp.PaymentID,
-		"status":        string(resp.Status),
-		"message":       resp.Message,
-		"errorCode":     resp.ErrorCode,
-		"transactionId": resp.TransactionID,
-		"amount":        fmt.Sprintf("%.2f", resp.Amount),
-		"currency":      resp.Currency,
+	h.postRedirect(w, response.RedirectURL, map[string]string{
+		"success":       strconv.FormatBool(response.Success),
+		"paymentId":     response.PaymentID,
+		"status":        string(response.Status),
+		"message":       response.Message,
+		"errorCode":     response.ErrorCode,
+		"transactionId": response.TransactionID,
+		"amount":        fmt.Sprintf("%.2f", response.Amount),
+		"currency":      response.Currency,
 	})
 }
 
@@ -427,14 +444,6 @@ func (h *PaymentHandler) processWebhookAsync(ctx context.Context, environment, p
 
 // Process successful payment webhooks
 func (h *PaymentHandler) processSuccessfulPayment(providerName, paymentID string, webhookData map[string]string, currentStatus *provider.PaymentResponse) {
-	// Log successful payment completion
-	logger.Info("Payment completed successfully via webhook", logger.LogContext{
-		Provider: providerName,
-		Fields: map[string]any{
-			"payment_id": paymentID,
-			"status":     "successful",
-		},
-	})
 
 	// Here you could:
 	// 1. Update local payment status

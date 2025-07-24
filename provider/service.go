@@ -126,6 +126,10 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 		return nil, err
 	}
 
+	data["currency"] = callbackState.Currency
+	data["paymentId"] = callbackState.PaymentID
+	data["amount"] = fmt.Sprintf("%.2f", callbackState.Amount)
+
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, callbackState.TenantID, providerName, "POST", "/payment/3d/complete", data, "", "")
 	if err != nil {
@@ -137,7 +141,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 			},
 		})
 	}
-	data["logID"] = strconv.FormatInt(logID, 10)
+	callbackState.LogID = logID
 
 	response, err := provider.Complete3DPayment(ctx, callbackState, data)
 

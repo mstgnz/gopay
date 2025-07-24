@@ -113,14 +113,6 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 	cache := provider.GetProviderCache()
 	cache.Delete(tenantIDInt, req.Provider, req.Environment)
 
-	logger.Info("Provider cache invalidated after config update", logger.LogContext{
-		Provider: req.Provider,
-		Fields: map[string]any{
-			"tenant_id":   tenantIDInt,
-			"environment": req.Environment,
-		},
-	})
-
 	responseData := map[string]any{
 		"tenantId": tenantID,
 		"message":  "Provider configuration set successfully",
@@ -193,13 +185,6 @@ func (h *ConfigHandler) DeleteTenantConfig(w http.ResponseWriter, r *http.Reques
 	// Invalidate provider cache for this tenant-provider combination (all environments)
 	cache := provider.GetProviderCache()
 	cache.DeleteByTenantAndProvider(tenantIDInt, providerName)
-
-	logger.Info("Provider cache invalidated after config deletion", logger.LogContext{
-		Provider: providerName,
-		Fields: map[string]any{
-			"tenant_id": tenantIDInt,
-		},
-	})
 
 	responseData := map[string]any{
 		"tenantId": tenantID,

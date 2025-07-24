@@ -87,15 +87,9 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 		return 0, fmt.Errorf("failed to marshal sanitized request: %w", err)
 	}
 
-	// Generate payment ID and transaction ID from request if available
-	var paymentID, transactionID string
-	if req, ok := request.(PaymentRequest); ok {
-		paymentID = req.ID
-		if paymentID == "" {
-			paymentID = req.ReferenceID
-		}
-		transactionID = req.ConversationID
-	}
+	paymentID, _ := requestMap["paymentId"].(string)
+	amount, _ := requestMap["amount"].(float64)
+	currency, _ := requestMap["currency"].(string)
 
 	// Clean provider name to get actual table name (remove tenant prefix if present)
 	tableName, err := l.getActualProviderName(providerName)
@@ -104,13 +98,13 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (tenant_id, request, request_at, method, endpoint, payment_id, transaction_id, user_agent, client_ip)
-		VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8)
+		INSERT INTO %s (tenant_id, request, request_at, method, endpoint, payment_id, user_agent, client_ip, amount, currency)
+		VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`, tableName)
 
 	var logID int64
-	err = l.db.QueryRowContext(ctx, query, tenantID, string(requestJSON), method, endpoint, paymentID, transactionID, userAgent, clientIP).Scan(&logID)
+	err = l.db.QueryRowContext(ctx, query, tenantID, string(requestJSON), method, endpoint, paymentID, userAgent, clientIP, amount, currency).Scan(&logID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to log request to %s table: %w", tableName, err)
 	}
@@ -119,15 +113,6 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 	l.mapMutex.Lock()
 	l.logProviderMap[logID] = tableName
 	l.mapMutex.Unlock()
-
-	logger.Info("Request logged successfully", logger.LogContext{
-		Provider: tableName,
-		Fields: map[string]any{
-			"log_id":   logID,
-			"method":   method,
-			"endpoint": endpoint,
-		},
-	})
 
 	return logID, nil
 }
@@ -198,15 +183,6 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 	if rowsAffected == 0 {
 		return fmt.Errorf("no rows updated for log ID: %d in table: %s", logID, tableName)
 	}
-
-	logger.Info("Response logged successfully", logger.LogContext{
-		Provider: tableName,
-		Fields: map[string]any{
-			"log_id":        logID,
-			"processing_ms": processingMs,
-			"status":        status,
-		},
-	})
 
 	// Clean up the mapping to prevent memory leaks
 	l.mapMutex.Lock()
@@ -385,7 +361,7 @@ func AddProviderRequestToClientRequest(providerName, keyName string, providerReq
 	return nil
 }
 
-func GetProviderRequestFromLog(providerName string, paymentID string, key string) (string, error) {
+func GetProviderRequestFromLogWithPaymentID(providerName string, paymentID string, key string) (string, error) {
 	query := fmt.Sprintf(`
 		WITH RECURSIVE json_tree AS (
 			SELECT key, value
@@ -407,6 +383,40 @@ func GetProviderRequestFromLog(providerName string, paymentID string, key string
 
 	var result string
 	err := config.App().DB.QueryRow(query, paymentID, key).Scan(&result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("key %s not found", key)
+		}
+		return "", fmt.Errorf("failed to find key in JSON: %w", err)
+	}
+
+	result = strings.ReplaceAll(result, `"`, "")
+
+	return result, nil
+}
+
+func GetProviderRequestFromLogWithLogID(providerName string, logID int64, key string) (string, error) {
+	query := fmt.Sprintf(`
+		WITH RECURSIVE json_tree AS (
+			SELECT key, value
+			FROM %s, jsonb_each(request)
+			WHERE id = $1
+
+			UNION ALL
+
+			SELECT e.key, e.value
+			FROM json_tree jt,
+				jsonb_each(jt.value) e
+			WHERE jsonb_typeof(jt.value) = 'object'
+		)
+		SELECT value::text
+		FROM json_tree
+		WHERE key = $2
+		LIMIT 1;
+	`, providerName)
+
+	var result string
+	err := config.App().DB.QueryRow(query, logID, key).Scan(&result)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("key %s not found", key)
