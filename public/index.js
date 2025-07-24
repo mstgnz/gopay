@@ -4,11 +4,13 @@ class GoPayAnalytics {
         this.providers = ['iyzico', 'stripe', 'ozanpay', 'paycell', 'papara', 'nkolay', 'paytr', 'payu'];
         this.trendsChart = null;
         this.distributionChart = null;
+        const now = new Date();
         this.currentFilters = {
             tenant_id: 'all',
             provider_id: 'all',
             environment: 'all',
-            hours: '24'
+            month: now.getMonth() + 1, // 1-12
+            year: now.getFullYear()
         };
         this.authToken = localStorage.getItem('authToken');
         this.init();
@@ -146,10 +148,14 @@ class GoPayAnalytics {
         const tenantFilter = document.getElementById('tenantFilter');
         const providerFilter = document.getElementById('providerFilter');
         const environmentFilter = document.getElementById('environmentFilter');
-        const hoursFilter = document.getElementById('hoursFilter');
+        const monthFilter = document.getElementById('monthFilter');
+        const yearFilter = document.getElementById('yearFilter');
         const refreshButton = document.getElementById('refreshButton');
         const paymentSearch = document.getElementById('paymentSearch');
         const searchButton = document.getElementById('searchButton');
+
+        // Initialize month and year options
+        this.initializeDateFilters();
 
         if (tenantFilter) {
             tenantFilter.addEventListener('change', (e) => {
@@ -175,10 +181,19 @@ class GoPayAnalytics {
             });
         }
 
-        if (hoursFilter) {
-            hoursFilter.addEventListener('change', (e) => {
-                this.currentFilters.hours = e.target.value;
+        if (monthFilter) {
+            monthFilter.addEventListener('change', (e) => {
+                this.currentFilters.month = parseInt(e.target.value);
                 this.onFiltersChanged();
+                this.updateChartTitle();
+            });
+        }
+
+        if (yearFilter) {
+            yearFilter.addEventListener('change', (e) => {
+                this.currentFilters.year = parseInt(e.target.value);
+                this.onFiltersChanged();
+                this.updateChartTitle();
             });
         }
 
@@ -202,6 +217,57 @@ class GoPayAnalytics {
                     this.searchPaymentById(paymentSearch.value.trim());
                 }
             });
+        }
+    }
+
+    initializeDateFilters() {
+        const monthFilter = document.getElementById('monthFilter');
+        const yearFilter = document.getElementById('yearFilter');
+        
+        if (monthFilter) {
+            const months = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            
+            months.forEach((month, index) => {
+                const option = document.createElement('option');
+                option.value = index + 1;
+                option.textContent = month;
+                if (index + 1 === this.currentFilters.month) {
+                    option.selected = true;
+                }
+                monthFilter.appendChild(option);
+            });
+        }
+        
+        if (yearFilter) {
+            const currentYear = new Date().getFullYear();
+            // Show last 3 years and next year
+            for (let year = currentYear - 2; year <= currentYear + 1; year++) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                if (year === this.currentFilters.year) {
+                    option.selected = true;
+                }
+                yearFilter.appendChild(option);
+            }
+        }
+        
+        // Update chart title initially
+        this.updateChartTitle();
+    }
+
+    updateChartTitle() {
+        const titleElement = document.getElementById('paymentTrendsTitle');
+        if (titleElement) {
+            const months = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            const monthName = months[this.currentFilters.month - 1];
+            titleElement.textContent = `📈 Payment Trends (${monthName} ${this.currentFilters.year})`;
         }
     }
 
@@ -421,19 +487,14 @@ class GoPayAnalytics {
         if (subtitle) {
             let context = 'Multi-Tenant Payment Analytics Dashboard';
             
-            if (this.currentFilters.tenant_id !== 'all') {
-                context += ` - Tenant ${this.currentFilters.tenant_id}`;
+            // Add admin indicator for admin users only
+            if (this.isAdmin) {
+                context += ' <span style="color: #f59e0b;">👑 Admin Access</span>';
+                subtitle.innerHTML = context;
+            } else {
+                context += ` - Tenant ${this.userTenantId}`;
+                subtitle.textContent = context;
             }
-            
-            if (this.currentFilters.provider_id !== 'all') {
-                context += ` - ${this.currentFilters.provider_id}`;
-            }
-            
-            if (this.currentFilters.environment !== 'all') {
-                context += ` - ${this.currentFilters.environment}`;
-            }
-            
-            subtitle.textContent = context;
         }
     }
 

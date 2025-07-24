@@ -79,7 +79,9 @@ type AnalyticsFilters struct {
 	TenantID    *int    `json:"tenantId,omitempty"`
 	ProviderID  *string `json:"providerId,omitempty"`
 	Environment *string `json:"environment,omitempty"`
-	Hours       int     `json:"hours"`
+	Hours       int     `json:"hours"` // Keep for backwards compatibility
+	Month       int     `json:"month"` // For trends chart
+	Year        int     `json:"year"`  // For trends chart
 }
 
 // GetDashboardStats returns main dashboard statistics
@@ -114,17 +116,27 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 
 // parseAnalyticsFilters parses query parameters into analytics filters with tenant security
 func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilters {
+	now := time.Now()
 	filters := AnalyticsFilters{
-		Hours: 24, // default
+		Hours: 24,               // default for backwards compatibility
+		Month: int(now.Month()), // default to current month (1-12)
+		Year:  now.Year(),       // default to current year
 	}
 
 	// Get tenant context from JWT
 	userTenantID, isAdmin := h.getTenantContext(r)
 
-	// Parse hours
-	if hoursStr := r.URL.Query().Get("hours"); hoursStr != "" {
-		if h, err := strconv.Atoi(hoursStr); err == nil && h > 0 && h <= 168 {
-			filters.Hours = h
+	// Parse month
+	if monthStr := r.URL.Query().Get("month"); monthStr != "" {
+		if m, err := strconv.Atoi(monthStr); err == nil && m >= 1 && m <= 12 {
+			filters.Month = m
+		}
+	}
+
+	// Parse year
+	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+		if y, err := strconv.Atoi(yearStr); err == nil && y >= 2020 && y <= 2030 {
+			filters.Year = y
 		}
 	}
 
@@ -642,13 +654,8 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 		providers = []string{*filters.ProviderID}
 	}
 
-	combinedLabels := make([]string, 0)
-	combinedSuccessData := make([]int, 0)
-	combinedFailedData := make([]int, 0)
-	combinedVolumeData := make([]float64, 0)
-
-	// Track which hours we've seen
-	hourlyData := make(map[string]struct {
+	// Track combined daily data
+	dailyData := make(map[string]struct {
 		successful int
 		failed     int
 		volume     float64
@@ -662,29 +669,30 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 		tenantIDs = h.getActiveTenants(ctx)
 	}
 
+	// Collect data from all tenants and providers
 	for _, tenantID := range tenantIDs {
 		for _, provider := range providers {
-			trends, err := h.logger.GetPaymentTrends(ctx, tenantID, provider, filters.Hours)
+			trends, err := h.logger.GetPaymentTrendsMonthly(ctx, tenantID, provider, filters.Month, filters.Year)
 			if err != nil {
 				continue // Skip provider if error
 			}
 
-			// Extract data from trends
+			// Extract data from trends and aggregate
 			if labels, ok := trends["labels"].([]string); ok {
 				if datasets, ok := trends["datasets"].([]map[string]any); ok && len(datasets) >= 2 {
 					if successData, ok := datasets[0]["data"].([]int); ok {
 						if failedData, ok := datasets[1]["data"].([]int); ok {
 							if volumeData, ok := trends["volume"].([]float64); ok {
-								// Combine data by hour
+								// Combine data by day
 								for i, label := range labels {
 									if i < len(successData) && i < len(failedData) && i < len(volumeData) {
-										if existing, exists := hourlyData[label]; exists {
+										if existing, exists := dailyData[label]; exists {
 											existing.successful += successData[i]
 											existing.failed += failedData[i]
 											existing.volume += volumeData[i]
-											hourlyData[label] = existing
+											dailyData[label] = existing
 										} else {
-											hourlyData[label] = struct {
+											dailyData[label] = struct {
 												successful int
 												failed     int
 												volume     float64
@@ -704,49 +712,69 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 		}
 	}
 
-	// If no data found, return empty trends structure
-	if len(hourlyData) == 0 {
+	// If no data found, return empty trends structure with the month's days
+	if len(dailyData) == 0 {
+		// Generate empty data for all days in the month
+		emptyLabels := []string{}
+		emptySuccess := []int{}
+		emptyFailed := []int{}
+		emptyVolume := []float64{}
+
+		// Generate day labels for the selected month
+		firstDay := time.Date(filters.Year, time.Month(filters.Month), 1, 0, 0, 0, 0, time.UTC)
+		currentDay := firstDay
+		for currentDay.Month() == time.Month(filters.Month) && currentDay.Year() == filters.Year {
+			emptyLabels = append(emptyLabels, currentDay.Format("Jan 2"))
+			emptySuccess = append(emptySuccess, 0)
+			emptyFailed = append(emptyFailed, 0)
+			emptyVolume = append(emptyVolume, 0.0)
+			currentDay = currentDay.AddDate(0, 0, 1)
+		}
+
 		return map[string]any{
-			"labels": []string{},
+			"labels": emptyLabels,
 			"datasets": []map[string]any{
 				{
 					"label":           "Successful Payments",
-					"data":            []int{},
+					"data":            emptySuccess,
 					"borderColor":     "#10B981",
 					"backgroundColor": "rgba(16, 185, 129, 0.1)",
 				},
 				{
 					"label":           "Failed Payments",
-					"data":            []int{},
+					"data":            emptyFailed,
 					"borderColor":     "#EF4444",
 					"backgroundColor": "rgba(239, 68, 68, 0.1)",
 				},
 			},
-			"volume": []float64{},
+			"volume": emptyVolume,
 		}, nil
 	}
 
-	// Convert map back to arrays, maintaining chronological order
-	for i := filters.Hours - 1; i >= 0; i-- {
-		var label string
-		if i == 0 {
-			label = "Now"
-		} else {
-			label = fmt.Sprintf("%dh ago", i)
-		}
+	// Convert aggregated data to arrays maintaining chronological order
+	firstDay := time.Date(filters.Year, time.Month(filters.Month), 1, 0, 0, 0, 0, time.UTC)
+	var combinedLabels []string
+	var combinedSuccessData []int
+	var combinedFailedData []int
+	var combinedVolumeData []float64
 
-		if data, exists := hourlyData[label]; exists {
-			combinedLabels = append(combinedLabels, label)
+	currentDay := firstDay
+	for currentDay.Month() == time.Month(filters.Month) && currentDay.Year() == filters.Year {
+		dayLabel := currentDay.Format("Jan 2")
+		combinedLabels = append(combinedLabels, dayLabel)
+
+		if data, exists := dailyData[dayLabel]; exists {
 			combinedSuccessData = append(combinedSuccessData, data.successful)
 			combinedFailedData = append(combinedFailedData, data.failed)
 			combinedVolumeData = append(combinedVolumeData, data.volume)
 		} else {
-			// Fill gaps with zeros
-			combinedLabels = append(combinedLabels, label)
+			// No data for this day, fill with zeros
 			combinedSuccessData = append(combinedSuccessData, 0)
 			combinedFailedData = append(combinedFailedData, 0)
 			combinedVolumeData = append(combinedVolumeData, 0.0)
 		}
+
+		currentDay = currentDay.AddDate(0, 0, 1)
 	}
 
 	return map[string]any{

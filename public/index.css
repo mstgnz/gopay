@@ -385,10 +385,9 @@ body {
 /* Filter Controls */
 .filter-controls {
     display: flex;
-    align-items: center;
-    gap: 15px;
+    flex-direction: column;
+    gap: 12px;
     margin: 15px 0;
-    flex-wrap: wrap;
     background: rgba(255, 255, 255, 0.1);
     padding: 15px;
     border-radius: 12px;
@@ -396,11 +395,19 @@ body {
     max-width: calc(100% - 300px); /* Reserve space for header buttons */
 }
 
+.filter-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
 .filter-group {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    width: 140px; /* Fixed width instead of min-width */
+    width: 150px; /* Slightly wider since we have 2 rows */
     flex-shrink: 0;
 }
 
@@ -972,6 +979,10 @@ body {
 
 @media (max-width: 768px) {
     .filter-controls {
+        gap: 8px;
+    }
+    
+    .filter-row {
         gap: 10px;
     }
     
@@ -997,9 +1008,13 @@ body {
 
 @media (max-width: 480px) {
     .filter-controls {
+        gap: 10px;
+    }
+    
+    .filter-row {
         flex-direction: column;
         align-items: stretch;
-        gap: 15px;
+        gap: 10px;
     }
     
     .filter-group, .search-group {

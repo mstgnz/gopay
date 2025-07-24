@@ -25,66 +25,74 @@
             <div>
                 <h1>🚀 GoPay</h1>
                 <div class="header-subtitle">Multi-Tenant Payment Analytics Dashboard</div>
-
             </div>
             
             <!-- Filter Controls -->
             <div class="filter-controls">
-                <div class="filter-group">
-                    <label for="tenantFilter">Tenant:</label>
-                    <select id="tenantFilter" class="filter-select">
-                        <option value="all">All Tenants</option>
-                        <!-- Tenant options will be loaded dynamically -->
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label for="providerFilter">Provider:</label>
-                    <select id="providerFilter" class="filter-select">
-                        <option value="all">All Providers</option>
-                        <!-- Provider options will be loaded dynamically -->
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label for="environmentFilter">Environment:</label>
-                    <select id="environmentFilter" class="filter-select">
-                        <option value="all">All Environments</option>
-                        <option value="production">Production</option>
-                        <option value="sandbox">Sandbox</option>
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label for="hoursFilter">Time Range:</label>
-                    <select id="hoursFilter" class="filter-select">
-                        <option value="1">Last Hour</option>
-                        <option value="6">Last 6 Hours</option>
-                        <option value="24" selected>Last 24 Hours</option>
-                        <option value="72">Last 3 Days</option>
-                        <option value="168">Last Week</option>
-                    </select>
-                </div>
-                
-                <div class="search-group">
-                    <label for="paymentSearch">Payment ID:</label>
-                    <div class="search-input-container">
-                        <input 
-                            type="text" 
-                            id="paymentSearch" 
-                            class="search-input" 
-                            placeholder="Search by payment ID..." 
-                            disabled
-                        >
-                        <button id="searchButton" class="search-icon-btn" disabled>
-                            🔍
-                        </button>
+                <!-- First Row: Basic Filters -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="tenantFilter">Tenant:</label>
+                        <select id="tenantFilter" class="filter-select">
+                            <option value="all">All Tenants</option>
+                            <!-- Tenant options will be loaded dynamically -->
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="providerFilter">Provider:</label>
+                        <select id="providerFilter" class="filter-select">
+                            <option value="all">All Providers</option>
+                            <!-- Provider options will be loaded dynamically -->
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="environmentFilter">Environment:</label>
+                        <select id="environmentFilter" class="filter-select">
+                            <option value="all">All Environments</option>
+                            <option value="production">Production</option>
+                            <option value="sandbox">Sandbox</option>
+                        </select>
                     </div>
                 </div>
                 
-                <button id="refreshButton" class="btn refresh-btn">
-                    🔄 Refresh
-                </button>
+                <!-- Second Row: Date Filters and Search -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="monthFilter">Month:</label>
+                        <select id="monthFilter" class="filter-select">
+                            <!-- Month options will be populated by JavaScript -->
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="yearFilter">Year:</label>
+                        <select id="yearFilter" class="filter-select">
+                            <!-- Year options will be populated by JavaScript -->
+                        </select>
+                    </div>
+                    
+                    <div class="search-group">
+                        <label for="paymentSearch">Payment ID:</label>
+                        <div class="search-input-container">
+                            <input 
+                                type="text" 
+                                id="paymentSearch" 
+                                class="search-input" 
+                                placeholder="Search by payment ID..." 
+                                disabled
+                            >
+                            <button id="searchButton" class="search-icon-btn" disabled>
+                                🔍
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button id="refreshButton" class="btn refresh-btn">
+                        🔄 Refresh
+                    </button>
+                </div>
             </div>
             
             <div class="header-buttons">
@@ -173,7 +181,7 @@
             <div class="charts-grid">
                 <!-- Payment Trends Chart -->
                 <div class="chart-card">
-                    <h3 class="chart-title">📈 Payment Trends (24 Hours)</h3>
+                    <h3 class="chart-title" id="paymentTrendsTitle">📈 Payment Trends</h3>
                     <div class="chart-container">
                         <canvas id="paymentTrendsChart"></canvas>
                     </div>

@@ -648,6 +648,149 @@ func (l *Logger) GetPaymentStatsComparison(ctx context.Context, tenantID int, pr
 	return result, nil
 }
 
+// GetPaymentTrendsMonthly retrieves daily payment trends for a specific month/year
+func (l *Logger) GetPaymentTrendsMonthly(ctx context.Context, tenantID int, provider string, month, year int) (map[string]any, error) {
+	// Validate month and year parameters
+	if month < 1 || month > 12 {
+		return nil, fmt.Errorf("invalid month parameter: must be between 1 and 12")
+	}
+	if year < 2020 || year > 2030 {
+		return nil, fmt.Errorf("invalid year parameter: must be between 2020 and 2030")
+	}
+
+	if l.db == nil {
+		return map[string]any{
+			"labels": []string{},
+			"datasets": []map[string]any{
+				{
+					"label":           "Successful Payments",
+					"data":            []int{},
+					"borderColor":     "#10B981",
+					"backgroundColor": "rgba(16, 185, 129, 0.1)",
+				},
+				{
+					"label":           "Failed Payments",
+					"data":            []int{},
+					"borderColor":     "#EF4444",
+					"backgroundColor": "rgba(239, 68, 68, 0.1)",
+				},
+			},
+			"volume": []float64{},
+		}, nil
+	}
+
+	tableName := l.getProviderTableName(provider)
+
+	// Get the first and last day of the month
+	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	lastDay := firstDay.AddDate(0, 1, 0).Add(-time.Second) // Last second of the month
+
+	query := fmt.Sprintf(`
+		WITH daily_data AS (
+			SELECT 
+				DATE_TRUNC('day', request_at) as day,
+				COUNT(*) as total_payments,
+				COUNT(CASE WHEN response::text LIKE '%%"success":true%%' THEN 1 END) as successful_payments,
+				COUNT(CASE WHEN response::text LIKE '%%"success":false%%' THEN 1 END) as failed_payments,
+				SUM(CASE WHEN amount IS NOT NULL THEN amount ELSE 0 END) as volume
+			FROM %s
+			WHERE tenant_id = $1 
+			AND request_at >= $2
+			AND request_at <= $3
+			GROUP BY DATE_TRUNC('day', request_at)
+			ORDER BY day ASC
+		)
+		SELECT 
+			day,
+			total_payments,
+			successful_payments,
+			failed_payments,
+			volume
+		FROM daily_data
+	`, tableName)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantID, firstDay, lastDay)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monthly payment trends: %w", err)
+	}
+	defer rows.Close()
+
+	var labels []string
+	var successData []int
+	var failedData []int
+	var volumeData []float64
+
+	// Create a map to store data by day for filling gaps
+	dailyDataMap := make(map[string]struct {
+		successful int
+		failed     int
+		volume     float64
+	})
+
+	for rows.Next() {
+		var day time.Time
+		var total, successful, failed int
+		var volume float64
+
+		err := rows.Scan(&day, &total, &successful, &failed, &volume)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan trend row: %w", err)
+		}
+
+		dayKey := day.Format("2006-01-02")
+		dailyDataMap[dayKey] = struct {
+			successful int
+			failed     int
+			volume     float64
+		}{successful, failed, volume}
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating trend rows: %w", err)
+	}
+
+	// Generate all days in the month and fill with data or zeros
+	currentDay := firstDay
+	for currentDay.Month() == time.Month(month) && currentDay.Year() == year {
+		dayKey := currentDay.Format("2006-01-02")
+		dayLabel := currentDay.Format("Jan 2") // e.g., "Jan 1", "Jan 2"
+
+		labels = append(labels, dayLabel)
+
+		if data, exists := dailyDataMap[dayKey]; exists {
+			successData = append(successData, data.successful)
+			failedData = append(failedData, data.failed)
+			volumeData = append(volumeData, data.volume)
+		} else {
+			// No data for this day, fill with zeros
+			successData = append(successData, 0)
+			failedData = append(failedData, 0)
+			volumeData = append(volumeData, 0.0)
+		}
+
+		currentDay = currentDay.AddDate(0, 0, 1)
+	}
+
+	return map[string]any{
+		"labels": labels,
+		"datasets": []map[string]any{
+			{
+				"label":           "Successful Payments",
+				"data":            successData,
+				"borderColor":     "#10B981",
+				"backgroundColor": "rgba(16, 185, 129, 0.1)",
+			},
+			{
+				"label":           "Failed Payments",
+				"data":            failedData,
+				"borderColor":     "#EF4444",
+				"backgroundColor": "rgba(239, 68, 68, 0.1)",
+			},
+		},
+		"volume": volumeData,
+	}, nil
+}
+
 // GetPaymentTrends retrieves hourly payment trends for analytics
 func (l *Logger) GetPaymentTrends(ctx context.Context, tenantID int, provider string, hours int) (map[string]any, error) {
 	// Validate hours parameter to prevent SQL injection
