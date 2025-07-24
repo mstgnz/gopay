@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -281,7 +280,6 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 
 	// Complete 3D payment
 	response, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
-	log.Println("RESPONSE 3D", response, err)
 
 	if err != nil {
 		h.postRedirect(w, response.RedirectURL, map[string]string{
