@@ -414,7 +414,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	}
 
 	// Add provider request to client request log
-	_ = provider.AddProviderRequestToClientRequest("paycell", "inquireRequest", paycellReq, p.logID)
+	_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireRequest", paycellReq, p.logID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -996,7 +996,7 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "providerRequest", paycellReq, p.logID)
+	_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", paycellReq, p.logID)
 
 	success := paycellResp.ResponseHeader.ResponseCode == responseCodeSuccess
 	status := provider.StatusFailed
