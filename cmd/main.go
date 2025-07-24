@@ -207,6 +207,7 @@ func main() {
 		r.Get("/trends", analyticsHandler.GetPaymentTrends)           // GET /v1/analytics/trends?hours=24
 		r.Get("/tenants", analyticsHandler.GetActiveTenants)          // GET /v1/analytics/tenants
 		r.Get("/providers/list", analyticsHandler.GetActiveProviders) // GET /v1/analytics/providers/list
+		r.Get("/search", analyticsHandler.SearchPaymentByID)          // GET /v1/analytics/search?tenant_id=1&provider_id=paycell&payment_id=pay_123
 	})
 
 	// Protected v1 routes with authentication

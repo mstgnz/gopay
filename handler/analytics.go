@@ -1079,3 +1079,96 @@ func (h *AnalyticsHandler) getRealActiveProviders(ctx context.Context) ([]map[st
 func (h *AnalyticsHandler) getRealActiveTenants(ctx context.Context) ([]map[string]any, error) {
 	return h.logger.GetAllTenants(ctx)
 }
+
+// SearchPaymentByID searches for a specific payment by ID
+func (h *AnalyticsHandler) SearchPaymentByID(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Parse required parameters
+	tenantIDStr := r.URL.Query().Get("tenant_id")
+	providerID := r.URL.Query().Get("provider_id")
+	paymentID := r.URL.Query().Get("payment_id")
+
+	// Validate required parameters
+	if tenantIDStr == "" || tenantIDStr == "all" {
+		response.Error(w, http.StatusBadRequest, "tenant_id is required", fmt.Errorf("tenant_id parameter is missing or set to 'all'"))
+		return
+	}
+
+	if providerID == "" || providerID == "all" {
+		response.Error(w, http.StatusBadRequest, "provider_id is required", fmt.Errorf("provider_id parameter is missing or set to 'all'"))
+		return
+	}
+
+	if paymentID == "" {
+		response.Error(w, http.StatusBadRequest, "payment_id is required", fmt.Errorf("payment_id parameter is missing"))
+		return
+	}
+
+	tenantID, err := strconv.Atoi(tenantIDStr)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid tenant_id", err)
+		return
+	}
+
+	var activities []*RecentActivity
+	var searchErr error
+
+	if h.logger != nil {
+		activities, searchErr = h.searchPaymentInDatabase(ctx, tenantID, providerID, paymentID)
+		if searchErr != nil {
+			logger.Warn("Failed to search payment", logger.LogContext{
+				TenantID: tenantIDStr,
+				Fields: map[string]any{
+					"error":      searchErr.Error(),
+					"tenant_id":  tenantID,
+					"provider":   providerID,
+					"payment_id": paymentID,
+				},
+			})
+		}
+	}
+
+	if len(activities) == 0 {
+		response.Error(w, http.StatusNotFound, "Payment not found", fmt.Errorf("no payment found with ID %s for tenant %d and provider %s", paymentID, tenantID, providerID))
+		return
+	}
+
+	// Return all matching payments
+	response.Success(w, http.StatusOK, "Payment found successfully", activities)
+}
+
+// searchPaymentInDatabase searches for a payment in the specified provider table
+func (h *AnalyticsHandler) searchPaymentInDatabase(ctx context.Context, tenantID int, provider, paymentID string) ([]*RecentActivity, error) {
+	// Search in the provider table for the specific payment
+	payments, err := h.logger.SearchPaymentByID(ctx, tenantID, provider, paymentID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(payments) == 0 {
+		return nil, nil
+	}
+
+	var activities []*RecentActivity
+	for _, payment := range payments {
+		// Convert database result to RecentActivity
+		activity := &RecentActivity{
+			Type:     payment["type"].(string),
+			Provider: payment["provider"].(string),
+			Amount:   payment["amount"].(string),
+			Status:   payment["status"].(string),
+			Time:     payment["time"].(string),
+			ID:       payment["id"].(string),
+			TenantID: fmt.Sprintf("%d", payment["tenant_id"].(int)),
+			Env:      payment["env"].(string),
+			Request:  payment["request"].(string),
+			Response: payment["response"].(string),
+			Endpoint: payment["endpoint"].(string),
+		}
+		activities = append(activities, activity)
+	}
+
+	return activities, nil
+}

@@ -55,6 +55,7 @@ class GoPayAnalytics {
         await this.loadFilterOptions();
         await this.loadDashboardData();
         this.initCharts();
+        this.updateSearchState();
         this.startRealTimeUpdates();
     }
 
@@ -149,11 +150,14 @@ class GoPayAnalytics {
         const environmentFilter = document.getElementById('environmentFilter');
         const hoursFilter = document.getElementById('hoursFilter');
         const refreshButton = document.getElementById('refreshButton');
+        const paymentSearch = document.getElementById('paymentSearch');
+        const searchButton = document.getElementById('searchButton');
 
         if (tenantFilter) {
             tenantFilter.addEventListener('change', (e) => {
                 this.currentFilters.tenant_id = e.target.value;
                 this.onFiltersChanged();
+                this.updateSearchState();
             });
         }
 
@@ -161,6 +165,7 @@ class GoPayAnalytics {
             providerFilter.addEventListener('change', (e) => {
                 this.currentFilters.provider_id = e.target.value;
                 this.onFiltersChanged();
+                this.updateSearchState();
             });
         }
 
@@ -168,6 +173,7 @@ class GoPayAnalytics {
             environmentFilter.addEventListener('change', (e) => {
                 this.currentFilters.environment = e.target.value;
                 this.onFiltersChanged();
+                this.updateSearchState();
             });
         }
 
@@ -181,6 +187,22 @@ class GoPayAnalytics {
         if (refreshButton) {
             refreshButton.addEventListener('click', () => {
                 this.refreshDashboard();
+            });
+        }
+
+        if (paymentSearch) {
+            paymentSearch.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !paymentSearch.disabled) {
+                    this.searchPaymentById(paymentSearch.value.trim());
+                }
+            });
+        }
+
+        if (searchButton) {
+            searchButton.addEventListener('click', () => {
+                if (!searchButton.disabled && paymentSearch) {
+                    this.searchPaymentById(paymentSearch.value.trim());
+                }
             });
         }
     }
@@ -809,6 +831,73 @@ class GoPayAnalytics {
         this.addActivityClickListeners();
     }
 
+    updateSearchState() {
+        const paymentSearch = document.getElementById('paymentSearch');
+        const searchButton = document.getElementById('searchButton');
+        
+        if (paymentSearch) {
+            // Enable search only if tenant and provider are selected (not 'all')
+            const canSearch = this.currentFilters.tenant_id !== 'all' && 
+                             this.currentFilters.provider_id !== 'all';
+            
+            paymentSearch.disabled = !canSearch;
+            paymentSearch.placeholder = canSearch ? 
+                'Search by payment ID...' : 
+                'Select tenant and provider first';
+            
+            if (searchButton) {
+                searchButton.disabled = !canSearch;
+            }
+            
+            if (!canSearch) {
+                paymentSearch.value = '';
+            }
+        }
+    }
+
+    async searchPaymentById(paymentId) {
+        if (!paymentId) {
+            alert('Please enter a payment ID to search');
+            return;
+        }
+
+        if (this.currentFilters.tenant_id === 'all' || this.currentFilters.provider_id === 'all') {
+            alert('Please select tenant and provider before searching');
+            return;
+        }
+
+        try {
+            const searchParams = new URLSearchParams({
+                tenant_id: this.currentFilters.tenant_id,
+                provider_id: this.currentFilters.provider_id,
+                payment_id: paymentId
+            });
+
+            const response = await this.authenticatedFetch(`/v1/analytics/search?${searchParams}`);
+            
+            if (response && response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    // Check if single payment or multiple payments
+                    if (Array.isArray(data.data)) {
+                        // Multiple payments - show search results modal
+                        this.showSearchResultsModal(data.data, paymentId);
+                    } else {
+                        // Single payment - show activity modal  
+                        this.showActivityModal(data.data);
+                    }
+                } else {
+                    alert('Payment not found');
+                }
+            } else {
+                alert('Search failed. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error searching payment:', error);
+            alert('Search error occurred');
+        }
+    }
+
     startRealTimeUpdates() {
         // Update dashboard every 30 seconds
         setInterval(() => {
@@ -897,6 +986,103 @@ class GoPayAnalytics {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    showSearchResultsModal(payments, paymentId) {
+        const modal = document.getElementById('searchResultsModal');
+        
+        // Populate search info
+        document.getElementById('searchPaymentId').textContent = paymentId;
+        document.getElementById('searchProvider').textContent = payments[0].provider;
+        document.getElementById('searchTotalRequests').textContent = payments.length;
+        
+        // Populate endpoints list
+        const endpointsList = document.getElementById('endpointsList');
+        endpointsList.innerHTML = payments.map((payment, index) => `
+            <div class="endpoint-item" data-payment-index="${index}">
+                <div class="endpoint-info">
+                    <div class="endpoint-path">${payment.endpoint || '/unknown'}</div>
+                    <div class="endpoint-meta">${payment.time} • ${payment.amount}</div>
+                </div>
+                <div class="endpoint-status ${payment.status}">${payment.status}</div>
+            </div>
+        `).join('');
+        
+        // Store payments for selection
+        this.currentSearchResults = payments;
+        
+        // Add click listeners to endpoints
+        this.addEndpointClickListeners();
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Add close listeners
+        this.addSearchModalCloseListeners();
+    }
+
+    addEndpointClickListeners() {
+        const endpointItems = document.querySelectorAll('.endpoint-item');
+        endpointItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                // Remove previous selection
+                endpointItems.forEach(ei => ei.classList.remove('selected'));
+                
+                // Add selection to clicked item
+                item.classList.add('selected');
+                
+                // Get payment data
+                const paymentIndex = parseInt(item.getAttribute('data-payment-index'));
+                const payment = this.currentSearchResults[paymentIndex];
+                
+                // Show selected request details
+                this.showSelectedRequestDetails(payment);
+            });
+        });
+    }
+
+    showSelectedRequestDetails(payment) {
+        const detailsSection = document.getElementById('selectedRequestDetails');
+        
+        // Populate details
+        document.getElementById('selectedEndpoint').textContent = payment.endpoint || 'N/A';
+        document.getElementById('selectedAmount').textContent = payment.amount;
+        document.getElementById('selectedStatus').textContent = payment.status;
+        document.getElementById('selectedTime').textContent = payment.time;
+        
+        // Show JSON data
+        this.displayJsonData('selectedRequestJson', payment.request);
+        this.displayJsonData('selectedResponseJson', payment.response);
+        
+        // Show details section
+        detailsSection.style.display = 'block';
+    }
+
+    addSearchModalCloseListeners() {
+        const modal = document.getElementById('searchResultsModal');
+        const modalClose = document.getElementById('searchModalClose');
+        
+        // Close on X button click
+        modalClose.onclick = () => {
+            modal.style.display = 'none';
+            document.getElementById('selectedRequestDetails').style.display = 'none';
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+                document.getElementById('selectedRequestDetails').style.display = 'none';
+            }
+        };
+        
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+                document.getElementById('selectedRequestDetails').style.display = 'none';
+            }
+        });
     }
 
     addModalCloseListeners() {

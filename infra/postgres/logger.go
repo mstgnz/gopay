@@ -13,6 +13,8 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/mstgnz/gopay/infra/conn"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // PaymentLog represents a structured payment log entry
@@ -849,7 +851,7 @@ func (l *Logger) GetAllRecentActivity(ctx context.Context, limit int) ([]map[str
 			activity := map[string]any{
 				"timestamp": requestAt,
 				"time":      timeString,
-				"provider":  strings.Title(provider),
+				"provider":  cases.Title(language.English).String(provider),
 				"type":      activityType,
 				"status":    activityStatus.String,
 				"amount":    amountStr,
@@ -879,6 +881,102 @@ func (l *Logger) GetAllRecentActivity(ctx context.Context, limit int) ([]map[str
 	}
 
 	return allActivities, nil
+}
+
+// SearchPaymentByID searches for a specific payment by ID in a provider table
+func (l *Logger) SearchPaymentByID(ctx context.Context, tenantID int, provider, paymentID string) ([]map[string]any, error) {
+	tableName := l.getProviderTableName(provider)
+
+	query := fmt.Sprintf(`
+		SELECT 
+			request_at,
+			tenant_id,
+			payment_id,
+			amount,
+			currency,
+			CASE 
+				WHEN response::text LIKE '%%"success":true%%' OR status = 'success' THEN 'success'
+				WHEN response::text LIKE '%%"success":false%%' OR status = 'failed' THEN 'failed'
+				ELSE 'processing'
+			END as activity_status,
+			method,
+			endpoint,
+			request,
+			response
+		FROM %s
+		WHERE tenant_id = $1 
+		AND payment_id = $2
+		ORDER BY request_at DESC
+	`, tableName)
+
+	rows, err := l.db.QueryContext(ctx, query, tenantID, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query payment: %w", err)
+	}
+	defer rows.Close()
+
+	var payments []map[string]any
+
+	for rows.Next() {
+		var requestAt time.Time
+		var returnedTenantID int
+		var returnedPaymentID, currency, activityStatus, method, endpoint sql.NullString
+		var request, response sql.NullString
+		var amount sql.NullFloat64
+
+		err := rows.Scan(&requestAt, &returnedTenantID, &returnedPaymentID, &amount, &currency, &activityStatus, &method, &endpoint, &request, &response)
+		if err != nil {
+			continue
+		}
+
+		// Calculate time ago
+		timeAgo := time.Since(requestAt)
+		var timeString string
+		if timeAgo.Hours() >= 1 {
+			timeString = fmt.Sprintf("%.0fh ago", timeAgo.Hours())
+		} else {
+			timeString = fmt.Sprintf("%.0fm ago", timeAgo.Minutes())
+		}
+
+		// Determine activity type
+		activityType := "payment"
+		if endpoint.Valid && (strings.Contains(endpoint.String, "refund") ||
+			(method.Valid && strings.Contains(strings.ToLower(method.String), "refund"))) {
+			activityType = "refund"
+		}
+
+		// Format amount with currency
+		amountStr := "₺0.00"
+		if amount.Valid && currency.Valid {
+			amountStr = fmt.Sprintf("₺%.2f", amount.Float64)
+		} else if amount.Valid {
+			amountStr = fmt.Sprintf("₺%.2f", amount.Float64)
+		}
+
+		payment := map[string]any{
+			"timestamp": requestAt,
+			"time":      timeString,
+			"provider":  cases.Title(language.English).String(provider),
+			"type":      activityType,
+			"status":    activityStatus.String,
+			"amount":    amountStr,
+			"tenant_id": returnedTenantID,
+			"id":        returnedPaymentID.String,
+			"env":       "production", // Default, could be enhanced to detect from data
+			"request":   request.String,
+			"response":  response.String,
+			"endpoint":  endpoint.String,
+		}
+
+		payments = append(payments, payment)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating payment rows: %w", err)
+	}
+
+	// Return all payments found
+	return payments, nil
 }
 
 // GetAllProvidersStats retrieves stats for all providers for a tenant
@@ -976,7 +1074,7 @@ func (l *Logger) GetActiveProviders(ctx context.Context) ([]map[string]any, erro
 
 		providers = append(providers, map[string]any{
 			"id":           name,
-			"name":         strings.Title(name),
+			"name":         cases.Title(language.English).String(name),
 			"tenant_count": tenantCount,
 		})
 	}

@@ -68,6 +68,22 @@
                     </select>
                 </div>
                 
+                <div class="search-group">
+                    <label for="paymentSearch">Payment ID:</label>
+                    <div class="search-input-container">
+                        <input 
+                            type="text" 
+                            id="paymentSearch" 
+                            class="search-input" 
+                            placeholder="Search by payment ID..." 
+                            disabled
+                        >
+                        <button id="searchButton" class="search-icon-btn" disabled>
+                            🔍
+                        </button>
+                    </div>
+                </div>
+                
                 <button id="refreshButton" class="btn refresh-btn">
                     🔄 Refresh
                 </button>
@@ -261,6 +277,82 @@
                         <h4>Response Data</h4>
                         <div class="json-viewer">
                             <pre id="responseJson" class="json-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results Modal -->
+    <div id="searchResultsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="searchModalTitle">Search Results</h3>
+                <span class="modal-close" id="searchModalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="search-results-info">
+                    <div class="search-info-section">
+                        <h4>Payment Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Payment ID:</span>
+                            <span id="searchPaymentId" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Provider:</span>
+                            <span id="searchProvider" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Total Requests:</span>
+                            <span id="searchTotalRequests" class="detail-value">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="endpoints-section">
+                    <h4>📋 Request History (Click to view details)</h4>
+                    <div id="endpointsList" class="endpoints-list">
+                        <!-- Endpoints will be loaded here -->
+                    </div>
+                </div>
+                
+                <div class="selected-request-details" id="selectedRequestDetails" style="display: none;">
+                    <h4>🔍 Selected Request Details</h4>
+                    <div class="activity-details-grid">
+                        <div class="detail-section">
+                            <div class="detail-item">
+                                <span class="detail-label">Endpoint:</span>
+                                <span id="selectedEndpoint" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Amount:</span>
+                                <span id="selectedAmount" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Status:</span>
+                                <span id="selectedStatus" class="detail-value">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Time:</span>
+                                <span id="selectedTime" class="detail-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="json-viewer-container">
+                        <div class="json-section">
+                            <h4>Request Data</h4>
+                            <div class="json-viewer">
+                                <pre id="selectedRequestJson" class="json-content"></pre>
+                            </div>
+                        </div>
+                        
+                        <div class="json-section">
+                            <h4>Response Data</h4>
+                            <div class="json-viewer">
+                                <pre id="selectedResponseJson" class="json-content"></pre>
+                            </div>
                         </div>
                     </div>
                 </div>
