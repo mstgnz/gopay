@@ -1990,7 +1990,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  # Analytics Operations (No Authentication Required)
+  # Analytics Operations (JWT Authentication Required)
   /v1/analytics/dashboard:
     get:
       summary: Get dashboard statistics
@@ -2001,27 +2001,64 @@ paths:
         - Recent transaction trends
         - Error rates and common issues
         
-        **No Authentication Required** - This endpoint is public for dashboard display.
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Tenant Restrictions:**
+        - Admin users can see all tenants' data
+        - Regular users can only see their own data
+        
+        **Filters:**
+        - Tenant ID (admin only)
+        - Provider ID 
+        - Environment
+        - Month/Year for trends
       tags: [Analytics]
+      security:
+        - BearerAuth: []
       parameters:
-        - name: provider
+        - name: tenant_id
           in: query
-          required: true
+          required: false
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
-          description: Payment provider name
-          example: iyzico
-        - name: hours
+          description: Tenant ID filter (admin only, ignored for regular users)
+          example: "all"
+        - name: provider_id
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+            default: all
+          description: Payment provider filter
+          example: "all"
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, sandbox, production]
+            default: all
+          description: Environment filter
+          example: "all"
+        - name: month
           in: query
           required: false
           schema:
             type: integer
             minimum: 1
-            maximum: 168
-            default: 24
-          description: Time range in hours (max 7 days)
-          example: 24
+            maximum: 12
+          description: Month filter (1-12) for trends
+          example: 1
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2020
+            maximum: 2030
+          description: Year filter for trends
+          example: 2024
       responses:
         '200':
           description: Dashboard statistics retrieved successfully
@@ -2091,6 +2128,8 @@ paths:
                               type: number
                               format: float
                               example: 5234.20
+        '401':
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -2103,26 +2142,59 @@ paths:
         - Average processing times
         - Error rates and common failures
         - Volume distribution
+        
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Tenant Restrictions:**
+        - Admin users can see all tenants' data
+        - Regular users can only see their own data
       tags: [Analytics]
+      security:
+        - BearerAuth: []
       parameters:
-        - name: provider
+        - name: tenant_id
           in: query
-          required: true
+          required: false
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
-          description: Payment provider name
-          example: iyzico
-        - name: hours
+          description: Tenant ID filter (admin only, ignored for regular users)
+          example: "all"
+        - name: provider_id
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+            default: all
+          description: Payment provider filter
+          example: "all"
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, sandbox, production]
+            default: all
+          description: Environment filter
+          example: "all"
+        - name: month
           in: query
           required: false
           schema:
             type: integer
             minimum: 1
-            maximum: 168
-            default: 24
-          description: Time range in hours (max 7 days)
-          example: 24
+            maximum: 12
+          description: Month filter (1-12) for trends
+          example: 1
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2020
+            maximum: 2030
+          description: Year filter for trends
+          example: 2024
       responses:
         '200':
           description: Provider statistics retrieved successfully
@@ -2171,6 +2243,8 @@ paths:
                               count:
                                 type: integer
                                 example: 15
+        '401':
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -2183,7 +2257,15 @@ paths:
         - Status changes
         - Failed payments
         - Refunds and cancellations
+        
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Tenant Restrictions:**
+        - Admin users can see all tenants' data
+        - Regular users can only see their own data
       tags: [Analytics]
+      security:
+        - BearerAuth: []
       parameters:
         - name: limit
           in: query
@@ -2192,17 +2274,34 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
-            default: 20
+            default: 10
           description: Maximum number of activities to return
-          example: 20
-        - name: provider
+          example: 10
+        - name: tenant_id
           in: query
           required: false
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
-          description: Filter by specific provider
-          example: iyzico
+          description: Tenant ID filter (admin only, ignored for regular users)
+          example: "all"
+        - name: provider_id
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+            default: all
+          description: Payment provider filter
+          example: "all"
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, sandbox, production]
+            default: all
+          description: Environment filter
+          example: "all"
       responses:
         '200':
           description: Recent activity retrieved successfully
@@ -2246,6 +2345,8 @@ paths:
                           type: string
                           enum: [payment, refund, cancellation, status_change]
                           example: "payment"
+        '401':
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error
 
@@ -2254,85 +2355,301 @@ paths:
       summary: Get payment trends
       description: |
         Retrieves payment trends over time for analytics:
-        - Hourly payment volumes
+        - Daily payment volumes for selected month/year
         - Success rate trends
         - Provider performance over time
-        - Seasonal patterns
+        - Monthly patterns
+        
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Tenant Restrictions:**
+        - Admin users can see all tenants' data
+        - Regular users can only see their own data
       tags: [Analytics]
+      security:
+        - BearerAuth: []
       parameters:
-        - name: provider
+        - name: tenant_id
           in: query
-          required: true
+          required: false
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
-          description: Payment provider name
-          example: iyzico
-        - name: hours
+          description: Tenant ID filter (admin only, ignored for regular users)
+          example: "all"
+        - name: provider_id
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+            default: all
+          description: Payment provider filter
+          example: "all"
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, sandbox, production]
+            default: all
+          description: Environment filter
+          example: "all"
+        - name: month
           in: query
           required: false
           schema:
             type: integer
             minimum: 1
-            maximum: 168
-            default: 24
-          description: Time range in hours (max 7 days)
-          example: 24
-        - name: granularity
+            maximum: 12
+          description: Month filter (1-12) for trends
+          example: 1
+        - name: year
           in: query
           required: false
           schema:
-            type: string
-            enum: [hour, day]
-            default: hour
-          description: Data granularity
-          example: hour
+            type: integer
+            minimum: 2020
+            maximum: 2030
+          description: Year filter for trends
+          example: 2024
       responses:
         '200':
           description: Payment trends retrieved successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
                     properties:
-                      period:
-                        type: string
-                        example: "24h"
-                      granularity:
-                        type: string
-                        example: "hour"
-                      trends:
+                      data:
+                        type: object
+                        properties:
+                          labels:
+                            type: array
+                            items:
+                              type: string
+                            example: ["Jan 1", "Jan 2", "Jan 3"]
+                            description: Day labels for the chart
+                          datasets:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                label:
+                                  type: string
+                                  example: "Successful Payments"
+                                data:
+                                  type: array
+                                  items:
+                                    type: integer
+                                  example: [10, 15, 8]
+                                borderColor:
+                                  type: string
+                                  example: "#10B981"
+                                backgroundColor:
+                                  type: string
+                                  example: "rgba(16, 185, 129, 0.1)"
+                          volume:
+                            type: array
+                            items:
+                              type: number
+                              format: float
+                            example: [1000.50, 1500.75, 800.25]
+                            description: Daily volume data
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/analytics/tenants:
+    get:
+      summary: Get active tenants list
+      description: |
+        Retrieves list of all active tenants for admin users.
+        
+        **JWT Authentication Required** - Only admin users can access this endpoint.
+        
+        **Access Control:**
+        - Admin users (tenant_id=1): Returns all tenants
+        - Regular users: Access denied
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Active tenants retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
                         type: array
                         items:
                           type: object
                           properties:
-                            timestamp:
+                            id:
+                              type: integer
+                              example: 1
+                            name:
+                              type: string
+                              example: "admin"
+                            created_at:
                               type: string
                               format: date-time
-                              example: "2024-01-15T10:00:00Z"
-                            totalPayments:
-                              type: integer
-                              example: 52
-                            successfulPayments:
-                              type: integer
-                              example: 49
-                            failedPayments:
+                              example: "2024-01-01T00:00:00Z"
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '403':
+          description: Forbidden - Admin access required
+        '500':
+          description: Internal server error
+
+  /v1/analytics/providers/list:
+    get:
+      summary: Get active providers list
+      description: |
+        Retrieves list of configured payment providers for the authenticated tenant.
+        
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Access Control:**
+        - Admin users: Returns all providers across all tenants
+        - Regular users: Returns only their configured providers
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Active providers retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              example: "iyzico"
+                            name:
+                              type: string
+                              example: "İyzico"
+                            tenant_count:
                               type: integer
                               example: 3
-                            totalVolume:
-                              type: number
-                              format: float
-                              example: 5234.20
-                            averageAmount:
-                              type: number
-                              format: float
-                              example: 100.66
+                              description: Number of tenants using this provider
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/analytics/search:
+    get:
+      summary: Search payment by ID
+      description: |
+        Searches for a specific payment by ID across the authenticated tenant's data.
+        
+        **JWT Authentication Required** - Tenant information is extracted from JWT token.
+        
+        **Security:**
+        - Admin users can search any tenant's data (with tenant_id parameter)
+        - Regular users can only search their own data
+        
+        **Required Parameters:**
+        - tenant_id: Must be specified
+        - provider_id: Must be specified  
+        - payment_id: Payment ID to search for
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Tenant ID (for non-admin users, must match their tenant)
+          example: "1"
+        - name: provider_id
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: "iyzico"
+        - name: payment_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Payment ID to search for
+          example: "payment123"
+      responses:
+        '200':
+          description: Payment found successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              example: "payment"
+                            provider:
+                              type: string
+                              example: "iyzico"
+                            amount:
+                              type: string
+                              example: "₺100.50"
+                            status:
+                              type: string
+                              example: "successful"
+                            time:
+                              type: string
+                              example: "2024-01-15 10:30:00"
+                            id:
+                              type: string
+                              example: "payment123"
+                            tenantId:
+                              type: string
+                              example: "1"
+                            env:
+                              type: string
+                              example: "sandbox"
+                            request:
+                              type: string
+                              example: '{"amount": 100.50}'
+                            response:
+                              type: string
+                              example: '{"success": true}'
+                            endpoint:
+                              type: string
+                              example: "/v1/payments/iyzico"
+        '400':
+          description: Invalid request - Missing required parameters
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '403':
+          description: Forbidden - Access denied to specified tenant data
+        '404':
+          description: Payment not found
         '500':
           description: Internal server error
 
@@ -2706,7 +3023,7 @@ paths:
         
         **Registration Rules:**
         - ✅ **First Registration**: If no users exist, registration creates the first admin user
-        - ❌ **Subsequent Registrations**: Blocked - only admins can create new users via `/v1/auth/create-tenant`
+        - ❌ **Subsequent Registrations**: Blocked - registration is closed, only admins can create new users via `/v1/auth/create-tenant`
         
         **First User Benefits:**
         - Automatically becomes admin
@@ -2786,7 +3103,7 @@ paths:
                   summary: Registration Closed
                   value:
                     success: false
-                    message: "Registration is closed. Only administrators can create new accounts."
+                    message: "registration is closed - only administrators can create new accounts"
         '500':
           description: Internal server error
 
