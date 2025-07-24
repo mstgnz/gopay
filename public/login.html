@@ -238,14 +238,8 @@
                     // Store the token
                     localStorage.setItem('authToken', data.data.token);
                     
-                    // Check tenant_id
-                    if (data.data.tenant_id === "1") {
-                        // Redirect to dashboard
-                        window.location.href = '/';
-                    } else {
-                        showError('Access denied. Only tenant with ID 1 can access the dashboard.');
-                        localStorage.removeItem('authToken');
-                    }
+                    // Redirect to dashboard for all tenants
+                    window.location.href = '/';
                 } else {
                     showError(data.message || 'Login failed. Please check your credentials.');
                 }

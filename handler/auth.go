@@ -108,7 +108,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // Register handles tenant registration requests
-// Only allows registration if no tenants exist (first user becomes admin)
+// First user becomes admin, subsequent users become regular tenants
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Parse the registration request
 	var req RegisterRequest
@@ -132,8 +132,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Register tenant
 	tenant, err := h.tenantService.Register(registerReq)
 	if err != nil {
-		if strings.Contains(err.Error(), "registration is closed") {
-			response.Error(w, http.StatusForbidden, "Registration is closed. Only administrators can create new accounts.", nil)
+		if strings.Contains(err.Error(), "already exists") {
+			response.Error(w, http.StatusConflict, "Username already exists", nil)
 			return
 		}
 		response.Error(w, http.StatusInternalServerError, "Registration failed", err)

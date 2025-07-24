@@ -58,7 +58,7 @@ type Customer struct {
 	Surname     string   `json:"surname"`
 	Email       string   `json:"email"`
 	PhoneNumber string   `json:"phoneNumber,omitempty"`
-	IPAddress   string   `json:"ipAddress,omitempty"`
+	IPAddress   string   `json:"ipAddress"`
 	Address     *Address `json:"address,omitempty"`
 }
 
