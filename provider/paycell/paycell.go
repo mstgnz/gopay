@@ -315,9 +315,16 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 				PhoneNumber: msisdn,
 			},
 		}
-		response, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
+		_, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
 		if err != nil {
 			return nil, fmt.Errorf("paycell: failed to complete 3D payment: %w", err)
+		}
+
+		response, err = p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{
+			PaymentID: callbackState.PaymentID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("paycell: failed to get payment status: %w", err)
 		}
 	}
 
