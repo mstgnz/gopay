@@ -20,9 +20,10 @@ type AnalyticsHandler struct {
 }
 
 // getTenantContext extracts tenant information from request context
+// Returns tenantID from JWT token and whether user is admin (tenant_id=1)
 func (h *AnalyticsHandler) getTenantContext(r *http.Request) (tenantID string, isAdmin bool) {
 	tenantID = middle.GetTenantIDFromContext(r.Context())
-	isAdmin = tenantID == "1"
+	isAdmin = tenantID == "1" // Only tenant_id=1 is considered admin
 	return
 }
 
@@ -141,13 +142,15 @@ func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilte
 	}
 
 	// Parse tenant_id with security enforcement
+	// Rule: If user is admin (tenant_id=1), they can specify any tenant_id
+	// Rule: If user is not admin, tenant_id parameter is ignored and user's own tenant_id is used
 	if tenantStr := r.URL.Query().Get("tenant_id"); tenantStr != "" && tenantStr != "all" {
 		if tenantID, err := strconv.Atoi(tenantStr); err == nil {
 			if isAdmin {
-				// Admin can see any tenant's data
+				// Admin users (tenant_id=1) can access any tenant's data
 				filters.TenantID = &tenantID
 			} else {
-				// Non-admin users can only see their own data
+				// Non-admin users: ignore requested tenant_id, use their own tenant_id
 				if userTenantIDInt, err := strconv.Atoi(userTenantID); err == nil {
 					filters.TenantID = &userTenantIDInt
 				}
@@ -1161,17 +1164,19 @@ func (h *AnalyticsHandler) SearchPaymentByID(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Apply tenant security: non-admin users can only search their own data
+	// Apply tenant security rules
+	// Rule: Admin users (tenant_id=1) can search any tenant's data
+	// Rule: Non-admin users can only search their own data (tenant_id parameter must match their tenant_id)
 	var finalTenantID int
 	if requestedTenantID, err := strconv.Atoi(tenantIDStr); err != nil {
 		response.Error(w, http.StatusBadRequest, "invalid tenant_id", err)
 		return
 	} else {
 		if isAdmin {
-			// Admin can search any tenant's data
+			// Admin users (tenant_id=1) can search any tenant's data
 			finalTenantID = requestedTenantID
 		} else {
-			// Non-admin users can only search their own data
+			// Non-admin users: tenant_id parameter must match their own tenant_id
 			if userTenantIDInt, err := strconv.Atoi(userTenantID); err != nil {
 				response.Error(w, http.StatusInternalServerError, "invalid user tenant in session", err)
 				return

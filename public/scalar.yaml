@@ -2003,12 +2003,12 @@ paths:
         
         **JWT Authentication Required** - Tenant information is extracted from JWT token.
         
-        **Tenant Restrictions:**
-        - Admin users can see all tenants' data
-        - Regular users can only see their own data
+        **Tenant Security Rules:**
+        - **Admin Users (tenant_id=1)**: Can use any tenant_id parameter value to access all tenants' data
+        - **Regular Users (tenant_id≠1)**: tenant_id parameter is ignored, automatically uses their own tenant_id from JWT token
         
         **Filters:**
-        - Tenant ID (admin only)
+        - Tenant ID (only effective for admin users)
         - Provider ID 
         - Environment
         - Month/Year for trends
@@ -2021,7 +2021,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Tenant ID filter (admin only, ignored for regular users)
+          description: Tenant ID filter (only effective for admin users with tenant_id=1, regular users automatically use their own tenant_id)
           example: "all"
         - name: provider_id
           in: query
@@ -2145,9 +2145,9 @@ paths:
         
         **JWT Authentication Required** - Tenant information is extracted from JWT token.
         
-        **Tenant Restrictions:**
-        - Admin users can see all tenants' data
-        - Regular users can only see their own data
+        **Tenant Security Rules:**
+        - **Admin Users (tenant_id=1)**: Can use any tenant_id parameter value to access all tenants' data
+        - **Regular Users (tenant_id≠1)**: tenant_id parameter is ignored, automatically uses their own tenant_id from JWT token
       tags: [Analytics]
       security:
         - BearerAuth: []
@@ -2157,7 +2157,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Tenant ID filter (admin only, ignored for regular users)
+          description: Tenant ID filter (only effective for admin users with tenant_id=1, regular users automatically use their own tenant_id)
           example: "all"
         - name: provider_id
           in: query
@@ -2260,9 +2260,9 @@ paths:
         
         **JWT Authentication Required** - Tenant information is extracted from JWT token.
         
-        **Tenant Restrictions:**
-        - Admin users can see all tenants' data
-        - Regular users can only see their own data
+        **Tenant Security Rules:**
+        - **Admin Users (tenant_id=1)**: Can use any tenant_id parameter value to access all tenants' data
+        - **Regular Users (tenant_id≠1)**: tenant_id parameter is ignored, automatically uses their own tenant_id from JWT token
       tags: [Analytics]
       security:
         - BearerAuth: []
@@ -2282,7 +2282,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Tenant ID filter (admin only, ignored for regular users)
+          description: Tenant ID filter (only effective for admin users with tenant_id=1, regular users automatically use their own tenant_id)
           example: "all"
         - name: provider_id
           in: query
@@ -2362,9 +2362,9 @@ paths:
         
         **JWT Authentication Required** - Tenant information is extracted from JWT token.
         
-        **Tenant Restrictions:**
-        - Admin users can see all tenants' data
-        - Regular users can only see their own data
+        **Tenant Security Rules:**
+        - **Admin Users (tenant_id=1)**: Can use any tenant_id parameter value to access all tenants' data
+        - **Regular Users (tenant_id≠1)**: tenant_id parameter is ignored, automatically uses their own tenant_id from JWT token
       tags: [Analytics]
       security:
         - BearerAuth: []
@@ -2374,7 +2374,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Tenant ID filter (admin only, ignored for regular users)
+          description: Tenant ID filter (only effective for admin users with tenant_id=1, regular users automatically use their own tenant_id)
           example: "all"
         - name: provider_id
           in: query
@@ -2561,8 +2561,8 @@ paths:
         **JWT Authentication Required** - Tenant information is extracted from JWT token.
         
         **Security:**
-        - Admin users can search any tenant's data (with tenant_id parameter)
-        - Regular users can only search their own data
+        - **Admin Users (tenant_id=1)**: Can search any tenant's data by specifying tenant_id parameter
+        - **Regular Users (tenant_id≠1)**: tenant_id parameter must match their own tenant_id, cannot access other tenants' data
         
         **Required Parameters:**
         - tenant_id: Must be specified
@@ -2577,7 +2577,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Tenant ID (for non-admin users, must match their tenant)
+          description: Tenant ID (admin users can specify any value, regular users must use their own tenant_id)
           example: "1"
         - name: provider_id
           in: query
