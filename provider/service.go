@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -388,6 +389,71 @@ func (s *PaymentService) GetInstallmentCount(ctx context.Context, environment, p
 		} else {
 			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
 				logger.Warn("Failed to log installment count response", logger.LogContext{
+					Provider: providerName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
+			}
+		}
+	}
+
+	return response, err
+}
+
+func (s *PaymentService) GetCommission(ctx context.Context, environment, providerName string, request CommissionRequest) (CommissionResponse, error) {
+	tenantID, err := getTenantIDFromContext(ctx)
+	if err != nil {
+		return CommissionResponse{}, err
+	}
+	provider, err := GetProvider(tenantID, providerName, environment)
+	if err != nil {
+		return CommissionResponse{}, err
+	}
+
+	if request.BinValue == "" {
+		return CommissionResponse{}, errors.New("bin value is required")
+	}
+
+	if request.InstallmentCount == 0 {
+		return CommissionResponse{}, errors.New("installment count is required")
+	}
+
+	if request.Amount == 0 {
+		return CommissionResponse{}, errors.New("amount is required")
+	}
+
+	startTime := time.Now()
+	logID, err := s.logger.LogRequest(ctx, tenantID, providerName, "POST", "/payment/commission", request, "", "")
+	if err != nil {
+		logger.Warn("Failed to log commission request", logger.LogContext{
+			Provider: providerName,
+			Fields: map[string]any{
+				"error": err.Error(),
+			},
+		})
+	}
+
+	request.LogID = logID
+	response, err := provider.GetCommission(ctx, request)
+
+	processingMs := time.Since(startTime).Milliseconds()
+
+	if logID > 0 {
+		if err != nil {
+			if logErr := s.logger.LogError(ctx, logID, "COMMISSION_ERROR", err.Error(), processingMs); logErr != nil {
+				logger.Warn("Failed to log commission error", logger.LogContext{
+					Provider: providerName,
+					Fields: map[string]any{
+						"log_id": logID,
+						"error":  logErr.Error(),
+					},
+				})
+			}
+		} else {
+			if logErr := s.logger.LogResponse(ctx, logID, response, processingMs); logErr != nil {
+				logger.Warn("Failed to log commission response", logger.LogContext{
 					Provider: providerName,
 					Fields: map[string]any{
 						"log_id": logID,

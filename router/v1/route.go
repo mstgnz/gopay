@@ -37,6 +37,7 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Delete("/{provider}/{paymentID}", paymentHandler.CancelPayment)
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)
 		r.Post("/{provider}/installments", paymentHandler.GetInstallments)
+		r.Post("/{provider}/commission", paymentHandler.GetCommission)
 	})
 
 	// Configuration routes (JWT protected)

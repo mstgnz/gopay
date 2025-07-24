@@ -25,6 +25,7 @@ type MockPaymentService struct {
 	Complete3DPaymentFunc   func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhookFunc     func(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
 	GetInstallmentCountFunc func(ctx context.Context, environment, providerName string, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error)
+	GetCommissionFunc       func(ctx context.Context, environment, providerName string, request provider.CommissionRequest) (provider.CommissionResponse, error)
 }
 
 func (m *MockPaymentService) CreatePayment(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
@@ -112,6 +113,13 @@ func (m *MockPaymentService) GetInstallmentCount(ctx context.Context, environmen
 		return m.GetInstallmentCountFunc(ctx, environment, providerName, request)
 	}
 	return provider.InstallmentInquireResponse{}, nil
+}
+
+func (m *MockPaymentService) GetCommission(ctx context.Context, environment, providerName string, request provider.CommissionRequest) (provider.CommissionResponse, error) {
+	if m.GetCommissionFunc != nil {
+		return m.GetCommissionFunc(ctx, environment, providerName, request)
+	}
+	return provider.CommissionResponse{}, nil
 }
 
 func TestNewPaymentHandler(t *testing.T) {

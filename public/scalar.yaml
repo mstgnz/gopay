@@ -1024,6 +1024,49 @@ components:
                       doc_count: 3
                   description: Distribution of HTTP status codes
 
+    CommissionRequest:
+      type: object
+      required: [binValue, amount, installmentCount]
+      properties:
+        binValue:
+          type: string
+          example: "552879"
+          description: BIN number
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Payment amount
+        installmentCount:
+          type: integer
+          minimum: 0
+          maximum: 12
+          example: 1
+          description: Number of installments
+        currency:
+          type: string
+          enum: [TRY, USD, EUR]
+          example: TRY
+          description: Currency code
+
+    CommissionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+          description: Commission retrieval success status
+        amount:
+          type: number
+          format: float
+          example: 100.50
+          description: Commission amount
+        rate:
+          type: number
+          format: float
+          example: 6.13
+          description: Commission rate percentage
+
 security:
   - BearerAuth: []
 
@@ -3134,5 +3177,71 @@ paths:
                           valid:
                             type: boolean
                             example: false
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/commission:
+    post:
+      summary: Get commission with specific provider
+      description: |
+        Retrieves commission amount and rate for a given BIN, amount, currency, and installment count using a specific provider.
+        Provider configuration is automatically loaded from JWT token context.
+
+        **Available Providers:**
+        - `iyzico` - İyzico (Turkey)
+        - `ozanpay` - OzanPay (Turkey)
+        - `stripe` - Stripe (Global)
+        - `paycell` - Paycell (Turkey)
+        - `papara` - Papara (Turkey)
+        - `nkolay` - Nkolay (Turkey)
+        - `paytr` - PayTR (Turkey)
+        - `payu` - PayU (Global)
+
+        **JWT Token Authentication:**
+        - Bearer token automatically provides tenant context
+        - Provider configuration is used automatically
+      tags: [Payments]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu]
+          description: Payment provider name
+          example: paycell
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Payment environment (defaults to sandbox if not provided)
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommissionRequest'
+      responses:
+        '200':
+          description: Commission info retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CommissionResponse'
+        '400':
+          description: Invalid request or provider not supported
+        '401':
+          description: Unauthorized - Invalid JWT token
         '500':
           description: Internal server error

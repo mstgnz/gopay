@@ -201,6 +201,23 @@ type InstallmentInquireResponse struct {
 	Installments map[string][]InstallmentInfo `json:"installments"`
 }
 
+type CommissionRequest struct {
+	BinValue         string  `json:"binValue"`
+	InstallmentCount int     `json:"installmentCount"`
+	Amount           float64 `json:"amount"`
+	Currency         string  `json:"currency"`
+	LogID            int64   `json:"logId,omitempty"`
+}
+
+type CommissionResponse struct {
+	Success          bool    `json:"success"`
+	Message          string  `json:"message"`
+	NetAmount        float64 `json:"netAmount"`
+	GrossAmount      float64 `json:"grossAmount"`
+	CommissionRate   float64 `json:"commissionRate"`
+	CommissionAmount float64 `json:"commissionAmount"`
+}
+
 var callbackEncryptor *CallbackEncryptor
 
 // CallbackEncryptor provides secure encryption/decryption for callback state
@@ -514,6 +531,8 @@ type PaymentProvider interface {
 
 	// RefundPayment issues a refund for a payment
 	RefundPayment(ctx context.Context, request RefundRequest) (*RefundResponse, error)
+
+	GetCommission(ctx context.Context, request CommissionRequest) (CommissionResponse, error)
 
 	// ValidateWebhook validates an incoming webhook notification
 	ValidateWebhook(ctx context.Context, data map[string]string, headers map[string]string) (bool, map[string]string, error)

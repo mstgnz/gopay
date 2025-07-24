@@ -261,6 +261,11 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 	return response, nil
 }
 
+// GetCommission returns the commission for a payment
+func (p *NkolayProvider) GetCommission(ctx context.Context, request provider.CommissionRequest) (provider.CommissionResponse, error) {
+	return provider.CommissionResponse{}, nil
+}
+
 // CreatePayment makes a non-3D payment request
 func (p *NkolayProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.logID = request.LogID

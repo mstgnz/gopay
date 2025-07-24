@@ -50,6 +50,7 @@ const (
 	endpointProvisionAll            = "/tpay/provision/services/restful/getCardToken/provisionAll/"
 	endpointInquireAll              = "/tpay/provision/services/restful/getCardToken/inquireAll/"
 	endpointRefundAll               = "/tpay/provision/services/restful/getCardToken/refundAll/"
+	endpointGetPrepaidCommission    = "/tpay/provision/services/restful/getCardToken/getPrepaidCommission/"
 
 	// Payment Management Endpoints (for 3D secure)
 	endpointGetCardTokenSecure = "/paymentmanagement/rest/getCardTokenSecure"
@@ -396,12 +397,12 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		"currency":                "TRY",
 		"paymentType":             "SALE",
 		"cardToken":               cardToken,
-		"requestHeader": map[string]any{
-			"transactionId":       transactionID,
-			"transactionDateTime": transactionDateTime,
-			"clientIPAddress":     p.clientIP,
-			"applicationName":     p.username,
-			"applicationPwd":      p.password,
+		"requestHeader": PaycellRequestHeader{
+			TransactionID:       transactionID,
+			TransactionDateTime: transactionDateTime,
+			ClientIPAddress:     p.clientIP,
+			ApplicationName:     p.username,
+			ApplicationPwd:      p.password,
 		},
 	}
 
@@ -716,6 +717,84 @@ func (p *PaycellProvider) ValidateWebhook(ctx context.Context, data, headers map
 	return true, data, nil
 }
 
+func (p *PaycellProvider) GetCommission(ctx context.Context, request provider.CommissionRequest) (provider.CommissionResponse, error) {
+	// Prepare request header
+	transactionID := p.generateTransactionID()
+	transactionDateTime := p.generateTransactionDateTime()
+
+	if p.clientIP == "" {
+		p.clientIP = "127.0.0.1"
+	}
+
+	commissionReq := map[string]any{
+		"binValue":         request.BinValue,
+		"installmentCount": strconv.Itoa(request.InstallmentCount),
+		"merchantCode":     p.merchantID,
+		"amount":           int(request.Amount * 100),
+		"requestHeader": PaycellRequestHeader{
+			ApplicationName:     p.username,
+			ApplicationPwd:      p.password,
+			ClientIPAddress:     p.clientIP,
+			TransactionDateTime: transactionDateTime,
+			TransactionID:       transactionID,
+		},
+	}
+
+	url := p.baseURL + endpointGetPrepaidCommission
+	jsonData, err := json.Marshal(commissionReq)
+	if err != nil {
+		return provider.CommissionResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return provider.CommissionResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return provider.CommissionResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return provider.CommissionResponse{}, err
+	}
+
+	// Parse response
+	var paycellResp struct {
+		CommissionAmount string                `json:"commissionAmount"`
+		CommissionRate   string                `json:"commissionRate"`
+		GrossAmount      string                `json:"grossAmount"`
+		NetAmount        string                `json:"netAmount"`
+		ResponseHeader   PaycellResponseHeader `json:"responseHeader"`
+	}
+	if err := json.Unmarshal(body, &paycellResp); err != nil {
+		return provider.CommissionResponse{}, err
+	}
+
+	// Map to provider.CommissionResponse
+	commissionAmount, _ := strconv.ParseFloat(paycellResp.CommissionAmount, 64)
+	commissionRate, _ := strconv.ParseFloat(paycellResp.CommissionRate, 64)
+	grossAmount, _ := strconv.ParseFloat(paycellResp.GrossAmount, 64)
+	netAmount, _ := strconv.ParseFloat(paycellResp.NetAmount, 64)
+
+	respCode := paycellResp.ResponseHeader.ResponseCode
+	respDesc := paycellResp.ResponseHeader.ResponseDescription
+
+	return provider.CommissionResponse{
+		Success:          respCode == "0",
+		Message:          respDesc,
+		NetAmount:        netAmount,
+		GrossAmount:      grossAmount,
+		CommissionRate:   commissionRate,
+		CommissionAmount: commissionAmount,
+	}, nil
+}
+
 func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*PaycellGetThreeDSessionResultResponse, error) {
 	paymentID := callbackState.PaymentID
 	if paymentID == "" {
@@ -731,12 +810,12 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 		"merchantCode":    p.merchantID,
 		"msisdn":          p.phoneNumber,
 		"threeDSessionId": callbackState.PaymentID,
-		"requestHeader": map[string]any{
-			"transactionId":       transactionID,
-			"transactionDateTime": transactionDateTime,
-			"clientIPAddress":     callbackState.ClientIP,
-			"applicationName":     p.username,
-			"applicationPwd":      p.password,
+		"requestHeader": PaycellRequestHeader{
+			TransactionID:       transactionID,
+			TransactionDateTime: transactionDateTime,
+			ClientIPAddress:     callbackState.ClientIP,
+			ApplicationName:     p.username,
+			ApplicationPwd:      p.password,
 		},
 	}
 

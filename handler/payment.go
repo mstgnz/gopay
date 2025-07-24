@@ -25,6 +25,7 @@ type PaymentServiceInterface interface {
 	CancelPayment(ctx context.Context, environment, providerName string, request provider.CancelRequest) (*provider.PaymentResponse, error)
 	RefundPayment(ctx context.Context, environment, providerName string, request provider.RefundRequest) (*provider.RefundResponse, error)
 	GetInstallmentCount(ctx context.Context, environment, providerName string, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error)
+	GetCommission(ctx context.Context, environment, providerName string, request provider.CommissionRequest) (provider.CommissionResponse, error)
 	Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	ValidateWebhook(ctx context.Context, environment, providerName string, data map[string]string, headers map[string]string) (bool, map[string]string, error)
 }
@@ -230,6 +231,38 @@ func (h *PaymentHandler) GetInstallments(w http.ResponseWriter, r *http.Request)
 
 	// Return response
 	response.Success(w, http.StatusOK, "Installment count retrieved", resp)
+}
+
+func (h *PaymentHandler) GetCommission(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	// Get provider from URL path parameter
+	providerName := chi.URLParam(r, "provider")
+	if providerName == "" {
+		response.Error(w, http.StatusBadRequest, "Provider parameter is required", nil)
+		return
+	}
+
+	environment := r.URL.Query().Get("environment")
+	if environment != "production" {
+		environment = "sandbox"
+	}
+
+	// Parse request body
+	var req provider.CommissionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
+		return
+	}
+
+	resp, err := h.paymentService.GetCommission(ctx, environment, providerName, req)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to get commission", err)
+		return
+	}
+
+	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
 }
 
 // Enhanced callback URL parsing and redirect logic

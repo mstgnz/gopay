@@ -143,6 +143,11 @@ func (p *IyzicoProvider) GetInstallmentCount(ctx context.Context, request provid
 	return provider.InstallmentInquireResponse{}, nil
 }
 
+// GetCommission returns the commission for a payment
+func (p *IyzicoProvider) GetCommission(ctx context.Context, request provider.CommissionRequest) (provider.CommissionResponse, error) {
+	return provider.CommissionResponse{}, nil
+}
+
 // CreatePayment makes a non-3D payment request
 func (p *IyzicoProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.logID = request.LogID
