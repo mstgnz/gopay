@@ -549,10 +549,6 @@ components:
           type: string
           example: "Mozilla/5.0..."
           description: Client user agent
-        metaData:
-          type: string
-          example: "{\"userId\":123}"
-          description: Additional metadata
 
     PaymentResponse:
       type: object

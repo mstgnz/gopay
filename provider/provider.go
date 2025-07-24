@@ -94,14 +94,13 @@ type PaymentRequest struct {
 	Description      string   `json:"description,omitempty"`
 	CallbackURL      string   `json:"callbackUrl"`
 	Use3D            bool     `json:"use3D"`
-	InstallmentCount int      `json:"installmentCount,omitempty"`
+	InstallmentCount int      `json:"installmentCount"`
 	PaymentChannel   string   `json:"paymentChannel,omitempty"`
 	PaymentGroup     string   `json:"paymentGroup,omitempty"`
 	ConversationID   string   `json:"conversationId,omitempty"`
 	Locale           string   `json:"locale,omitempty"`
-	ClientIP         string   `json:"clientIp,omitempty"`
+	ClientIP         string   `json:"clientIp"`
 	ClientUserAgent  string   `json:"clientUserAgent,omitempty"`
-	MetaData         string   `json:"metaData,omitempty"`
 	Environment      string   `json:"environment,omitempty"`
 	TenantID         int      `json:"tenantId,omitempty"`
 }
