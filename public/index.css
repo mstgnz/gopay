@@ -874,6 +874,35 @@ body {
     font-size: 1.1rem;
 }
 
+/* Error Modal Specific Styles */
+.error-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.error-icon {
+    flex-shrink: 0;
+}
+
+.error-details {
+    flex-grow: 1;
+}
+
+.error-actions button:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+#errorRetryBtn:hover {
+    background: #2563eb !important;
+}
+
+#errorCloseBtn:hover {
+    background: #4b5563 !important;
+}
+
 /* Responsive Modal */
 @media (max-width: 768px) {
     .modal-content {

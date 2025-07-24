@@ -1145,7 +1145,7 @@ func (h *AnalyticsHandler) SearchPaymentByID(w http.ResponseWriter, r *http.Requ
 		} else {
 			// Non-admin users can only search their own data
 			if userTenantIDInt, err := strconv.Atoi(userTenantID); err != nil {
-				response.Error(w, http.StatusBadRequest, "invalid user tenant", err)
+				response.Error(w, http.StatusInternalServerError, "invalid user tenant in session", err)
 				return
 			} else {
 				if requestedTenantID != userTenantIDInt {

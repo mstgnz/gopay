@@ -383,18 +383,18 @@ class GoPayAnalytics {
 
         } catch (error) {
             console.error('Error loading dashboard data:', error);
-            // Fallback to placeholder data (FAKE DATA for demo)
+            // Show zero values instead of fake data
             this.updateStats({
-                totalPayments: Math.floor(Math.random() * 10000) + 5000,
-                successRate: (95 + Math.random() * 5).toFixed(2),
-                totalVolume: (Math.random() * 1000000).toFixed(2),
-                avgResponseTime: (200 + Math.random() * 100).toFixed(2),
-                totalPaymentsChange: "+12.5% from yesterday",
-                successRateChange: "+0.8% from yesterday", 
-                totalVolumeChange: "+18.2% from yesterday",
-                avgResponseChange: "-15ms from yesterday",
-                activeTenants: 3,
-                activeProviders: 5,
+                totalPayments: 0,
+                successRate: 0,
+                totalVolume: 0,
+                avgResponseTime: 0,
+                totalPaymentsChange: "No data available",
+                successRateChange: "No data available",
+                totalVolumeChange: "No data available",
+                avgResponseChange: "No data available",
+                activeTenants: 0,
+                activeProviders: 0,
                 environment: this.currentFilters.environment
             });
         }
@@ -407,10 +407,10 @@ class GoPayAnalytics {
         document.getElementById('avgResponseTime').textContent = parseFloat(stats.avgResponseTime).toFixed(2) + 'ms';
 
         // Update change indicators
-        document.getElementById('totalPaymentsChange').textContent = stats.totalPaymentsChange || '+12.5% from yesterday';
-        document.getElementById('successRateChange').textContent = stats.successRateChange || '+0.8% from yesterday';
-        document.getElementById('totalVolumeChange').textContent = stats.totalVolumeChange || '+18.2% from yesterday';
-        document.getElementById('avgResponseTimeChange').textContent = stats.avgResponseChange || '-15ms from yesterday';
+        document.getElementById('totalPaymentsChange').textContent = stats.totalPaymentsChange || 'No data available';
+        document.getElementById('successRateChange').textContent = stats.successRateChange || 'No data available';
+        document.getElementById('totalVolumeChange').textContent = stats.totalVolumeChange || 'No data available';
+        document.getElementById('avgResponseTimeChange').textContent = stats.avgResponseChange || 'No data available';
 
         // Update title to show current filter context
         this.updateDashboardTitle(stats);
@@ -478,15 +478,15 @@ class GoPayAnalytics {
                         }
                     });
                 } else {
-                    // Fallback to static data
-                    this.createFallbackTrendsChart(trendsCtx);
+                    // Show empty chart with no data message
+                    this.createEmptyTrendsChart(trendsCtx);
                 }
             } else {
-                this.createFallbackTrendsChart(trendsCtx);
+                this.createEmptyTrendsChart(trendsCtx);
             }
         } catch (error) {
             console.error('Error loading trends data:', error);
-            this.createFallbackTrendsChart(trendsCtx);
+            this.createEmptyTrendsChart(trendsCtx);
         }
 
         // Provider Distribution Chart
@@ -526,32 +526,31 @@ class GoPayAnalytics {
                         }
                     });
                 } else {
-                    this.createFallbackDistributionChart(distributionCtx);
+                    this.createEmptyDistributionChart(distributionCtx);
                 }
             } else {
-                this.createFallbackDistributionChart(distributionCtx);
+                this.createEmptyDistributionChart(distributionCtx);
             }
         } catch (error) {
             console.error('Error loading provider distribution:', error);
-            this.createFallbackDistributionChart(distributionCtx);
+            this.createEmptyDistributionChart(distributionCtx);
         }
     }
 
-    createFallbackTrendsChart(ctx) {
-        const trendsData = this.generateTrendData();
+    createEmptyTrendsChart(ctx) {
         this.trendsChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: trendsData.labels,
+                labels: [],
                 datasets: [{
                     label: 'Successful Payments',
-                    data: trendsData.success,
+                    data: [],
                     borderColor: '#10B981',
                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     tension: 0.4
                 }, {
                     label: 'Failed Payments',
-                    data: trendsData.failed,
+                    data: [],
                     borderColor: '#EF4444',
                     backgroundColor: 'rgba(239, 68, 68, 0.1)',
                     tension: 0.4
@@ -560,6 +559,11 @@ class GoPayAnalytics {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true
@@ -569,22 +573,13 @@ class GoPayAnalytics {
         });
     }
 
-    createFallbackDistributionChart(ctx) {
-        // Filter providers based on current filter
-        let providers = ['İyzico', 'Stripe', 'OzanPay', 'Paycell', 'Others'];
-        let data = [35, 25, 20, 15, 5];
-        
-        if (this.currentFilters.provider_id !== 'all') {
-            providers = [this.currentFilters.provider_id];
-            data = [100];
-        }
-        
+    createEmptyDistributionChart(ctx) {
         this.distributionChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: providers,
+                labels: [],
                 datasets: [{
-                    data: data,
+                    data: [],
                     backgroundColor: [
                         '#667eea',
                         '#764ba2',
@@ -599,27 +594,15 @@ class GoPayAnalytics {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'bottom'
+                        position: 'bottom',
+                        display: true
                     }
                 }
             }
         });
     }
 
-    generateTrendData() {
-        const labels = [];
-        const success = [];
-        const failed = [];
-        const hours = parseInt(this.currentFilters.hours);
-        
-        for (let i = hours - 1; i >= 0; i--) {
-            labels.push(i === 0 ? 'Now' : `${i}h ago`);
-            success.push(Math.floor(Math.random() * 100) + 50);
-            failed.push(Math.floor(Math.random() * 10) + 2);
-        }
-        
-        return { labels, success, failed };
-    }
+
 
     async loadProviderStatus() {
         const statusContainer = document.getElementById('providerStatus');
@@ -652,35 +635,13 @@ class GoPayAnalytics {
             console.error('Error loading provider status:', error);
         }
 
-        // Fallback to static data
-        let providers = [
-            { name: 'İyzico', status: 'online', responseTime: '145ms', tenantCount: 3, environment: 'production' },
-            { name: 'Stripe', status: 'online', responseTime: '89ms', tenantCount: 5, environment: 'production' },
-            { name: 'OzanPay', status: 'online', responseTime: '203ms', tenantCount: 2, environment: 'production' },
-            { name: 'Paycell', status: 'degraded', responseTime: '456ms', tenantCount: 1, environment: 'sandbox' },
-            { name: 'Papara', status: 'online', responseTime: '167ms', tenantCount: 4, environment: 'production' }
-        ];
-
-        // Filter providers if specific provider is selected
-        if (this.currentFilters.provider_id !== 'all') {
-            providers = providers.filter(p => 
-                p.name.toLowerCase().includes(this.currentFilters.provider_id.toLowerCase())
-            );
-        }
-
-        statusContainer.innerHTML = providers.map(provider => `
-            <div class="provider-item">
-                <div class="provider-info">
-                    <div class="provider-status ${provider.status}"></div>
-                    <span class="provider-name">${provider.name}</span>
-                    <span style="font-size: 0.8rem; opacity: 0.7; margin-left: 8px;">(${provider.tenantCount} tenants)</span>
-                </div>
-                <div style="text-align: right;">
-                    <div class="provider-response">${provider.responseTime}</div>
-                    <div style="font-size: 0.7rem; opacity: 0.6;">${provider.environment}</div>
-                </div>
+        // Show message if no provider data available
+        statusContainer.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #6b7280; font-style: italic;">
+                <p>No provider data available</p>
+                <p style="font-size: 0.8rem; margin-top: 8px;">Check your connection or try refreshing</p>
             </div>
-        `).join('');
+        `;
     }
 
     async loadRecentActivity() {
@@ -727,141 +688,16 @@ class GoPayAnalytics {
             console.error('Error loading recent activity:', error);
         }
 
-        // Fallback to static data - Generate 50 demo activities
-        let activities = [];
-        const providers = ['İyzico', 'Stripe', 'OzanPay', 'Paycell', 'Papara', 'Nkolay', 'Paytr', 'Payu'];
-        const types = ['payment', 'refund'];
-        const statuses = ['success', 'success', 'success', 'failed', 'processed'];
-        const environments = ['production', 'production', 'sandbox'];
-        
-        for (let i = 0; i < 50; i++) {
-            const randomProvider = providers[Math.floor(Math.random() * providers.length)];
-            const randomType = i % 10 === 0 ? 'refund' : 'payment'; // 10% refunds
-            const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-            const randomEnv = environments[Math.floor(Math.random() * environments.length)];
-            const randomAmount = (Math.random() * 1000 + 50).toFixed(2);
-            const randomTime = Math.floor(Math.random() * 1440); // 0-1440 minutes
-            
-            // Generate realistic endpoints based on provider and type
-            const endpoints = {
-                payment: ['/payment', '/pay', '/charge', '/process', '/transaction'],
-                refund: ['/refund', '/cancel', '/reverse', '/void']
-            };
-            const randomEndpoint = endpoints[randomType][Math.floor(Math.random() * endpoints[randomType].length)];
-            
-            let timeStr;
-            if (randomTime < 60) {
-                timeStr = `${randomTime} min ago`;
-            } else if (randomTime < 1440) {
-                timeStr = `${Math.floor(randomTime / 60)}h ${randomTime % 60}m ago`;
-            } else {
-                timeStr = `${Math.floor(randomTime / 1440)} days ago`;
-            }
-            
-            activities.push({
-                type: randomType,
-                provider: randomProvider,
-                amount: `₺${randomAmount}`,
-                status: randomStatus,
-                time: timeStr,
-                tenantId: Math.floor(Math.random() * 3) + 1,
-                env: randomEnv,
-                id: `demo_${Date.now()}_${i}`,
-                endpoint: randomEndpoint
-            });
-        }
-
-        // Filter activities based on current filters
-        if (this.currentFilters.tenant_id !== 'all') {
-            activities = activities.filter(a => a.tenantId === this.currentFilters.tenant_id);
-        }
-        
-        if (this.currentFilters.provider_id !== 'all') {
-            activities = activities.filter(a => 
-                a.provider.toLowerCase().includes(this.currentFilters.provider_id.toLowerCase())
-            );
-        }
-        
-        if (this.currentFilters.environment !== 'all') {
-            activities = activities.filter(a => a.env === this.currentFilters.environment);
-        }
-
-        // Add fake request/response data for demo if not present
-        activities.forEach((activity, index) => {
-            if (!activity.request) {
-                activity.request = JSON.stringify({
-                    payment_id: activity.id || "demo_payment_123",
-                    amount: parseFloat(activity.amount.replace('₺', '')),
-                    currency: "TRY",
-                    provider: activity.provider.toLowerCase(),
-                    method: "POST",
-                    endpoint: activity.endpoint || "/payment"
-                }, null, 2);
-            }
-            
-            if (!activity.response) {
-                activity.response = JSON.stringify({
-                    success: activity.status === 'success',
-                    payment_id: activity.id || "demo_payment_123",
-                    status: activity.status,
-                    message: activity.status === 'success' ? "Payment processed successfully" : "Payment failed",
-                    timestamp: new Date().toISOString(),
-                    endpoint: activity.endpoint || "/payment"
-                }, null, 2);
-            }
-        });
-
-        // Add fake request/response data for fallback activities
-        activities.forEach((activity, index) => {
-            if (!activity.request) {
-                activity.request = JSON.stringify({
-                    payment_id: activity.id || "demo_payment_123",
-                    amount: parseFloat(activity.amount.replace('₺', '')),
-                    currency: "TRY",
-                    provider: activity.provider.toLowerCase(),
-                    method: "POST",
-                    endpoint: activity.endpoint || "/payment"
-                }, null, 2);
-            }
-            
-            if (!activity.response) {
-                activity.response = JSON.stringify({
-                    success: activity.status === 'success',
-                    payment_id: activity.id || "demo_payment_123",
-                    status: activity.status,
-                    message: activity.status === 'success' ? "Payment processed successfully" : "Payment failed",
-                    timestamp: new Date().toISOString(),
-                    endpoint: activity.endpoint || "/payment"
-                }, null, 2);
-            }
-        });
-
-        activityContainer.innerHTML = activities.map((activity, index) => `
-            <div class="activity-item clickable-activity" data-activity-index="${index}">
-                <div class="activity-info">
-                    <div class="activity-icon" style="background: ${
-                        activity.status === 'success' ? '#dcfce7; color: #16a34a' :
-                        activity.status === 'failed' ? '#fecaca; color: #dc2626' :
-                        '#dbeafe; color: #2563eb'
-                    };">
-                        ${activity.type === 'payment' ? '💳' : '↩️'}
-                    </div>
-                    <div class="activity-details">
-                        <h4>${activity.provider} ${activity.type} <span style="font-size: 0.8rem; opacity: 0.6;">🔍 Click for details</span></h4>
-                        <p>${activity.amount}</p>
-                        ${activity.endpoint ? `<p style="font-size: 0.75rem; opacity: 0.8; color: #667eea; font-family: monospace;">${activity.endpoint}</p>` : ''}
-                        <p style="font-size: 0.8rem; opacity: 0.7;">Tenant: ${activity.tenantId} | ${activity.env}</p>
-                    </div>
-                </div>
-                <span class="activity-time">${activity.time}</span>
+        // Show message if no activity data available
+        activityContainer.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: #6b7280; font-style: italic;">
+                <p>No recent activity data available</p>
+                <p style="font-size: 0.8rem; margin-top: 8px;">Make some payments to see activity here</p>
             </div>
-        `).join('');
+        `;
 
-        // Store activities data for modal access
-        this.currentActivities = activities;
-
-        // Add click event listeners to activities
-        this.addActivityClickListeners();
+        // Clear stored activities
+        this.currentActivities = [];
     }
 
     updateSearchState() {
@@ -890,12 +726,12 @@ class GoPayAnalytics {
 
     async searchPaymentById(paymentId) {
         if (!paymentId) {
-            alert('Please enter a payment ID to search');
+            this.showErrorModal('Invalid Input', 'Please enter a payment ID to search.', null);
             return;
         }
 
         if (this.currentFilters.tenant_id === 'all' || this.currentFilters.provider_id === 'all') {
-            alert('Please select tenant and provider before searching');
+            this.showErrorModal('Missing Selection', 'Please select both tenant and provider before searching.', null);
             return;
         }
 
@@ -920,14 +756,40 @@ class GoPayAnalytics {
                         this.showActivityModal(data.data);
                     }
                 } else {
-                    alert('Payment not found');
+                    this.showErrorModal('Payment Not Found', data.message || 'No payment found with the given ID', null, () => {
+                        // Retry callback
+                        this.searchPaymentById(paymentId);
+                    });
                 }
             } else {
-                alert('Search failed. Please try again.');
+                // Handle different error status codes
+                let errorMessage = 'Search failed';
+                let errorDescription = 'Please try again.';
+                
+                if (response) {
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || 'Search failed';
+                        errorDescription = errorData.error || 'Please try again.';
+                        this.showErrorModal(errorMessage, errorDescription, response.status, () => {
+                            this.searchPaymentById(paymentId);
+                        });
+                    } catch (e) {
+                        this.showErrorModal(errorMessage, errorDescription, response.status, () => {
+                            this.searchPaymentById(paymentId);
+                        });
+                    }
+                } else {
+                    this.showErrorModal('Network Error', 'Unable to connect to server. Please check your connection.', null, () => {
+                        this.searchPaymentById(paymentId);
+                    });
+                }
             }
         } catch (error) {
             console.error('Error searching payment:', error);
-            alert('Search error occurred');
+            this.showErrorModal('Search Error', 'An unexpected error occurred while searching. Please try again.', null, () => {
+                this.searchPaymentById(paymentId);
+            });
         }
     }
 
@@ -1114,6 +976,76 @@ class GoPayAnalytics {
             if (e.key === 'Escape' && modal.style.display === 'flex') {
                 modal.style.display = 'none';
                 document.getElementById('selectedRequestDetails').style.display = 'none';
+            }
+        });
+    }
+
+    showErrorModal(title, description, errorCode = null, retryCallback = null) {
+        const modal = document.getElementById('errorModal');
+        const titleElement = document.getElementById('errorModalTitle');
+        const messageElement = document.getElementById('errorMessage');
+        const descriptionElement = document.getElementById('errorDescription');
+        const errorCodeElement = document.getElementById('errorCode');
+        const errorCodeValue = document.getElementById('errorCodeValue');
+        const retryBtn = document.getElementById('errorRetryBtn');
+        
+        // Set content
+        titleElement.textContent = `⚠️ ${title}`;
+        messageElement.textContent = title;
+        descriptionElement.textContent = description;
+        
+        // Show/hide error code
+        if (errorCode) {
+            errorCodeValue.textContent = errorCode;
+            errorCodeElement.style.display = 'block';
+        } else {
+            errorCodeElement.style.display = 'none';
+        }
+        
+        // Handle retry button
+        if (retryCallback) {
+            retryBtn.style.display = 'block';
+            retryBtn.onclick = () => {
+                modal.style.display = 'none';
+                retryCallback();
+            };
+        } else {
+            retryBtn.style.display = 'none';
+        }
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Add close listeners
+        this.addErrorModalCloseListeners();
+    }
+
+    addErrorModalCloseListeners() {
+        const modal = document.getElementById('errorModal');
+        const modalClose = document.getElementById('errorModalClose');
+        const closeBtn = document.getElementById('errorCloseBtn');
+        
+        // Close on X button click
+        modalClose.onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Close on Close button click
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+        
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                modal.style.display = 'none';
             }
         });
     }

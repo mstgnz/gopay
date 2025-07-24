@@ -25,9 +25,7 @@
             <div>
                 <h1>🚀 GoPay</h1>
                 <div class="header-subtitle">Multi-Tenant Payment Analytics Dashboard</div>
-                <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 8px; color: #f1c40f;">
-                    ⚠️ Demo Mode - Displaying simulated data for demonstration purposes
-                </div>
+
             </div>
             
             <!-- Filter Controls -->
@@ -355,6 +353,38 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="errorModal" class="modal" style="display: none;">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h3 id="errorModalTitle">⚠️ Error</h3>
+                <span class="modal-close" id="errorModalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="error-content">
+                    <div class="error-icon">
+                        <span style="font-size: 3rem; color: #ef4444;">❌</span>
+                    </div>
+                    <div class="error-details">
+                        <h4 id="errorMessage" style="color: #dc2626; margin-bottom: 10px;">Something went wrong</h4>
+                        <p id="errorDescription" style="color: #6b7280; font-size: 0.9rem; line-height: 1.5;">Please try again or contact support if the problem persists.</p>
+                        <div id="errorCode" style="margin-top: 15px; font-family: monospace; font-size: 0.8rem; color: #9ca3af; background: #f9fafb; padding: 8px; border-radius: 4px; display: none;">
+                            Error Code: <span id="errorCodeValue"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="error-actions" style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="errorRetryBtn" class="btn" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                        🔄 Retry
+                    </button>
+                    <button id="errorCloseBtn" class="btn" style="background: #6b7280; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                        Close
+                    </button>
                 </div>
             </div>
         </div>

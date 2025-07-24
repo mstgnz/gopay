@@ -196,8 +196,11 @@ func main() {
 		})
 	})
 
-	// Public v1 analytics routes (no authentication required - for dashboard)
+	// Protected v1 analytics routes (require JWT authentication)
 	r.Route("/v1/analytics", func(r chi.Router) {
+		// Add JWT authentication middleware for analytics
+		r.Use(middle.JWTAuthMiddleware(jwtService))
+
 		// Initialize analytics handler
 		analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
 
