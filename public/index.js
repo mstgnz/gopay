@@ -633,14 +633,14 @@ class GoPayAnalytics {
         
         try {
             const filterParams = this.buildFilterParams();
-            const response = await this.authenticatedFetch(`/v1/analytics/activity?limit=5&${filterParams}`);
+            const response = await this.authenticatedFetch(`/v1/analytics/activity?limit=50&${filterParams}`);
             
             if (response && response.ok) {
                 const data = await response.json();
                 if (data.success) {
                     const activities = data.data;
-                    activityContainer.innerHTML = activities.map(activity => `
-                        <div class="activity-item">
+                    activityContainer.innerHTML = activities.map((activity, index) => `
+                        <div class="activity-item clickable-activity" data-activity-index="${index}">
                             <div class="activity-info">
                                 <div class="activity-icon" style="background: ${
                                     activity.status === 'success' ? '#dcfce7; color: #16a34a' :
@@ -650,14 +650,21 @@ class GoPayAnalytics {
                                     ${activity.type === 'payment' ? '💳' : '↩️'}
                                 </div>
                                 <div class="activity-details">
-                                    <h4>${activity.provider} ${activity.type}</h4>
+                                    <h4>${activity.provider} ${activity.type} <span style="font-size: 0.8rem; opacity: 0.6;">🔍 Click for details</span></h4>
                                     <p>${activity.amount}</p>
+                                    ${activity.endpoint ? `<p style="font-size: 0.75rem; opacity: 0.8; color: #667eea; font-family: monospace;">${activity.endpoint}</p>` : ''}
                                     ${activity.tenantId ? `<p style="font-size: 0.8rem; opacity: 0.7;">Tenant: ${activity.tenantId} | ${activity.env || 'production'}</p>` : ''}
                                 </div>
                             </div>
                             <span class="activity-time">${activity.time}</span>
                         </div>
                     `).join('');
+
+                    // Store activities data for modal access
+                    this.currentActivities = activities;
+
+                    // Add click event listeners to activities
+                    this.addActivityClickListeners();
                     return;
                 }
             }
@@ -665,14 +672,49 @@ class GoPayAnalytics {
             console.error('Error loading recent activity:', error);
         }
 
-        // Fallback to static data
-        let activities = [
-            { type: 'payment', provider: 'İyzico', amount: '₺150.00', status: 'success', time: '2 min ago', tenantId: '1', env: 'production' },
-            { type: 'refund', provider: 'Stripe', amount: '₺75.50', status: 'processed', time: '5 min ago', tenantId: '2', env: 'production' },
-            { type: 'payment', provider: 'OzanPay', amount: '₺300.00', status: 'success', time: '8 min ago', tenantId: '1', env: 'sandbox' },
-            { type: 'payment', provider: 'Paycell', amount: '₺89.99', status: 'failed', time: '12 min ago', tenantId: '3', env: 'production' },
-            { type: 'payment', provider: 'Papara', amount: '₺250.00', status: 'success', time: '15 min ago', tenantId: '2', env: 'production' }
-        ];
+        // Fallback to static data - Generate 50 demo activities
+        let activities = [];
+        const providers = ['İyzico', 'Stripe', 'OzanPay', 'Paycell', 'Papara', 'Nkolay', 'Paytr', 'Payu'];
+        const types = ['payment', 'refund'];
+        const statuses = ['success', 'success', 'success', 'failed', 'processed'];
+        const environments = ['production', 'production', 'sandbox'];
+        
+        for (let i = 0; i < 50; i++) {
+            const randomProvider = providers[Math.floor(Math.random() * providers.length)];
+            const randomType = i % 10 === 0 ? 'refund' : 'payment'; // 10% refunds
+            const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+            const randomEnv = environments[Math.floor(Math.random() * environments.length)];
+            const randomAmount = (Math.random() * 1000 + 50).toFixed(2);
+            const randomTime = Math.floor(Math.random() * 1440); // 0-1440 minutes
+            
+            // Generate realistic endpoints based on provider and type
+            const endpoints = {
+                payment: ['/payment', '/pay', '/charge', '/process', '/transaction'],
+                refund: ['/refund', '/cancel', '/reverse', '/void']
+            };
+            const randomEndpoint = endpoints[randomType][Math.floor(Math.random() * endpoints[randomType].length)];
+            
+            let timeStr;
+            if (randomTime < 60) {
+                timeStr = `${randomTime} min ago`;
+            } else if (randomTime < 1440) {
+                timeStr = `${Math.floor(randomTime / 60)}h ${randomTime % 60}m ago`;
+            } else {
+                timeStr = `${Math.floor(randomTime / 1440)} days ago`;
+            }
+            
+            activities.push({
+                type: randomType,
+                provider: randomProvider,
+                amount: `₺${randomAmount}`,
+                status: randomStatus,
+                time: timeStr,
+                tenantId: Math.floor(Math.random() * 3) + 1,
+                env: randomEnv,
+                id: `demo_${Date.now()}_${i}`,
+                endpoint: randomEndpoint
+            });
+        }
 
         // Filter activities based on current filters
         if (this.currentFilters.tenant_id !== 'all') {
@@ -689,8 +731,58 @@ class GoPayAnalytics {
             activities = activities.filter(a => a.env === this.currentFilters.environment);
         }
 
-        activityContainer.innerHTML = activities.map(activity => `
-            <div class="activity-item">
+        // Add fake request/response data for demo if not present
+        activities.forEach((activity, index) => {
+            if (!activity.request) {
+                activity.request = JSON.stringify({
+                    payment_id: activity.id || "demo_payment_123",
+                    amount: parseFloat(activity.amount.replace('₺', '')),
+                    currency: "TRY",
+                    provider: activity.provider.toLowerCase(),
+                    method: "POST",
+                    endpoint: activity.endpoint || "/payment"
+                }, null, 2);
+            }
+            
+            if (!activity.response) {
+                activity.response = JSON.stringify({
+                    success: activity.status === 'success',
+                    payment_id: activity.id || "demo_payment_123",
+                    status: activity.status,
+                    message: activity.status === 'success' ? "Payment processed successfully" : "Payment failed",
+                    timestamp: new Date().toISOString(),
+                    endpoint: activity.endpoint || "/payment"
+                }, null, 2);
+            }
+        });
+
+        // Add fake request/response data for fallback activities
+        activities.forEach((activity, index) => {
+            if (!activity.request) {
+                activity.request = JSON.stringify({
+                    payment_id: activity.id || "demo_payment_123",
+                    amount: parseFloat(activity.amount.replace('₺', '')),
+                    currency: "TRY",
+                    provider: activity.provider.toLowerCase(),
+                    method: "POST",
+                    endpoint: activity.endpoint || "/payment"
+                }, null, 2);
+            }
+            
+            if (!activity.response) {
+                activity.response = JSON.stringify({
+                    success: activity.status === 'success',
+                    payment_id: activity.id || "demo_payment_123",
+                    status: activity.status,
+                    message: activity.status === 'success' ? "Payment processed successfully" : "Payment failed",
+                    timestamp: new Date().toISOString(),
+                    endpoint: activity.endpoint || "/payment"
+                }, null, 2);
+            }
+        });
+
+        activityContainer.innerHTML = activities.map((activity, index) => `
+            <div class="activity-item clickable-activity" data-activity-index="${index}">
                 <div class="activity-info">
                     <div class="activity-icon" style="background: ${
                         activity.status === 'success' ? '#dcfce7; color: #16a34a' :
@@ -700,14 +792,21 @@ class GoPayAnalytics {
                         ${activity.type === 'payment' ? '💳' : '↩️'}
                     </div>
                     <div class="activity-details">
-                        <h4>${activity.provider} ${activity.type}</h4>
+                        <h4>${activity.provider} ${activity.type} <span style="font-size: 0.8rem; opacity: 0.6;">🔍 Click for details</span></h4>
                         <p>${activity.amount}</p>
+                        ${activity.endpoint ? `<p style="font-size: 0.75rem; opacity: 0.8; color: #667eea; font-family: monospace;">${activity.endpoint}</p>` : ''}
                         <p style="font-size: 0.8rem; opacity: 0.7;">Tenant: ${activity.tenantId} | ${activity.env}</p>
                     </div>
                 </div>
                 <span class="activity-time">${activity.time}</span>
             </div>
         `).join('');
+
+        // Store activities data for modal access
+        this.currentActivities = activities;
+
+        // Add click event listeners to activities
+        this.addActivityClickListeners();
     }
 
     startRealTimeUpdates() {
@@ -715,6 +814,113 @@ class GoPayAnalytics {
         setInterval(() => {
             this.loadDashboardData();
         }, 30000);
+    }
+
+    addActivityClickListeners() {
+        const activityItems = document.querySelectorAll('.clickable-activity');
+        activityItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                const activityIndex = parseInt(e.currentTarget.getAttribute('data-activity-index'));
+                if (this.currentActivities && this.currentActivities[activityIndex]) {
+                    this.showActivityModal(this.currentActivities[activityIndex]);
+                }
+            });
+            
+            // Add hover effect
+            item.style.cursor = 'pointer';
+            item.addEventListener('mouseenter', () => {
+                item.style.backgroundColor = '#f8fafc';
+            });
+            item.addEventListener('mouseleave', () => {
+                item.style.backgroundColor = '';
+            });
+        });
+    }
+
+    showActivityModal(activity) {
+        const modal = document.getElementById('activityModal');
+        
+        // Populate activity details
+        document.getElementById('modalProvider').textContent = activity.provider;
+        document.getElementById('modalType').textContent = activity.type;
+        document.getElementById('modalAmount').textContent = activity.amount;
+        document.getElementById('modalStatus').textContent = activity.status;
+        document.getElementById('modalPaymentId').textContent = activity.id;
+        document.getElementById('modalEndpoint').textContent = activity.endpoint || 'N/A';
+        document.getElementById('modalTime').textContent = activity.time;
+        
+        // Format and display JSON data
+        this.displayJsonData('requestJson', activity.request);
+        this.displayJsonData('responseJson', activity.response);
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Add event listeners for closing modal
+        this.addModalCloseListeners();
+    }
+
+    displayJsonData(elementId, jsonString) {
+        const element = document.getElementById(elementId);
+        
+        if (!jsonString || jsonString.trim() === '') {
+            element.innerHTML = '<span style="color: #6b7280; font-style: italic;">No data available</span>';
+            return;
+        }
+
+        try {
+            // Try to parse and format JSON
+            const jsonObj = JSON.parse(jsonString);
+            const formattedJson = this.formatJsonWithSyntaxHighlighting(jsonObj);
+            element.innerHTML = formattedJson;
+        } catch (e) {
+            // If not valid JSON, display as plain text
+            element.innerHTML = this.escapeHtml(jsonString);
+        }
+    }
+
+    formatJsonWithSyntaxHighlighting(obj) {
+        const jsonString = JSON.stringify(obj, null, 2);
+        
+        return jsonString
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:')
+            .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="json-string">$1</span>')
+            .replace(/:\s*(-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+            .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+            .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>');
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    addModalCloseListeners() {
+        const modal = document.getElementById('activityModal');
+        const modalClose = document.getElementById('modalClose');
+        
+        // Close on X button click
+        modalClose.onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+        
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            }
+        });
     }
 
     // Cleanup method to destroy charts

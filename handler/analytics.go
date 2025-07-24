@@ -3,9 +3,9 @@ package handler
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mstgnz/gopay/infra/logger"
@@ -61,6 +61,9 @@ type RecentActivity struct {
 	ID       string `json:"id"`
 	TenantID string `json:"tenantId"`
 	Env      string `json:"environment"`
+	Request  string `json:"request"`
+	Response string `json:"response"`
+	Endpoint string `json:"endpoint"`
 }
 
 // AnalyticsFilters represents the filters for analytics queries
@@ -85,7 +88,6 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	if h.logger != nil {
 		stats, err = h.getRealDashboardStats(ctx, filters)
 		if err != nil {
-			// Log error but fallback to demo data
 			logger.Warn("Failed to get real dashboard stats", logger.LogContext{
 				TenantID: fmt.Sprintf("%v", filters.TenantID),
 				Fields: map[string]any{
@@ -93,10 +95,10 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 					"filters": filters,
 				},
 			})
-			stats = h.generateDashboardStats(ctx, filters)
+			stats = DashboardStats{}
 		}
 	} else {
-		stats = h.generateDashboardStats(ctx, filters)
+		stats = DashboardStats{}
 	}
 
 	response.Success(w, http.StatusOK, "Dashboard stats retrieved successfully", stats)
@@ -139,8 +141,19 @@ func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilte
 
 // getRealDashboardStats fetches real analytics data from PostgreSQL
 func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, filters AnalyticsFilters) (DashboardStats, error) {
-	// Get all providers or filter by specific provider
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	// Get providers that actually have tenant configurations
+	configuredProviders, err := h.logger.GetActiveProviders(ctx)
+	if err != nil {
+		return DashboardStats{}, fmt.Errorf("failed to get active providers: %w", err)
+	}
+
+	// Extract provider keys
+	var providers []string
+	for _, provider := range configuredProviders {
+		providers = append(providers, provider["id"].(string))
+	}
+
+	// Filter by specific provider if requested
 	if filters.ProviderID != nil {
 		providers = []string{*filters.ProviderID}
 	}
@@ -159,7 +172,7 @@ func (h *AnalyticsHandler) getRealDashboardStats(ctx context.Context, filters An
 		tenantIDs = []int{*filters.TenantID}
 	} else {
 		// Get all active tenant IDs from PostgreSQL
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -278,10 +291,10 @@ func (h *AnalyticsHandler) GetProviderStats(w http.ResponseWriter, r *http.Reque
 					"filters": filters,
 				},
 			})
-			providers = h.generateProviderStats(ctx, filters)
+			providers = []ProviderStats{}
 		}
 	} else {
-		providers = h.generateProviderStats(ctx, filters)
+		providers = []ProviderStats{}
 	}
 
 	response.Success(w, http.StatusOK, "Provider stats retrieved successfully", providers)
@@ -289,37 +302,43 @@ func (h *AnalyticsHandler) GetProviderStats(w http.ResponseWriter, r *http.Reque
 
 // getRealProviderStats fetches real provider statistics from PostgreSQL
 func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, filters AnalyticsFilters) ([]ProviderStats, error) {
-	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
-	providerKeys := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	// Get providers that actually have tenant configurations
+	configuredProviders, err := h.logger.GetActiveProviders(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active providers: %w", err)
+	}
 
 	// Filter by specific provider if requested
 	if filters.ProviderID != nil {
-		for i, key := range providerKeys {
-			if key == *filters.ProviderID {
-				providers = []string{providers[i]}
-				providerKeys = []string{key}
+		filtered := []map[string]any{}
+		for _, provider := range configuredProviders {
+			if provider["id"].(string) == *filters.ProviderID {
+				filtered = append(filtered, provider)
 				break
 			}
 		}
+		configuredProviders = filtered
 	}
 
-	stats := make([]ProviderStats, len(providers))
+	stats := make([]ProviderStats, len(configuredProviders))
 
 	// Get tenant IDs to process
 	var tenantIDs []int
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		// Get all active tenant IDs (fallback if method doesn't exist)
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
-	for i, providerKey := range providerKeys {
-		status := "online"
-		responseTime := "150ms"
+	for i, provider := range configuredProviders {
+		providerKey := provider["id"].(string)
+		providerName := provider["name"].(string)
+		realTenantCount := provider["tenant_count"].(int)
+
+		status := "offline"
+		responseTime := "0ms"
 		transactions := 0
-		successRate := 95.0
-		tenantCount := 0
+		successRate := 0.0
 
 		// Aggregate stats across all tenants for this provider
 		for _, tenantID := range tenantIDs {
@@ -327,7 +346,6 @@ func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, filters Ana
 			providerStats, err := h.getPaymentStatsWithEnv(ctx, tenantID, providerKey, filters.Hours, filters.Environment)
 
 			if err == nil {
-				tenantCount++
 				// Extract stats from PostgreSQL response
 				if totalReq, ok := providerStats["total_requests"].(int); ok {
 					transactions += totalReq
@@ -348,14 +366,9 @@ func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, filters Ana
 			}
 		}
 
-		// Use fallback values if no data
-		if transactions == 0 {
-			transactions = 100 + rand.Intn(500)
-			responseTime = fmt.Sprintf("%dms", 100+rand.Intn(200))
-			if rand.Float32() < 0.1 {
-				status = "degraded"
-				responseTime = fmt.Sprintf("%dms", 400+rand.Intn(200))
-			}
+		// Only use real data - set status to online only if there are transactions and not already degraded
+		if transactions > 0 && status != "degraded" {
+			status = "online"
 		}
 
 		// Round success rate to 2 decimal places
@@ -367,48 +380,37 @@ func (h *AnalyticsHandler) getRealProviderStats(ctx context.Context, filters Ana
 		}
 
 		stats[i] = ProviderStats{
-			Name:         providers[i],
+			Name:         providerName,
 			Status:       status,
 			ResponseTime: responseTime,
 			Transactions: transactions,
 			SuccessRate:  successRate,
 			Environment:  environment,
-			TenantCount:  tenantCount,
+			TenantCount:  realTenantCount,
 		}
 	}
 
 	return stats, nil
 }
 
-// getActiveTenants gets active tenant IDs from PostgreSQL (wrapper method)
-func (h *AnalyticsHandler) getActiveTenants(ctx context.Context, hours int) []int {
-	// This is a wrapper method since GetActiveTenants doesn't exist in postgres.Logger
-	// We'll get tenants from existing payment stats
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
-	tenantMap := make(map[int]bool)
-
-	// Try different tenant IDs (you might want to get this from a tenants table)
-	for tenantID := 1; tenantID <= 100; tenantID++ {
-		for _, provider := range providers {
-			stats, err := h.logger.GetPaymentStats(ctx, tenantID, provider, hours)
-			if err == nil {
-				if totalReq, ok := stats["total_requests"].(int); ok && totalReq > 0 {
-					tenantMap[tenantID] = true
-					break // Found activity for this tenant
-				}
-			}
-		}
+// getActiveTenants gets all tenant IDs from PostgreSQL
+func (h *AnalyticsHandler) getActiveTenants(ctx context.Context) []int {
+	tenants, err := h.logger.GetAllTenants(ctx)
+	if err != nil {
+		// Return fallback if database query fails
+		return []int{1}
 	}
 
-	// Convert map to slice
-	tenantIDs := make([]int, 0, len(tenantMap))
-	for tenantID := range tenantMap {
-		tenantIDs = append(tenantIDs, tenantID)
+	tenantIDs := make([]int, 0, len(tenants))
+	for _, tenant := range tenants {
+		if id, ok := tenant["id"].(int); ok {
+			tenantIDs = append(tenantIDs, id)
+		}
 	}
 
 	// If no tenants found, return a default set
 	if len(tenantIDs) == 0 {
-		tenantIDs = []int{0} // legacy tenant
+		tenantIDs = []int{1}
 	}
 
 	return tenantIDs
@@ -466,10 +468,10 @@ func (h *AnalyticsHandler) GetRecentActivity(w http.ResponseWriter, r *http.Requ
 					"filters": filters,
 				},
 			})
-			activities = h.generateRecentActivity(ctx, filters, limit)
+			activities = []RecentActivity{}
 		}
 	} else {
-		activities = h.generateRecentActivity(ctx, filters, limit)
+		activities = []RecentActivity{}
 	}
 
 	response.Success(w, http.StatusOK, "Recent activity retrieved successfully", activities)
@@ -477,112 +479,60 @@ func (h *AnalyticsHandler) GetRecentActivity(w http.ResponseWriter, r *http.Requ
 
 // getRealRecentActivity fetches real recent activity from PostgreSQL
 func (h *AnalyticsHandler) getRealRecentActivity(ctx context.Context, filters AnalyticsFilters, limit int) ([]RecentActivity, error) {
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara"}
-	if filters.ProviderID != nil {
-		providers = []string{*filters.ProviderID}
+	// Get all recent activities from provider tables
+	activities, err := h.logger.GetAllRecentActivity(ctx, limit*2) // Get more to filter
+	if err != nil {
+		return []RecentActivity{}, err
 	}
 
-	var allActivities []RecentActivity
+	var filteredActivities []RecentActivity
 
-	// Get tenant IDs to process
-	var tenantIDs []int
-	if filters.TenantID != nil {
-		tenantIDs = []int{*filters.TenantID}
-	} else {
-		tenantIDs = h.getActiveTenants(ctx, 2) // last 2 hours
-	}
-
-	for _, tenantID := range tenantIDs {
-		for _, provider := range providers {
-			// Create filters for recent payments
-			searchFilters := map[string]any{
-				"start_date": time.Now().Add(-2 * time.Hour), // Last 2 hours
-				"end_date":   time.Now(),
-			}
-
-			// Add environment filter if specified
-			if filters.Environment != nil {
-				searchFilters["environment"] = *filters.Environment
-			}
-
-			logs, err := h.logger.SearchPaymentLogs(ctx, tenantID, provider, searchFilters)
-			if err != nil {
-				continue // Skip provider if error
-			}
-
-			// Convert logs to activities (take first few)
-			for _, log := range logs {
-				if len(allActivities) >= limit {
-					break // Stop if we have enough activities
+	for _, activity := range activities {
+		// Apply filters
+		if filters.TenantID != nil {
+			if tenantID, ok := activity["tenant_id"].(int); ok {
+				if tenantID != *filters.TenantID {
+					continue
 				}
-
-				activityType := "payment"
-				if log.Endpoint != "" && (log.Endpoint == "/refund" || log.Method == "refund") {
-					activityType = "refund"
-				}
-
-				status := "success"
-				if log.Error != nil && log.Error.Code != "" {
-					status = "failed"
-				} else if activityType == "refund" {
-					status = "processed"
-				}
-
-				amount := "₺100.00" // Default
-				if log.PaymentInfo != nil && log.PaymentInfo.Amount > 0 {
-					amount = fmt.Sprintf("₺%.2f", log.PaymentInfo.Amount)
-				}
-
-				// Calculate time ago
-				timeAgo := time.Since(log.Timestamp)
-				timeStr := fmt.Sprintf("%.0f min ago", timeAgo.Minutes())
-				if timeAgo.Hours() >= 1 {
-					timeStr = fmt.Sprintf("%.0f hours ago", timeAgo.Hours())
-				}
-
-				paymentID := "pay_unknown"
-				if log.PaymentInfo != nil && log.PaymentInfo.PaymentID != "" {
-					paymentID = log.PaymentInfo.PaymentID
-				}
-
-				environment := "production" // default
-				if filters.Environment != nil {
-					environment = *filters.Environment
-				}
-
-				allActivities = append(allActivities, RecentActivity{
-					Type:     activityType,
-					Provider: provider,
-					Amount:   amount,
-					Status:   status,
-					Time:     timeStr,
-					ID:       paymentID,
-					TenantID: fmt.Sprintf("%d", tenantID),
-					Env:      environment,
-				})
-			}
-
-			if len(allActivities) >= limit {
-				break // Stop if we have enough activities
 			}
 		}
 
-		if len(allActivities) >= limit {
-			break // Stop if we have enough activities
+		if filters.ProviderID != nil {
+			providerName := strings.ToLower(activity["provider"].(string))
+			if !strings.Contains(providerName, *filters.ProviderID) {
+				continue
+			}
+		}
+
+		if filters.Environment != nil {
+			// For now, we don't have environment detection in the data
+			// Could be enhanced later to detect from the actual data
+		}
+
+		// Convert to RecentActivity struct
+		recentActivity := RecentActivity{
+			Type:     activity["type"].(string),
+			Provider: activity["provider"].(string),
+			Amount:   activity["amount"].(string),
+			Status:   activity["status"].(string),
+			Time:     activity["time"].(string),
+			ID:       activity["id"].(string),
+			TenantID: fmt.Sprintf("%d", activity["tenant_id"].(int)),
+			Env:      activity["env"].(string),
+			Request:  activity["request"].(string),
+			Response: activity["response"].(string),
+			Endpoint: activity["endpoint"].(string),
+		}
+
+		filteredActivities = append(filteredActivities, recentActivity)
+
+		// Stop if we have enough activities
+		if len(filteredActivities) >= limit {
+			break
 		}
 	}
 
-	// If no real data, return fallback
-	if len(allActivities) == 0 {
-		return h.generateRecentActivity(ctx, filters, limit), nil
-	}
-
-	// Limit results
-	if len(allActivities) > limit {
-		allActivities = allActivities[:limit]
-	}
-
-	return allActivities, nil
+	return filteredActivities, nil
 }
 
 // GetPaymentTrends returns payment trends data for charts
@@ -606,10 +556,44 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 					"filters": filters,
 				},
 			})
-			trends = h.generatePaymentTrends(ctx, filters)
+			trends = map[string]any{
+				"labels": []string{},
+				"datasets": []map[string]any{
+					{
+						"label":           "Successful Payments",
+						"data":            []int{},
+						"borderColor":     "#10B981",
+						"backgroundColor": "rgba(16, 185, 129, 0.1)",
+					},
+					{
+						"label":           "Failed Payments",
+						"data":            []int{},
+						"borderColor":     "#EF4444",
+						"backgroundColor": "rgba(239, 68, 68, 0.1)",
+					},
+				},
+				"volume": []float64{},
+			}
 		}
 	} else {
-		trends = h.generatePaymentTrends(ctx, filters)
+		trends = map[string]any{
+			"labels": []string{},
+			"datasets": []map[string]any{
+				{
+					"label":           "Successful Payments",
+					"data":            []int{},
+					"borderColor":     "#10B981",
+					"backgroundColor": "rgba(16, 185, 129, 0.1)",
+				},
+				{
+					"label":           "Failed Payments",
+					"data":            []int{},
+					"borderColor":     "#EF4444",
+					"backgroundColor": "rgba(239, 68, 68, 0.1)",
+				},
+			},
+			"volume": []float64{},
+		}
 	}
 
 	response.Success(w, http.StatusOK, "Payment trends retrieved successfully", trends)
@@ -617,8 +601,19 @@ func (h *AnalyticsHandler) GetPaymentTrends(w http.ResponseWriter, r *http.Reque
 
 // getRealPaymentTrends fetches real payment trends from PostgreSQL
 func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters AnalyticsFilters) (map[string]any, error) {
-	// Get all providers or filter by specific provider
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	// Get providers that actually have tenant configurations
+	configuredProviders, err := h.logger.GetActiveProviders(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active providers: %w", err)
+	}
+
+	// Extract provider keys
+	var providers []string
+	for _, provider := range configuredProviders {
+		providers = append(providers, provider["id"].(string))
+	}
+
+	// Filter by specific provider if requested
 	if filters.ProviderID != nil {
 		providers = []string{*filters.ProviderID}
 	}
@@ -640,7 +635,7 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -687,7 +682,24 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 
 	// If no data found, return empty trends structure
 	if len(hourlyData) == 0 {
-		return h.generatePaymentTrends(ctx, filters), nil
+		return map[string]any{
+			"labels": []string{},
+			"datasets": []map[string]any{
+				{
+					"label":           "Successful Payments",
+					"data":            []int{},
+					"borderColor":     "#10B981",
+					"backgroundColor": "rgba(16, 185, 129, 0.1)",
+				},
+				{
+					"label":           "Failed Payments",
+					"data":            []int{},
+					"borderColor":     "#EF4444",
+					"backgroundColor": "rgba(239, 68, 68, 0.1)",
+				},
+			},
+			"volume": []float64{},
+		}, nil
 	}
 
 	// Convert map back to arrays, maintaining chronological order
@@ -733,168 +745,6 @@ func (h *AnalyticsHandler) getRealPaymentTrends(ctx context.Context, filters Ana
 	}, nil
 }
 
-// Helper methods to generate realistic data (FALLBACK when PostgreSQL is empty or unavailable)
-
-// generateDashboardStats generates fallback dashboard statistics
-// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-func (h *AnalyticsHandler) generateDashboardStats(_ context.Context, filters AnalyticsFilters) DashboardStats {
-	basePayments := 5000 + rand.Intn(5000)
-	successRate := 95.0 + rand.Float64()*5.0
-	totalVolume := 500000.0 + rand.Float64()*1000000.0
-	responseTime := 150.0 + rand.Float64()*100.0
-
-	// Round to 2 decimal places
-	successRate = float64(int(successRate*100)) / 100
-	totalVolume = float64(int(totalVolume*100)) / 100
-	responseTime = float64(int(responseTime*100)) / 100
-
-	environment := "all"
-	if filters.Environment != nil {
-		environment = *filters.Environment
-	}
-
-	return DashboardStats{
-		TotalPayments:       basePayments,
-		SuccessRate:         successRate,
-		TotalVolume:         totalVolume,
-		AvgResponseTime:     responseTime,
-		TotalPaymentsChange: h.calculatePaymentChangeWithFilters(filters),
-		SuccessRateChange:   h.calculateSuccessRateChangeWithFilters(filters),
-		TotalVolumeChange:   h.calculateVolumeChangeWithFilters(filters),
-		AvgResponseChange:   h.calculateResponseTimeChangeWithFilters(filters),
-		ActiveTenants:       3, // Default fallback
-		ActiveProviders:     len([]string{"iyzico", "stripe", "ozanpay", "paycell", "papara"}),
-		Environment:         environment,
-	}
-}
-
-func (h *AnalyticsHandler) generateProviderStats(_ context.Context, filters AnalyticsFilters) []ProviderStats {
-	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
-
-	// Filter by specific provider if requested
-	if filters.ProviderID != nil {
-		for _, provider := range providers {
-			if provider == *filters.ProviderID {
-				providers = []string{provider}
-				break
-			}
-		}
-	}
-
-	stats := make([]ProviderStats, len(providers))
-
-	for i, provider := range providers {
-		status := "online"
-		responseTime := 100 + rand.Intn(200)
-
-		// Simulate occasional degraded performance
-		if rand.Float32() < 0.1 {
-			status = "degraded"
-			responseTime = 400 + rand.Intn(200)
-		}
-
-		environment := "all"
-		if filters.Environment != nil {
-			environment = *filters.Environment
-		}
-
-		stats[i] = ProviderStats{
-			Name:         provider,
-			Status:       status,
-			ResponseTime: strconv.Itoa(responseTime) + "ms",
-			Transactions: 100 + rand.Intn(500),
-			SuccessRate:  94.0 + rand.Float64()*6.0,
-			Environment:  environment,
-			TenantCount:  1 + rand.Intn(5), // Random tenant count
-		}
-	}
-
-	return stats
-}
-
-func (h *AnalyticsHandler) generateRecentActivity(_ context.Context, filters AnalyticsFilters, limit int) []RecentActivity {
-	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-	providers := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara"}
-
-	// Filter by specific provider if requested
-	if filters.ProviderID != nil {
-		providers = []string{*filters.ProviderID}
-	}
-
-	types := []string{"payment", "refund"}
-	statuses := []string{"success", "failed", "processed"}
-
-	activities := make([]RecentActivity, limit)
-
-	for i := 0; i < limit; i++ {
-		activityType := types[rand.Intn(len(types))]
-		provider := providers[rand.Intn(len(providers))]
-		status := statuses[rand.Intn(len(statuses))]
-		amount := 50.0 + rand.Float64()*500.0
-		minutesAgo := rand.Intn(60) + 1
-
-		// Adjust status probabilities
-		if rand.Float32() < 0.9 {
-			status = "success"
-		}
-
-		environment := "production"
-		if filters.Environment != nil {
-			environment = *filters.Environment
-		}
-
-		tenantID := "1"
-		if filters.TenantID != nil {
-			tenantID = fmt.Sprintf("%d", *filters.TenantID)
-		}
-
-		activities[i] = RecentActivity{
-			Type:     activityType,
-			Provider: provider,
-			Amount:   "₺" + strconv.FormatFloat(amount, 'f', 2, 64),
-			Status:   status,
-			Time:     strconv.Itoa(minutesAgo) + " min ago",
-			ID:       "pay_" + strconv.Itoa(rand.Intn(999999)),
-			TenantID: tenantID,
-			Env:      environment,
-		}
-	}
-
-	return activities
-}
-
-func (h *AnalyticsHandler) generatePaymentTrends(_ context.Context, filters AnalyticsFilters) map[string]any {
-	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-	labels := make([]string, filters.Hours)
-	successData := make([]int, filters.Hours)
-	failedData := make([]int, filters.Hours)
-
-	for i := 0; i < filters.Hours; i++ {
-		labels[i] = strconv.Itoa(filters.Hours-i-1) + "h ago"
-		successData[i] = 50 + rand.Intn(100)
-		failedData[i] = 2 + rand.Intn(10)
-	}
-
-	return map[string]any{
-		"labels": labels,
-		"datasets": []map[string]any{
-			{
-				"label":           "Successful Payments",
-				"data":            successData,
-				"borderColor":     "#10B981",
-				"backgroundColor": "rgba(16, 185, 129, 0.1)",
-			},
-			{
-				"label":           "Failed Payments",
-				"data":            failedData,
-				"borderColor":     "#EF4444",
-				"backgroundColor": "rgba(239, 68, 68, 0.1)",
-			},
-		},
-	}
-}
-
 // calculatePaymentChangeWithFilters calculates the percentage change in payment count from previous period
 func (h *AnalyticsHandler) calculatePaymentChangeWithFilters(filters AnalyticsFilters) string {
 	if h.logger == nil {
@@ -904,8 +754,19 @@ func (h *AnalyticsHandler) calculatePaymentChangeWithFilters(filters AnalyticsFi
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Get all providers or filter by specific provider
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	// Get providers that actually have tenant configurations
+	configuredProviders, err := h.logger.GetActiveProviders(ctx)
+	if err != nil {
+		return "+12.5% from yesterday" // fallback
+	}
+
+	// Extract provider keys
+	var providers []string
+	for _, provider := range configuredProviders {
+		providers = append(providers, provider["id"].(string))
+	}
+
+	// Filter by specific provider if requested
 	if filters.ProviderID != nil {
 		providers = []string{*filters.ProviderID}
 	}
@@ -917,7 +778,7 @@ func (h *AnalyticsHandler) calculatePaymentChangeWithFilters(filters AnalyticsFi
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -977,7 +838,7 @@ func (h *AnalyticsHandler) calculateSuccessRateChangeWithFilters(filters Analyti
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -1052,7 +913,7 @@ func (h *AnalyticsHandler) calculateVolumeChangeWithFilters(filters AnalyticsFil
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -1113,7 +974,7 @@ func (h *AnalyticsHandler) calculateResponseTimeChangeWithFilters(filters Analyt
 	if filters.TenantID != nil {
 		tenantIDs = []int{*filters.TenantID}
 	} else {
-		tenantIDs = h.getActiveTenants(ctx, filters.Hours)
+		tenantIDs = h.getActiveTenants(ctx)
 	}
 
 	for _, tenantID := range tenantIDs {
@@ -1167,7 +1028,7 @@ func (h *AnalyticsHandler) GetActiveProviders(w http.ResponseWriter, r *http.Req
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var providers []map[string]any
+	var providers []map[string]any = []map[string]any{}
 	var err error
 
 	if h.logger != nil {
@@ -1178,10 +1039,7 @@ func (h *AnalyticsHandler) GetActiveProviders(w http.ResponseWriter, r *http.Req
 					"error": err.Error(),
 				},
 			})
-			providers = h.generateActiveProviders()
 		}
-	} else {
-		providers = h.generateActiveProviders()
 	}
 
 	response.Success(w, http.StatusOK, "Active providers retrieved successfully", providers)
@@ -1203,10 +1061,10 @@ func (h *AnalyticsHandler) GetActiveTenants(w http.ResponseWriter, r *http.Reque
 					"error": err.Error(),
 				},
 			})
-			tenants = h.generateActiveTenants()
+			tenants = []map[string]any{}
 		}
 	} else {
-		tenants = h.generateActiveTenants()
+		tenants = []map[string]any{}
 	}
 
 	response.Success(w, http.StatusOK, "Active tenants retrieved successfully", tenants)
@@ -1214,140 +1072,10 @@ func (h *AnalyticsHandler) GetActiveTenants(w http.ResponseWriter, r *http.Reque
 
 // getRealActiveProviders fetches active providers from PostgreSQL
 func (h *AnalyticsHandler) getRealActiveProviders(ctx context.Context) ([]map[string]any, error) {
-	// Provider'ları sistemde tanımlı provider'lardan al
-	providerKeys := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
-	providerNames := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
-
-	var activeProviders []map[string]any
-
-	// Her provider için son 24 saatte aktivite olup olmadığını kontrol et
-	for i, providerKey := range providerKeys {
-		// Tüm tenant'larda bu provider'ın aktivitesini kontrol et
-		hasActivity := false
-
-		// Birkaç tenant ID'si kontrol et (gerçek implementasyonda tüm tenant'ları kontrol edebilirsiniz)
-		for tenantID := 1; tenantID <= 20; tenantID++ {
-			stats, err := h.logger.GetPaymentStats(ctx, tenantID, providerKey, 24)
-			if err == nil {
-				if totalReq, ok := stats["total_requests"].(int); ok && totalReq > 0 {
-					hasActivity = true
-					break
-				}
-			}
-		}
-
-		// Aktivite varsa provider'ı listeye ekle
-		if hasActivity {
-			activeProviders = append(activeProviders, map[string]any{
-				"id":   providerKey,
-				"name": providerNames[i],
-			})
-		}
-	}
-
-	// Eğer hiç aktif provider yoksa, en azından varsayılan provider'ları döndür
-	if len(activeProviders) == 0 {
-		for i, providerKey := range providerKeys {
-			activeProviders = append(activeProviders, map[string]any{
-				"id":   providerKey,
-				"name": providerNames[i],
-			})
-		}
-	}
-
-	return activeProviders, nil
+	return h.logger.GetActiveProviders(ctx)
 }
 
-// getRealActiveTenants fetches active tenants from PostgreSQL
+// getRealActiveTenants fetches all tenants from PostgreSQL
 func (h *AnalyticsHandler) getRealActiveTenants(ctx context.Context) ([]map[string]any, error) {
-	var activeTenants []map[string]any
-
-	// Son 24 saatte aktivitesi olan tenant'ları bul
-	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
-	tenantMap := make(map[int]bool)
-
-	// Belirli bir aralıkta tenant ID'leri kontrol et (gerçek implementasyonda tenant tablosundan alınabilir)
-	for tenantID := 1; tenantID <= 100; tenantID++ {
-		for _, provider := range providers {
-			stats, err := h.logger.GetPaymentStats(ctx, tenantID, provider, 24)
-			if err == nil {
-				if totalReq, ok := stats["total_requests"].(int); ok && totalReq > 0 {
-					tenantMap[tenantID] = true
-					break // Bu tenant için aktivite bulundu
-				}
-			}
-		}
-	}
-
-	// Bulunan aktif tenant'ları listeye ekle
-	for tenantID := range tenantMap {
-		// Gerçek implementasyonda tenant bilgileri tenant tablosundan alınabilir
-		tenantName := h.getTenantName(tenantID)
-		activeTenants = append(activeTenants, map[string]any{
-			"id":   tenantID,
-			"name": tenantName,
-		})
-	}
-
-	// Eğer hiç aktif tenant yoksa, varsayılan tenant'ları döndür
-	if len(activeTenants) == 0 {
-		activeTenants = h.generateActiveTenants()
-	}
-
-	return activeTenants, nil
-}
-
-// getTenantName gets tenant name by ID (bu metod gerçek implementasyonda tenant tablosundan veri alabilir)
-func (h *AnalyticsHandler) getTenantName(tenantID int) string {
-	// Gerçek implementasyonda bu bilgi tenant tablosundan alınabilir
-	tenantNames := map[int]string{
-		1:  "E-commerce Platform",
-		2:  "Digital Banking",
-		3:  "Fintech Startup",
-		4:  "Marketplace",
-		5:  "SaaS Company",
-		6:  "Gaming Platform",
-		7:  "Travel Agency",
-		8:  "Food Delivery",
-		9:  "Education Platform",
-		10: "Healthcare System",
-	}
-
-	if name, exists := tenantNames[tenantID]; exists {
-		return name
-	}
-
-	return fmt.Sprintf("Tenant %d", tenantID)
-}
-
-// generateActiveProviders generates fallback provider list
-func (h *AnalyticsHandler) generateActiveProviders() []map[string]any {
-	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-	providerKeys := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
-	providerNames := []string{"İyzico", "Stripe", "OzanPay", "Paycell", "Papara", "Nkolay", "PayTR", "PayU"}
-
-	var providers []map[string]any
-	for i, providerKey := range providerKeys {
-		providers = append(providers, map[string]any{
-			"id":   providerKey,
-			"name": providerNames[i],
-		})
-	}
-
-	return providers
-}
-
-// generateActiveTenants generates fallback tenant list
-func (h *AnalyticsHandler) generateActiveTenants() []map[string]any {
-	// FALLBACK DATA - Used when PostgreSQL has no data or is unavailable
-	return []map[string]any{
-		{"id": 1, "name": "E-commerce Platform"},
-		{"id": 2, "name": "Digital Banking"},
-		{"id": 3, "name": "Fintech Startup"},
-		{"id": 4, "name": "Marketplace"},
-		{"id": 5, "name": "SaaS Company"},
-		{"id": 6, "name": "Gaming Platform"},
-		{"id": 7, "name": "Travel Agency"},
-		{"id": 8, "name": "Food Delivery"},
-	}
+	return h.logger.GetAllTenants(ctx)
 }

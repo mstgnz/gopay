@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -765,86 +766,119 @@ func (l *Logger) GetPaymentTrends(ctx context.Context, tenantID int, provider st
 	}, nil
 }
 
-// GetRecentPaymentActivity retrieves recent payment activity for analytics
-func (l *Logger) GetRecentPaymentActivity(ctx context.Context, tenantID int, provider string, limit int) ([]map[string]any, error) {
+// GetAllRecentActivity retrieves recent payment activity from all provider tables
+func (l *Logger) GetAllRecentActivity(ctx context.Context, limit int) ([]map[string]any, error) {
 	// Validate limit parameter
-	if limit <= 0 || limit > 1000 { // Max 1000 records
+	if limit <= 0 || limit > 1000 {
 		return nil, fmt.Errorf("invalid limit parameter: must be between 1 and 1000")
 	}
 
-	tableName := l.getProviderTableName(provider)
+	// Get all provider tables that exist
+	providers := []string{"iyzico", "stripe", "ozanpay", "paycell", "papara", "nkolay", "paytr", "payu"}
+	var allActivities []map[string]any
 
-	query := fmt.Sprintf(`
-		SELECT 
-			request_at,
-			payment_id,
-			amount,
-			currency,
-			status,
-			CASE 
-				WHEN response::text LIKE '%%"success":true%%' THEN 'success'
-				WHEN response::text LIKE '%%"success":false%%' THEN 'failed'
-				ELSE 'processing'
-			END as activity_status,
-			method
-		FROM %s
-		WHERE tenant_id = $1 
-		AND request_at >= NOW() - INTERVAL '24 hours'
-		ORDER BY request_at DESC
-		LIMIT $2
-	`, tableName)
+	for _, provider := range providers {
+		tableName := l.getProviderTableName(provider)
 
-	rows, err := l.db.QueryContext(ctx, query, tenantID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get recent activity: %w", err)
-	}
-	defer rows.Close()
+		query := fmt.Sprintf(`
+			SELECT 
+				request_at,
+				tenant_id,
+				payment_id,
+				amount,
+				currency,
+				CASE 
+					WHEN response::text LIKE '%%"success":true%%' OR status = 'success' THEN 'success'
+					WHEN response::text LIKE '%%"success":false%%' OR status = 'failed' THEN 'failed'
+					ELSE 'processing'
+				END as activity_status,
+				method,
+				endpoint,
+				request,
+				response
+			FROM %s
+			WHERE request_at >= NOW() - INTERVAL '24 hours'
+			AND payment_id IS NOT NULL
+			AND amount > 0
+			ORDER BY request_at DESC
+			LIMIT $1
+		`, tableName)
 
-	var activities []map[string]any
-
-	for rows.Next() {
-		var requestAt time.Time
-		var paymentID, currency, status, activityStatus, method sql.NullString
-		var amount sql.NullFloat64
-
-		err := rows.Scan(&requestAt, &paymentID, &amount, &currency, &status, &activityStatus, &method)
+		rows, err := l.db.QueryContext(ctx, query, limit)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan activity row: %w", err)
+			// Skip this provider if table doesn't exist or has error
+			continue
 		}
 
-		// Calculate time ago
-		timeAgo := time.Since(requestAt)
-		var timeString string
-		if timeAgo.Hours() >= 1 {
-			timeString = fmt.Sprintf("%.0fh ago", timeAgo.Hours())
-		} else {
-			timeString = fmt.Sprintf("%.0fm ago", timeAgo.Minutes())
-		}
+		for rows.Next() {
+			var requestAt time.Time
+			var tenantID int
+			var paymentID, currency, activityStatus, method, endpoint sql.NullString
+			var request, response sql.NullString
+			var amount sql.NullFloat64
 
-		activity := map[string]any{
-			"timestamp": requestAt,
-			"time":      timeString,
-			"provider":  provider,
-			"type":      "payment",
-			"status":    activityStatus.String,
-		}
+			err := rows.Scan(&requestAt, &tenantID, &paymentID, &amount, &currency, &activityStatus, &method, &endpoint, &request, &response)
+			if err != nil {
+				continue
+			}
 
-		if paymentID.Valid {
-			activity["id"] = paymentID.String
-		}
+			// Calculate time ago
+			timeAgo := time.Since(requestAt)
+			var timeString string
+			if timeAgo.Hours() >= 1 {
+				timeString = fmt.Sprintf("%.0fh ago", timeAgo.Hours())
+			} else {
+				timeString = fmt.Sprintf("%.0fm ago", timeAgo.Minutes())
+			}
 
-		if amount.Valid && currency.Valid {
-			activity["amount"] = fmt.Sprintf("%.2f %s", amount.Float64, currency.String)
-		}
+			// Determine activity type
+			activityType := "payment"
+			if endpoint.Valid && (strings.Contains(endpoint.String, "refund") ||
+				(method.Valid && strings.Contains(strings.ToLower(method.String), "refund"))) {
+				activityType = "refund"
+			}
 
-		activities = append(activities, activity)
+			// Format amount with currency
+			amountStr := "₺0.00"
+			if amount.Valid && currency.Valid {
+				amountStr = fmt.Sprintf("₺%.2f", amount.Float64)
+			} else if amount.Valid {
+				amountStr = fmt.Sprintf("₺%.2f", amount.Float64)
+			}
+
+			activity := map[string]any{
+				"timestamp": requestAt,
+				"time":      timeString,
+				"provider":  strings.Title(provider),
+				"type":      activityType,
+				"status":    activityStatus.String,
+				"amount":    amountStr,
+				"tenant_id": tenantID,
+				"id":        paymentID.String,
+				"env":       "production", // Default, could be enhanced to detect from data
+				"request":   request.String,
+				"response":  response.String,
+				"endpoint":  endpoint.String,
+			}
+
+			allActivities = append(allActivities, activity)
+		}
+		rows.Close()
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating activity rows: %w", err)
+	// Sort all activities by timestamp (newest first)
+	sort.Slice(allActivities, func(i, j int) bool {
+		timeI := allActivities[i]["timestamp"].(time.Time)
+		timeJ := allActivities[j]["timestamp"].(time.Time)
+		return timeI.After(timeJ)
+	})
+
+	// Limit results
+	if len(allActivities) > limit {
+		allActivities = allActivities[:limit]
 	}
 
-	return activities, nil
+	return allActivities, nil
 }
 
 // GetAllProvidersStats retrieves stats for all providers for a tenant
@@ -881,4 +915,75 @@ func GetTenantIDFromString(tenantIDStr string) (int, error) {
 	}
 
 	return tenantID, nil
+}
+
+// GetAllTenants retrieves all tenants with id and username from the database
+func (l *Logger) GetAllTenants(ctx context.Context) ([]map[string]any, error) {
+	query := `SELECT id, username FROM tenants ORDER BY id`
+
+	rows, err := l.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tenants: %w", err)
+	}
+	defer rows.Close()
+
+	var tenants []map[string]any
+	for rows.Next() {
+		var id int
+		var username string
+
+		if err := rows.Scan(&id, &username); err != nil {
+			return nil, fmt.Errorf("failed to scan tenant row: %w", err)
+		}
+
+		tenants = append(tenants, map[string]any{
+			"id":   id,
+			"name": username,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating tenant rows: %w", err)
+	}
+
+	return tenants, nil
+}
+
+// GetActiveProviders retrieves providers that have tenant configurations
+func (l *Logger) GetActiveProviders(ctx context.Context) ([]map[string]any, error) {
+	query := `
+		SELECT p.name, COUNT(DISTINCT tc.tenant_id) as tenant_count
+		FROM providers p
+		INNER JOIN tenant_configs tc ON p.id = tc.provider_id
+		WHERE p.active = true
+		GROUP BY p.id, p.name
+		ORDER BY p.name`
+
+	rows, err := l.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active providers: %w", err)
+	}
+	defer rows.Close()
+
+	var providers []map[string]any
+	for rows.Next() {
+		var name string
+		var tenantCount int
+
+		if err := rows.Scan(&name, &tenantCount); err != nil {
+			return nil, fmt.Errorf("failed to scan provider row: %w", err)
+		}
+
+		providers = append(providers, map[string]any{
+			"id":           name,
+			"name":         strings.Title(name),
+			"tenant_count": tenantCount,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating provider rows: %w", err)
+	}
+
+	return providers, nil
 }

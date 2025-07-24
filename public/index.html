@@ -207,6 +207,67 @@
         </footer>
     </div> <!-- End dashboardContainer -->
 
+    <!-- Activity Details Modal -->
+    <div id="activityModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Activity Details</h3>
+                <span class="modal-close" id="modalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="activity-details-grid">
+                    <div class="detail-section">
+                        <h4>Activity Information</h4>
+                        <div class="detail-item">
+                            <span class="detail-label">Provider:</span>
+                            <span id="modalProvider" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Type:</span>
+                            <span id="modalType" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Amount:</span>
+                            <span id="modalAmount" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status:</span>
+                            <span id="modalStatus" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Payment ID:</span>
+                            <span id="modalPaymentId" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Endpoint:</span>
+                            <span id="modalEndpoint" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Time:</span>
+                            <span id="modalTime" class="detail-value">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="json-viewer-container">
+                    <div class="json-section">
+                        <h4>Request Data</h4>
+                        <div class="json-viewer">
+                            <pre id="requestJson" class="json-content"></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="json-section">
+                        <h4>Response Data</h4>
+                        <div class="json-viewer">
+                            <pre id="responseJson" class="json-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/public/index.js"></script>
     <script>
         // Analytics Dashboard JavaScript
