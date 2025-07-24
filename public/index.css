@@ -434,6 +434,19 @@ body {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
 }
 
+.filter-select:disabled {
+    background: rgba(255, 255, 255, 0.5);
+    color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.filter-select:disabled:hover {
+    transform: none;
+    box-shadow: none;
+    background: rgba(255, 255, 255, 0.5);
+}
+
 .filter-select option {
     background: white;
     color: #1f2937;

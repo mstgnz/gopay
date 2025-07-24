@@ -53,6 +53,7 @@ class GoPayAnalytics {
         this.initializeFilters();
         this.initializeLogout();
         await this.loadFilterOptions();
+        this.applyTenantRestrictions();
         await this.loadDashboardData();
         this.initCharts();
         this.updateSearchState();
@@ -88,12 +89,9 @@ class GoPayAnalytics {
                 return false;
             }
 
-            // Check if tenant_id is 1
-            if (data.data.tenant_id !== "1") {
-                alert('Access denied. Only tenant with ID 1 can access the dashboard.');
-                this.redirectToLogin();
-                return false;
-            }
+            // Store user tenant info for filtering
+            this.userTenantId = data.data.tenant_id;
+            this.isAdmin = (data.data.tenant_id === "1");
 
             // Update the token in case it was refreshed
             this.authToken = token;
@@ -270,6 +268,41 @@ class GoPayAnalytics {
         } catch (error) {
             console.error('Error loading provider options:', error);
             // Keep default options if API fails
+        }
+    }
+
+    applyTenantRestrictions() {
+        const tenantFilter = document.getElementById('tenantFilter');
+        
+        if (!this.isAdmin) {
+            // Non-admin users: set their tenant and disable the filter
+            if (tenantFilter) {
+                // Set current tenant as selected
+                this.currentFilters.tenant_id = this.userTenantId;
+                tenantFilter.value = this.userTenantId;
+                tenantFilter.disabled = true;
+                
+                // Add visual indicator
+                const filterGroup = tenantFilter.closest('.filter-group');
+                if (filterGroup) {
+                    const label = filterGroup.querySelector('label');
+                    if (label) {
+                        label.innerHTML = `Tenant: <span style="color: #10b981; font-weight: 600;">Your Data</span>`;
+                    }
+                }
+            }
+            
+            // Update dashboard subtitle
+            const subtitle = document.querySelector('.header-subtitle');
+            if (subtitle) {
+                subtitle.textContent = `Payment Analytics Dashboard - Tenant ${this.userTenantId}`;
+            }
+        } else {
+            // Admin users: show normal interface with access indicator
+            const subtitle = document.querySelector('.header-subtitle');
+            if (subtitle) {
+                subtitle.innerHTML = `Multi-Tenant Payment Analytics Dashboard <span style="color: #f59e0b;">👑 Admin Access</span>`;
+            }
         }
     }
 

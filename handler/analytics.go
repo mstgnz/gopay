@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mstgnz/gopay/infra/logger"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -16,6 +17,13 @@ import (
 // AnalyticsHandler handles analytics related HTTP requests
 type AnalyticsHandler struct {
 	logger *postgres.Logger
+}
+
+// getTenantContext extracts tenant information from request context
+func (h *AnalyticsHandler) getTenantContext(r *http.Request) (tenantID string, isAdmin bool) {
+	tenantID = middle.GetTenantIDFromContext(r.Context())
+	isAdmin = tenantID == "1"
+	return
 }
 
 // NewAnalyticsHandler creates a new analytics handler
@@ -104,11 +112,14 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	response.Success(w, http.StatusOK, "Dashboard stats retrieved successfully", stats)
 }
 
-// parseAnalyticsFilters parses query parameters into analytics filters
+// parseAnalyticsFilters parses query parameters into analytics filters with tenant security
 func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilters {
 	filters := AnalyticsFilters{
 		Hours: 24, // default
 	}
+
+	// Get tenant context from JWT
+	userTenantID, isAdmin := h.getTenantContext(r)
 
 	// Parse hours
 	if hoursStr := r.URL.Query().Get("hours"); hoursStr != "" {
@@ -117,10 +128,23 @@ func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilte
 		}
 	}
 
-	// Parse tenant_id
+	// Parse tenant_id with security enforcement
 	if tenantStr := r.URL.Query().Get("tenant_id"); tenantStr != "" && tenantStr != "all" {
 		if tenantID, err := strconv.Atoi(tenantStr); err == nil {
-			filters.TenantID = &tenantID
+			if isAdmin {
+				// Admin can see any tenant's data
+				filters.TenantID = &tenantID
+			} else {
+				// Non-admin users can only see their own data
+				if userTenantIDInt, err := strconv.Atoi(userTenantID); err == nil {
+					filters.TenantID = &userTenantIDInt
+				}
+			}
+		}
+	} else if !isAdmin {
+		// For non-admin users, always enforce their tenant_id even if "all" was requested
+		if userTenantIDInt, err := strconv.Atoi(userTenantID); err == nil {
+			filters.TenantID = &userTenantIDInt
 		}
 	}
 
@@ -1080,10 +1104,13 @@ func (h *AnalyticsHandler) getRealActiveTenants(ctx context.Context) ([]map[stri
 	return h.logger.GetAllTenants(ctx)
 }
 
-// SearchPaymentByID searches for a specific payment by ID
+// SearchPaymentByID searches for a specific payment by ID with tenant security
 func (h *AnalyticsHandler) SearchPaymentByID(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+
+	// Get tenant context from JWT
+	userTenantID, isAdmin := h.getTenantContext(r)
 
 	// Parse required parameters
 	tenantIDStr := r.URL.Query().Get("tenant_id")
@@ -1106,32 +1133,52 @@ func (h *AnalyticsHandler) SearchPaymentByID(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	tenantID, err := strconv.Atoi(tenantIDStr)
-	if err != nil {
+	// Apply tenant security: non-admin users can only search their own data
+	var finalTenantID int
+	if requestedTenantID, err := strconv.Atoi(tenantIDStr); err != nil {
 		response.Error(w, http.StatusBadRequest, "invalid tenant_id", err)
 		return
+	} else {
+		if isAdmin {
+			// Admin can search any tenant's data
+			finalTenantID = requestedTenantID
+		} else {
+			// Non-admin users can only search their own data
+			if userTenantIDInt, err := strconv.Atoi(userTenantID); err != nil {
+				response.Error(w, http.StatusBadRequest, "invalid user tenant", err)
+				return
+			} else {
+				if requestedTenantID != userTenantIDInt {
+					response.Error(w, http.StatusForbidden, "access denied", fmt.Errorf("cannot access tenant %d data", requestedTenantID))
+					return
+				}
+				finalTenantID = userTenantIDInt
+			}
+		}
 	}
 
 	var activities []*RecentActivity
 	var searchErr error
 
 	if h.logger != nil {
-		activities, searchErr = h.searchPaymentInDatabase(ctx, tenantID, providerID, paymentID)
+		activities, searchErr = h.searchPaymentInDatabase(ctx, finalTenantID, providerID, paymentID)
 		if searchErr != nil {
 			logger.Warn("Failed to search payment", logger.LogContext{
-				TenantID: tenantIDStr,
+				TenantID: fmt.Sprintf("%d", finalTenantID),
 				Fields: map[string]any{
-					"error":      searchErr.Error(),
-					"tenant_id":  tenantID,
-					"provider":   providerID,
-					"payment_id": paymentID,
+					"error":       searchErr.Error(),
+					"tenant_id":   finalTenantID,
+					"provider":    providerID,
+					"payment_id":  paymentID,
+					"user_tenant": userTenantID,
+					"is_admin":    isAdmin,
 				},
 			})
 		}
 	}
 
 	if len(activities) == 0 {
-		response.Error(w, http.StatusNotFound, "Payment not found", fmt.Errorf("no payment found with ID %s for tenant %d and provider %s", paymentID, tenantID, providerID))
+		response.Error(w, http.StatusNotFound, "Payment not found", fmt.Errorf("no payment found with ID %s for tenant %d and provider %s", paymentID, finalTenantID, providerID))
 		return
 	}
 
