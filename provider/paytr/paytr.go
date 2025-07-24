@@ -3,14 +3,10 @@ package paytr
 import (
 	"context"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +43,7 @@ type PayTRProvider struct {
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
-	client       *http.Client
+	httpClient   *provider.ProviderHTTPClient
 	logID        int64
 }
 
@@ -119,21 +115,8 @@ func (p *PayTRProvider) Initialize(conf map[string]string) error {
 	// PayTR uses the same base URL for both sandbox and production
 	p.baseURL = apiProductionURL
 
-	// Configure HTTP client based on environment
-	if p.isProduction {
-		// Production environment - use secure TLS
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-		}
-	} else {
-		// Sandbox environment - skip TLS verification for test endpoints
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
-	}
+	// Initialize HTTP client
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
 
 	return nil
 }
@@ -600,43 +583,21 @@ func (p *PayTRProvider) mapToRefundResponse(response map[string]any, request pro
 
 // sendRequest sends HTTP request to PayTR API
 func (p *PayTRProvider) sendRequest(ctx context.Context, endpoint string, data map[string]string) (map[string]any, error) {
-	// Convert data to URL-encoded form
-	formData := url.Values{}
-	for key, value := range data {
-		formData.Set(key, value)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpoint,
+		FormData: data,
 	}
 
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, strings.NewReader(formData.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("User-Agent", "GoPay/1.0")
-
-	// Send request
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendForm(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Handle non-success HTTP status codes
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP error: %d, response: %s", resp.StatusCode, string(body))
 	}
 
 	// Parse JSON response
 	var responseData map[string]any
-	if err := json.Unmarshal(body, &responseData); err != nil {
+	if err := p.httpClient.ParseJSONResponse(resp, &responseData); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 

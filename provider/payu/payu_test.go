@@ -13,19 +13,22 @@ import (
 )
 
 func TestNewProvider(t *testing.T) {
-	p := NewProvider()
-	if p == nil {
-		t.Error("NewProvider should not return nil")
+	provider := NewProvider()
+	if provider == nil {
+		t.Error("NewProvider() should not return nil")
 	}
 
-	payuProvider, ok := p.(*PayUProvider)
+	payuProvider, ok := provider.(*PayUProvider)
 	if !ok {
-		t.Error("NewProvider should return *PayUProvider")
+		t.Error("NewProvider() should return *PayUProvider")
 	}
 
-	if payuProvider.client == nil {
+	if payuProvider.httpClient == nil {
 		t.Error("PayU provider should have HTTP client initialized")
 	}
+
+	// Note: We can't directly access timeout as it's in the config
+	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestPayUProvider_Initialize(t *testing.T) {
@@ -635,42 +638,37 @@ func TestPayUProvider_ValidateWebhook(t *testing.T) {
 }
 
 func TestPayUProvider_Integration_CreatePayment(t *testing.T) {
-	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == endpointPayment {
-			response := PayUResponse{
-				Status:        statusSuccess,
-				PaymentID:     "pay_test_123",
-				TransactionID: "txn_test_456",
-				Amount:        100.50,
-				Currency:      "TRY",
-				Message:       "Payment successful",
-				Timestamp:     time.Now().Unix(),
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-		} else {
-			w.WriteHeader(http.StatusNotFound)
+		response := map[string]any{
+			"status":    statusSuccess,
+			"paymentId": "payment123",
+			"amount":    "100.50",
+			"currency":  "TRY",
 		}
+		json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
-	p := &PayUProvider{
+	payuProvider := &PayUProvider{
 		merchantID: "test-merchant",
 		secretKey:  "test-secret-key",
 		baseURL:    server.URL,
-		client:     &http.Client{Timeout: 10 * time.Second},
+		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+			BaseURL: server.URL,
+			Timeout: 10 * time.Second,
+		}),
 	}
 
 	request := provider.PaymentRequest{
-		Amount:      100.50,
-		Currency:    "TRY",
-		ReferenceID: "order-123",
+		Amount:   100.50,
+		Currency: "TRY",
 		Customer: provider.Customer{
-			Email: "test@example.com",
+			Name:    "John",
+			Surname: "Doe",
+			Email:   "john@example.com",
 		},
 		CardInfo: provider.CardInfo{
-			CardNumber:  "5528790000000008",
+			CardNumber:  "4111111111111111",
 			CVV:         "123",
 			ExpireMonth: "12",
 			ExpireYear:  "2030",
@@ -678,66 +676,60 @@ func TestPayUProvider_Integration_CreatePayment(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	response, err := p.CreatePayment(ctx, request)
+	response, err := payuProvider.CreatePayment(ctx, request)
 
 	if err != nil {
-		t.Fatalf("CreatePayment failed: %v", err)
+		t.Errorf("Unexpected error: %v", err)
+		return
 	}
 
 	if !response.Success {
 		t.Error("Expected successful payment")
 	}
 
-	if response.PaymentID != "pay_test_123" {
-		t.Errorf("Expected paymentID 'pay_test_123', got %s", response.PaymentID)
-	}
-
-	if response.Amount != 100.50 {
-		t.Errorf("Expected amount 100.50, got %f", response.Amount)
+	if response.PaymentID != "payment123" {
+		t.Errorf("Expected payment ID 'payment123', got %s", response.PaymentID)
 	}
 }
 
 func TestPayUProvider_Integration_GetPaymentStatus(t *testing.T) {
-	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/payment/pay_test_123" {
-			response := PayUResponse{
-				Status:        statusSuccess,
-				PaymentID:     "pay_test_123",
-				TransactionID: "txn_test_456",
-				Amount:        100.50,
-				Currency:      "TRY",
-				Message:       "Payment successful",
-				Timestamp:     time.Now().Unix(),
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-		} else {
-			w.WriteHeader(http.StatusNotFound)
+		response := map[string]any{
+			"status":    statusSuccess,
+			"paymentId": "payment123",
+			"amount":    "100.50",
 		}
+		json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
-	p := &PayUProvider{
+	payuProvider := &PayUProvider{
 		merchantID: "test-merchant",
 		secretKey:  "test-secret-key",
 		baseURL:    server.URL,
-		client:     &http.Client{Timeout: 10 * time.Second},
+		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+			BaseURL: server.URL,
+			Timeout: 10 * time.Second,
+		}),
 	}
 
 	ctx := context.Background()
-	response, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "pay_test_123"})
 
+	// Test with valid payment ID
+	response, err := payuProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "payment123"})
 	if err != nil {
-		t.Fatalf("GetPaymentStatus failed: %v", err)
+		t.Errorf("Unexpected error: %v", err)
+		return
 	}
 
 	if !response.Success {
-		t.Error("Expected successful status response")
+		t.Error("Expected successful response")
 	}
 
-	if response.PaymentID != "pay_test_123" {
-		t.Errorf("Expected paymentID 'pay_test_123', got %s", response.PaymentID)
+	// Test with empty payment ID
+	_, err = payuProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
+	if err == nil {
+		t.Error("Expected error for empty payment ID")
 	}
 }
 

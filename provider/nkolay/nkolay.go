@@ -1,17 +1,12 @@
 package nkolay
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -63,7 +58,7 @@ type NkolayProvider struct {
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
-	client       *http.Client
+	httpClient   *provider.ProviderHTTPClient
 	logID        int64
 }
 
@@ -164,14 +159,15 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 		p.baseURL = apiSandboxURL
 	}
 
-	// Skip TLS verification for both sandbox and production Nkolay endpoints
-	// This is needed because Nkolay's SSL certificate may not be recognized by all servers
-	p.client = &http.Client{
-		Timeout: defaultTimeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	// Initialize HTTP client (skip TLS verification for Nkolay)
+	p.httpClient = provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+		BaseURL:            p.baseURL,
+		Timeout:            defaultTimeout,
+		InsecureSkipVerify: true,
+		DefaultHeaders: map[string]string{
+			"Accept": "application/json, text/html",
 		},
-	}
+	})
 
 	return nil
 }
@@ -183,7 +179,7 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 		"amount": fmt.Sprintf("%.2f", request.Amount),
 	}
 
-	responseBody, err := p.sendFormRequest(ctx, endpointPaymentInstallments, formData)
+	responseBody, err := p.doNkolayFormRequest(ctx, endpointPaymentInstallments, formData)
 	if err != nil {
 		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: failed to get installment count: %w", err)
 	}
@@ -346,7 +342,7 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 	input := formData["sx"] + formData["startDate"] + formData["endDate"] + formData["clientRefCode"] + p.secretKey
 	formData["hashData"] = p.generateSHA1Hash(input)
 
-	responseBody, err := p.sendFormRequest(ctx, endpointPaymentList, formData)
+	responseBody, err := p.doNkolayFormRequest(ctx, endpointPaymentList, formData)
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: failed to get payment status: %w", err)
 	}
@@ -394,7 +390,7 @@ func (p *NkolayProvider) CancelPayment(ctx context.Context, request provider.Can
 	input := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["trxDate"] + p.secretKey
 	formData["hashData"] = p.generateSHA1Hash(input)
 
-	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
+	responseBody, err := p.doNkolayFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: failed to cancel payment: %w", err)
 	}
@@ -446,7 +442,7 @@ func (p *NkolayProvider) RefundPayment(ctx context.Context, request provider.Ref
 	input := formData["sx"] + formData["referenceCode"] + formData["type"] + formData["amount"] + formData["trxDate"] + p.secretKey
 	formData["hashData"] = p.generateSHA1Hash(input)
 
-	responseBody, err := p.sendFormRequest(ctx, endpointCancelRefund, formData)
+	responseBody, err := p.doNkolayFormRequest(ctx, endpointCancelRefund, formData)
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: failed to refund payment: %w", err)
 	}
@@ -605,7 +601,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	input := formData["sx"] + formData["clientRefCode"] + formData["amount"] + formData["successUrl"] + formData["failUrl"] + formData["rnd"] + p.secretKey
 	formData["hashData"] = p.generateSHA1Hash(input)
 
-	responseBody, err := p.sendFormRequest(ctx, endpointPayment, formData)
+	responseBody, err := p.doNkolayFormRequest(ctx, endpointPayment, formData)
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: payment request failed: %w", err)
 	}
@@ -635,44 +631,19 @@ func (p *NkolayProvider) generateSHA1Hash(input string) string {
 	return base64.StdEncoding.EncodeToString(binaryData)
 }
 
-// sendFormRequest sends form-data request to Nkolay API using multipart/form-data format
-func (p *NkolayProvider) sendFormRequest(ctx context.Context, endpoint string, formData map[string]string) ([]byte, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	// Add all form fields
-	for key, value := range formData {
-		if err := writer.WriteField(key, value); err != nil {
-			return nil, fmt.Errorf("failed to write field %s: %w", key, err)
-		}
+// doNkolayFormRequest is a helper to send multipart/form-data requests to Nkolay API
+func (p *NkolayProvider) doNkolayFormRequest(ctx context.Context, endpoint string, formData map[string]string) ([]byte, error) {
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpoint,
+		FormData: formData,
+		Headers:  map[string]string{"Accept": "application/json, text/html"},
 	}
-
-	// Close the writer to finalize the form
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, &buf)
+	resp, err := p.httpClient.SendForm(ctx, httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
-
-	// Set proper content type for multipart form data (as per Nkolay's official example)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Accept", "application/json, text/html")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	return responseBody, nil
+	return resp.Body, nil
 }
 
 // parsePaymentResponse parses Nkolay payment response

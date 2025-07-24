@@ -3,14 +3,11 @@ package ozanpay
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,7 +48,7 @@ type OzanPayProvider struct {
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
-	client       *http.Client
+	httpClient   *provider.ProviderHTTPClient
 	logID        int64
 }
 
@@ -122,20 +119,12 @@ func (p *OzanPayProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
-		// Production environment - use secure TLS
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-		}
 	} else {
 		p.baseURL = apiSandboxURL
-		// Sandbox environment - skip TLS verification for test endpoints
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
 	}
+
+	// Initialize HTTP client
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
 
 	return nil
 }
@@ -194,9 +183,13 @@ func (p *OzanPayProvider) GetPaymentStatus(ctx context.Context, request provider
 	}
 
 	// Send request to get payment status
-	response, err := p.sendRequest(ctx, endpointStatus, http.MethodPost, statusData)
+	respBody, err := p.doOzanPayRequest(ctx, endpointStatus, http.MethodPost, statusData)
 	if err != nil {
 		return nil, err
+	}
+	var response map[string]any
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Map OzanPay response to our common PaymentResponse
@@ -216,9 +209,13 @@ func (p *OzanPayProvider) CancelPayment(ctx context.Context, request provider.Ca
 	}
 
 	// Send cancel request
-	response, err := p.sendRequest(ctx, endpointCancel, http.MethodPost, cancelData)
+	respBody, err := p.doOzanPayRequest(ctx, endpointCancel, http.MethodPost, cancelData)
 	if err != nil {
 		return nil, err
+	}
+	var response map[string]any
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	now := time.Now()
@@ -265,9 +262,13 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 	}
 
 	// Send refund request
-	response, err := p.sendRequest(ctx, endpointRefund, http.MethodPost, refundData)
+	respBody, err := p.doOzanPayRequest(ctx, endpointRefund, http.MethodPost, refundData)
 	if err != nil {
 		return nil, err
+	}
+	var response map[string]any
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// Process response
@@ -415,9 +416,13 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 	paymentData := p.mapToOzanPayRequest(request, force3D)
 
 	// Send payment request
-	response, err := p.sendRequest(ctx, endpointPurchase, http.MethodPost, paymentData)
+	respBody, err := p.doOzanPayRequest(ctx, endpointPurchase, http.MethodPost, paymentData)
 	if err != nil {
 		return nil, err
+	}
+	var response map[string]any
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	// add provider request to client request
@@ -645,57 +650,16 @@ func (p *OzanPayProvider) mapToPaymentResponse(response map[string]any) (*provid
 	return paymentResp, nil
 }
 
-// Helper method to send requests to OzanPay API
-func (p *OzanPayProvider) sendRequest(ctx context.Context, endpoint string, method string, requestData any) (map[string]any, error) {
-	var body io.Reader
-	var jsonData []byte
-	var err error
-
-	// Prepare request body if data is provided
-	if requestData != nil {
-		jsonData, err = json.Marshal(requestData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request: %w", err)
-		}
-		body = strings.NewReader(string(jsonData))
+// doOzanPayRequest is a helper to send JSON requests to OzanPay API
+func (p *OzanPayProvider) doOzanPayRequest(ctx context.Context, endpoint string, method string, body any) ([]byte, error) {
+	httpReq := &provider.HTTPRequest{
+		Method:   method,
+		Endpoint: endpoint,
+		Body:     body,
 	}
-
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, method, p.baseURL+endpoint, body)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, err
 	}
-
-	// Set headers according to OzanPay documentation
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	// Note: OzanPay authentication is handled via apiKey parameter in the request body,
-	// not through headers. No special authentication headers needed.
-
-	// Send request
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Handle non-success HTTP status codes
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP error: %d, response: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Parse response
-	var responseData map[string]any
-	if err := json.Unmarshal(respBody, &responseData); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return responseData, nil
+	return resp.Body, nil
 }

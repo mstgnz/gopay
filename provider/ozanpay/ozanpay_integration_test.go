@@ -385,8 +385,12 @@ func TestOzanPayProvider_Integration_NetworkTimeout(t *testing.T) {
 		t.Fatalf("Failed to initialize provider: %v", err)
 	}
 
-	// Set very short timeout
-	ozanpayProvider.client.Timeout = 1 * time.Millisecond
+	// Set very short timeout by reinitializing with short timeout
+	config["timeout"] = "1ms"
+	ozanpayProvider.httpClient = provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+		BaseURL: ozanpayProvider.baseURL,
+		Timeout: 1 * time.Millisecond,
+	})
 
 	request := provider.PaymentRequest{
 		Amount:   testAmountSuccess,

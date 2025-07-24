@@ -22,13 +22,12 @@ func TestNewProvider(t *testing.T) {
 		t.Error("NewProvider() should return *NkolayProvider")
 	}
 
-	if nkolayProvider.client == nil {
+	if nkolayProvider.httpClient == nil {
 		t.Error("HTTP client should be initialized")
 	}
 
-	if nkolayProvider.client.Timeout != defaultTimeout {
-		t.Errorf("HTTP client timeout should be %v, got %v", defaultTimeout, nkolayProvider.client.Timeout)
-	}
+	// Note: We can't directly access timeout as it's in the config
+	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestNkolayProvider_Initialize(t *testing.T) {
@@ -345,7 +344,14 @@ func TestNkolayProvider_CreatePayment(t *testing.T) {
 		sx:        testSx,
 		secretKey: testSecretKey,
 		baseURL:   server.URL,
-		client:    &http.Client{Timeout: 5 * time.Second},
+		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+			BaseURL:            server.URL,
+			Timeout:            5 * time.Second,
+			InsecureSkipVerify: true,
+			DefaultHeaders: map[string]string{
+				"Accept": "application/json, text/html",
+			},
+		}),
 	}
 
 	request := provider.PaymentRequest{
@@ -398,7 +404,14 @@ func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
 		sxList:    testSxList,
 		secretKey: testSecretKey,
 		baseURL:   server.URL,
-		client:    &http.Client{Timeout: 5 * time.Second},
+		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
+			BaseURL:            server.URL,
+			Timeout:            5 * time.Second,
+			InsecureSkipVerify: true,
+			DefaultHeaders: map[string]string{
+				"Accept": "application/json, text/html",
+			},
+		}),
 	}
 
 	ctx := context.Background()

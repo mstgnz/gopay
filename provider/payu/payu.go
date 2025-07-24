@@ -7,12 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
-
-	"crypto/tls"
 
 	"github.com/google/uuid"
 	"github.com/mstgnz/gopay/infra/config"
@@ -53,7 +49,7 @@ type PayUProvider struct {
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
-	client       *http.Client
+	httpClient   *provider.ProviderHTTPClient
 	logID        int64
 }
 
@@ -114,20 +110,12 @@ func (p *PayUProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
-		// Production environment - use secure TLS
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-		}
 	} else {
 		p.baseURL = apiSandboxURL
-		// Sandbox environment - skip TLS verification for test endpoints
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
 	}
+
+	// Initialize HTTP client
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
 
 	return nil
 }
@@ -169,33 +157,13 @@ func (p *PayUProvider) Complete3DPayment(ctx context.Context, callbackState *pro
 	}
 
 	payuReq := p.mapTo3DCompleteRequest(callbackState.PaymentID, callbackState.ConversationID, data)
-
-	reqBody, err := json.Marshal(payuReq)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpointComplete3D, strings.NewReader(string(reqBody)))
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	p.addAuthHeaders(req)
-
-	resp, err := p.client.Do(req)
+	respBody, err := p.doPayURequest(ctx, "POST", endpointComplete3D, payuReq, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to read response: %w", err)
-	}
 
 	var payuResp PayUResponse
-	if err := json.Unmarshal(body, &payuResp); err != nil {
+	if err := json.Unmarshal(respBody, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
@@ -208,27 +176,14 @@ func (p *PayUProvider) GetPaymentStatus(ctx context.Context, request provider.Ge
 		return nil, errors.New("payu: paymentID is required")
 	}
 
-	url := fmt.Sprintf(p.baseURL+endpointPaymentStatus, request.PaymentID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to create request: %w", err)
-	}
-
-	p.addAuthHeaders(req)
-
-	resp, err := p.client.Do(req)
+	url := fmt.Sprintf(endpointPaymentStatus, request.PaymentID)
+	respBody, err := p.doPayURequest(ctx, "GET", url, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to read response: %w", err)
-	}
 
 	var payuResp PayUResponse
-	if err := json.Unmarshal(body, &payuResp); err != nil {
+	if err := json.Unmarshal(respBody, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
@@ -246,32 +201,13 @@ func (p *PayUProvider) CancelPayment(ctx context.Context, request provider.Cance
 		"reason":    request.Reason,
 	}
 
-	reqBody, err := json.Marshal(payuReq)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpointCancel, strings.NewReader(string(reqBody)))
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	p.addAuthHeaders(req)
-
-	resp, err := p.client.Do(req)
+	respBody, err := p.doPayURequest(ctx, "POST", endpointCancel, payuReq, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to read response: %w", err)
-	}
 
 	var payuResp PayUResponse
-	if err := json.Unmarshal(body, &payuResp); err != nil {
+	if err := json.Unmarshal(respBody, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
@@ -285,33 +221,13 @@ func (p *PayUProvider) RefundPayment(ctx context.Context, request provider.Refun
 	}
 
 	payuReq := p.mapToRefundRequest(request)
-
-	reqBody, err := json.Marshal(payuReq)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpointRefund, strings.NewReader(string(reqBody)))
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	p.addAuthHeaders(req)
-
-	resp, err := p.client.Do(req)
+	respBody, err := p.doPayURequest(ctx, "POST", endpointRefund, payuReq, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to read response: %w", err)
-	}
 
 	var payuResp PayURefundResponse
-	if err := json.Unmarshal(body, &payuResp); err != nil {
+	if err := json.Unmarshal(respBody, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
@@ -415,40 +331,37 @@ func (p *PayUProvider) processPayment(ctx context.Context, request provider.Paym
 	}
 
 	payuReq := p.mapToPayURequest(request, is3D)
-
-	reqBody, err := json.Marshal(payuReq)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+endpoint, strings.NewReader(string(reqBody)))
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	p.addAuthHeaders(req)
-
-	resp, err := p.client.Do(req)
+	respBody, err := p.doPayURequest(ctx, "POST", endpoint, payuReq, nil)
 	if err != nil {
 		return nil, fmt.Errorf("payu: request failed: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("payu: failed to read response: %w", err)
-	}
 
 	var payuResp PayUResponse
-	if err := json.Unmarshal(body, &payuResp); err != nil {
+	if err := json.Unmarshal(respBody, &payuResp); err != nil {
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
-	// add provider request to client request
 	_ = provider.AddProviderRequestToClientRequest("payu", "providerRequest", payuReq, p.logID)
 
 	return p.mapToPaymentResponse(payuResp), nil
+}
+
+// doPayURequest is a helper to send HTTP requests to PayU API using the shared HTTP client
+func (p *PayUProvider) doPayURequest(ctx context.Context, method, endpoint string, body any, extraHeaders map[string]string) ([]byte, error) {
+	httpReq := &provider.HTTPRequest{
+		Method:   method,
+		Endpoint: endpoint,
+		Body:     body,
+		Headers:  map[string]string{"Authorization": "Bearer " + p.secretKey},
+	}
+	for k, v := range extraHeaders {
+		httpReq.Headers[k] = v
+	}
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
 }
 
 // mapToPayURequest maps a generic payment request to PayU-specific format

@@ -1,16 +1,11 @@
 package paycell
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -124,18 +119,19 @@ var testCards = []TestCard{
 
 // PaycellProvider implements the provider.PaymentProvider interface for Paycell
 type PaycellProvider struct {
-	username             string
-	password             string
-	merchantID           string
-	secureCode           string // Paycell secure code for hash generation
-	baseURL              string
-	paymentManagementURL string // For 3D secure operations
-	gopayBaseURL         string // GoPay's own base URL for callbacks
-	isProduction         bool
-	logID                int64
-	phoneNumber          string
-	clientIP             string
-	client               *http.Client
+	username                string
+	password                string
+	merchantID              string
+	secureCode              string // Paycell secure code for hash generation
+	baseURL                 string
+	paymentManagementURL    string // For 3D secure operations
+	gopayBaseURL            string // GoPay's own base URL for callbacks
+	isProduction            bool
+	logID                   int64
+	phoneNumber             string
+	clientIP                string
+	httpClient              *provider.ProviderHTTPClient
+	paymentManagementClient *provider.ProviderHTTPClient
 }
 
 // NewProvider creates a new Paycell payment provider
@@ -216,21 +212,14 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	if p.isProduction {
 		p.baseURL = apiProductionURL
 		p.paymentManagementURL = paymentManagementProductionURL
-		// Production environment - use secure TLS
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-		}
 	} else {
 		p.baseURL = apiSandboxURL
 		p.paymentManagementURL = paymentManagementSandboxURL
-		// Sandbox environment - skip TLS verification for test endpoints
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
 	}
+
+	// Initialize HTTP clients
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.paymentManagementClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.paymentManagementURL, p.isProduction, defaultTimeout))
 
 	return nil
 }
@@ -406,39 +395,24 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		},
 	}
 
-	// Make HTTP request to inquireAll endpoint
-	url := p.baseURL + endpointInquireAll
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal inquire request: %w", err)
-	}
-
 	// Add provider request to client request log
 	_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireRequest", paycellReq, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create inquire request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointInquireAll,
+		Body:     paycellReq,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send inquire request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read inquire response: %w", err)
-	}
 
 	var inquireResp PaycellInquireResponse
-	if err := json.Unmarshal(body, &inquireResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, string(body))
+	if err := p.httpClient.ParseJSONResponse(resp, &inquireResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, resp.RawBody)
 	}
 
 	// Convert to standard payment response
@@ -534,39 +508,24 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 		},
 	}
 
-	// Make HTTP request to reverse endpoint
-	url := p.baseURL + endpointReverse
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal reverse request: %w", err)
-	}
-
 	// Add provider request to client request log
 	_ = provider.AddProviderRequestToClientRequest("paycell", "reverseRequest", paycellReq, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create reverse request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointReverse,
+		Body:     paycellReq,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send reverse request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read reverse response: %w", err)
-	}
 
 	var reverseResp PaycellReverseResponse
-	if err := json.Unmarshal(body, &reverseResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal reverse response: %w. Response body: %s", err, string(body))
+	if err := p.httpClient.ParseJSONResponse(resp, &reverseResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal reverse response: %w. Response body: %s", err, resp.RawBody)
 	}
 
 	success := reverseResp.ResponseHeader.ResponseCode == "0"
@@ -652,39 +611,24 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		},
 	}
 
-	// Make HTTP request to refundAll endpoint
-	url := p.baseURL + endpointRefundAll
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal refund request: %w", err)
-	}
-
 	// Add provider request to client request log
 	_ = provider.AddProviderRequestToClientRequest("paycell", "refundRequest", paycellReq, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create refund request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointRefundAll,
+		Body:     paycellReq,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send refund request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read refund response: %w", err)
-	}
 
 	var refundResp PaycellReverseResponse // Using same response structure as reverse
-	if err := json.Unmarshal(body, &refundResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal refund response: %w. Response body: %s", err, string(body))
+	if err := p.httpClient.ParseJSONResponse(resp, &refundResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal refund response: %w. Response body: %s", err, resp.RawBody)
 	}
 
 	// Convert to standard refund response
@@ -740,26 +684,14 @@ func (p *PaycellProvider) GetCommission(ctx context.Context, request provider.Co
 		},
 	}
 
-	url := p.baseURL + endpointGetPrepaidCommission
-	jsonData, err := json.Marshal(commissionReq)
-	if err != nil {
-		return provider.CommissionResponse{}, err
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointGetPrepaidCommission,
+		Body:     commissionReq,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return provider.CommissionResponse{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return provider.CommissionResponse{}, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return provider.CommissionResponse{}, err
 	}
@@ -772,7 +704,7 @@ func (p *PaycellProvider) GetCommission(ctx context.Context, request provider.Co
 		NetAmount        string                `json:"netAmount"`
 		ResponseHeader   PaycellResponseHeader `json:"responseHeader"`
 	}
-	if err := json.Unmarshal(body, &paycellResp); err != nil {
+	if err := p.httpClient.ParseJSONResponse(resp, &paycellResp); err != nil {
 		return provider.CommissionResponse{}, err
 	}
 
@@ -819,14 +751,6 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 		},
 	}
 
-	// Make HTTP request to getThreeDSessionResult endpoint
-	url := p.baseURL + endpointGetThreeDSessionResult
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal getThreeDSessionResult request: %w", err)
-	}
-
 	// Add provider request to client request log
 	if logID, err := strconv.ParseInt(data["logID"], 10, 64); err == nil {
 		p.logID = logID
@@ -834,28 +758,21 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 
 	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create getThreeDSessionResult request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointGetThreeDSessionResult,
+		Body:     paycellReq,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send getThreeDSessionResult request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read getThreeDSessionResult response: %w", err)
-	}
 
 	var threeDSessionResp PaycellGetThreeDSessionResultResponse
-	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, string(body))
+	if err := p.httpClient.ParseJSONResponse(resp, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, resp.RawBody)
 	}
 
 	return &threeDSessionResp, nil
@@ -932,6 +849,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	cardTokenRequest := PaycellGetCardTokenSecureRequest{
 		Header: PaycellRequestHeader{
 			ApplicationName:     p.username,
+			ApplicationPwd:      p.password,
 			TransactionDateTime: transactionDateTime,
 			TransactionID:       transactionID,
 		},
@@ -943,38 +861,24 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		HashData:        p.generateHashData(transactionID, transactionDateTime),
 	}
 
-	// Call getCardTokenSecure to get card token - use provider's payment management URL
-	cardTokenEndpoint := p.paymentManagementURL + endpointGetCardTokenSecure
-
-	jsonData, err := json.Marshal(cardTokenRequest)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal card token request: %v", err)
-	}
-
 	// add provider request to client request
 	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", cardTokenRequest, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", cardTokenEndpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create card token request: %v", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointGetCardTokenSecure,
+		Body:     cardTokenRequest,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.paymentManagementClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return "", fmt.Errorf("failed to send card token request: %v", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read card token response: %v", err)
-	}
 
 	var cardTokenResp PaycellGetCardTokenSecureResponse
-	if err := json.Unmarshal(body, &cardTokenResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal card token response: %v. Response body: %s", err, string(body))
+	if err := p.paymentManagementClient.ParseJSONResponse(resp, &cardTokenResp); err != nil {
+		return "", fmt.Errorf("failed to unmarshal card token response: %v. Response body: %s", err, resp.RawBody)
 	}
 
 	// Check for success
@@ -1043,34 +947,23 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		ThreeDSessionID:         threeDSessionID,
 	}
 
-	url := p.baseURL + endpointProvisionAll
+	// add provider request to client request
+	_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", paycellReq, p.logID)
 
-	body, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointProvisionAll,
+		Body:     paycellReq,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
 
 	var paycellResp PaycellProvisionResponse
-	if err := json.Unmarshal(respBody, &paycellResp); err != nil {
+	if err := p.httpClient.ParseJSONResponse(resp, &paycellResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
@@ -1174,39 +1067,24 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 		Target:           "MERCHANT",
 	}
 
-	// Make direct HTTP call instead of using sendProvisionRequest
-	url := p.baseURL + endpoint
-
-	jsonData, err := json.Marshal(paycellReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal getThreeDSession request: %w", err)
-	}
-
 	// add provider request to client request
 	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", paycellReq, p.logID)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create getThreeDSession request: %w", err)
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpoint,
+		Body:     paycellReq,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send getThreeDSession request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read getThreeDSession response: %w", err)
-	}
 
 	var threeDSessionResp PaycellGetThreeDSessionResponse
-	if err := json.Unmarshal(body, &threeDSessionResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal getThreeDSession response: %w. Response body: %s", err, string(body))
+	if err := p.httpClient.ParseJSONResponse(resp, &threeDSessionResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal getThreeDSession response: %w. Response body: %s", err, resp.RawBody)
 	}
 
 	// Check for success

@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,7 +56,7 @@ type IyzicoProvider struct {
 	baseURL      string
 	gopayBaseURL string // GoPay's own base URL for callbacks
 	isProduction bool
-	client       *http.Client
+	httpClient   *provider.ProviderHTTPClient
 	logID        int64
 }
 
@@ -120,20 +117,12 @@ func (p *IyzicoProvider) Initialize(conf map[string]string) error {
 	p.isProduction = conf["environment"] == "production"
 	if p.isProduction {
 		p.baseURL = apiProductionURL
-		// Production environment - use secure TLS
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-		}
 	} else {
 		p.baseURL = apiSandboxURL
-		// Sandbox environment - skip TLS verification for test endpoints
-		p.client = &http.Client{
-			Timeout: defaultTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-		}
 	}
+
+	// Initialize HTTP client
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
 
 	return nil
 }
@@ -606,42 +595,33 @@ func (p *IyzicoProvider) sendRequest(ctx context.Context, endpoint string, reque
 		requestData["conversationId"] = uuid.New().String()
 	}
 
-	// Convert request data to JSON
+	// Convert request data to JSON for authentication
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+endpoint, strings.NewReader(string(jsonData)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	// Calculate authentication header
+	authStr := p.generateAuthString(endpoint, string(jsonData))
+
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpoint,
+		Body:     requestData,
+		Headers: map[string]string{
+			"Authorization": authStr,
+		},
 	}
 
-	// Set headers
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	// Calculate and set authentication headers
-	authStr := p.generateAuthString(endpoint, string(jsonData))
-	req.Header.Set("Authorization", authStr)
-
-	// Send request
-	resp, err := p.client.Do(req)
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Parse response as JSON
 	var responseData map[string]any
-	if err := json.Unmarshal(body, &responseData); err != nil {
+	if err := p.httpClient.ParseJSONResponse(resp, &responseData); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
