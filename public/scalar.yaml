@@ -2722,8 +2722,6 @@ paths:
         1. **Fresh Installation**: First call creates admin user
         2. **Existing System**: Returns 403 Forbidden
       tags: [Authentication]
-      security:
-        - BearerAuth: []
       requestBody:
         required: true
         content:

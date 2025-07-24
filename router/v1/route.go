@@ -23,6 +23,7 @@ import (
 func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provider.PaymentService, providerConfig *config.ProviderConfig) {
 	// Initialize handlers
 	validator := validator.New()
+	analyticsHandler := handler.NewAnalyticsHandler(postgresLogger)
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
 
@@ -53,5 +54,16 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Get("/{provider}/payment/{paymentID}", logsHandler.GetPaymentLogs) // GET /v1/logs/{provider}/payment/{paymentID}
 		r.Get("/{provider}/errors", logsHandler.GetErrorLogs)                // GET /v1/logs/{provider}/errors?hours=24
 		r.Get("/{provider}/stats", logsHandler.GetLogStats)                  // GET /v1/logs/{provider}/stats?hours=24
+	})
+
+	// Analytics routes (JWT protected)
+	r.Route("/analytics", func(r chi.Router) {
+		r.Get("/dashboard", analyticsHandler.GetDashboardStats)       // GET /v1/analytics/dashboard?hours=24
+		r.Get("/providers", analyticsHandler.GetProviderStats)        // GET /v1/analytics/providers
+		r.Get("/activity", analyticsHandler.GetRecentActivity)        // GET /v1/analytics/activity?limit=10
+		r.Get("/trends", analyticsHandler.GetPaymentTrends)           // GET /v1/analytics/trends?hours=24
+		r.Get("/tenants", analyticsHandler.GetActiveTenants)          // GET /v1/analytics/tenants
+		r.Get("/providers/list", analyticsHandler.GetActiveProviders) // GET /v1/analytics/providers/list
+		r.Get("/search", analyticsHandler.SearchPaymentByID)          // GET /v1/analytics/search?tenant_id=1&provider_id=paycell&payment_id=pay_123
 	})
 }
