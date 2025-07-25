@@ -2,6 +2,7 @@ package paycell
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -1120,7 +1121,21 @@ func (p *PaycellProvider) generateTransactionDateTime() string {
 // generateReferenceNumber creates a unique reference number
 func (p *PaycellProvider) generateReferenceNumber() string {
 	now := time.Now()
-	return fmt.Sprintf("REF_%d", now.UnixNano())
+	// Generate 20-digit numeric reference number
+	// Use Unix timestamp (10 digits) + nanoseconds (6 digits) + crypto random (4 digits)
+	timestamp := now.Unix()
+	nanos := now.Nanosecond() / 1000 // Get microseconds (6 digits)
+
+	// Generate 4-digit random number using crypto/rand
+	randomBytes := make([]byte, 2)
+	rand.Read(randomBytes)
+	random := int64(randomBytes[0])<<8 | int64(randomBytes[1])
+	random = random % 10000 // Ensure it's 4 digits
+
+	// Combine to create 20-digit number
+	reference := timestamp*100000000000000 + int64(nanos)*10000 + random
+
+	return fmt.Sprintf("%020d", reference)
 }
 
 // generatePaycellHash generates hash for Paycell API authentication
