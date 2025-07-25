@@ -524,7 +524,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"amount":          fmt.Sprintf("%.2f", request.Amount),
 		"transactionType": "SALES",
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
-		"installmentNo":   strconv.Itoa(request.InstallmentCount),
+		"instalments":     strconv.Itoa(request.InstallmentCount),
 		"ECOMM_PLATFORM":  "GOPAY",
 	}
 
