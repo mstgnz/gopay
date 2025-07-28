@@ -65,10 +65,6 @@ const (
 	responseCodeSuccess = "0"
 	responseCodeError   = "1"
 
-	// Default Values
-	defaultCurrency = "TRY"
-	defaultTimeout  = 30 * time.Second
-
 	// Test constants from official PHP implementation
 	testPrefix          = "666"
 	testApplicationName = "PAYCELLTEST"
@@ -219,8 +215,8 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	}
 
 	// Initialize HTTP clients
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
-	p.paymentManagementClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.paymentManagementURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
+	p.paymentManagementClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.paymentManagementURL, p.isProduction))
 
 	return nil
 }

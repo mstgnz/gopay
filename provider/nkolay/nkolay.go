@@ -159,15 +159,7 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 		p.baseURL = apiSandboxURL
 	}
 
-	// Initialize HTTP client (skip TLS verification for Nkolay)
-	p.httpClient = provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-		BaseURL:            p.baseURL,
-		Timeout:            defaultTimeout,
-		InsecureSkipVerify: true,
-		DefaultHeaders: map[string]string{
-			"Accept": "application/json, text/html",
-		},
-	})
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

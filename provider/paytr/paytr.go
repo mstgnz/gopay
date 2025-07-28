@@ -31,7 +31,6 @@ const (
 
 	// Default Values
 	defaultCurrency = "TL"
-	defaultTimeout  = 30 * time.Second
 	defaultLang     = "tr"
 )
 
@@ -116,7 +115,7 @@ func (p *PayTRProvider) Initialize(conf map[string]string) error {
 	p.baseURL = apiProductionURL
 
 	// Initialize HTTP client
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

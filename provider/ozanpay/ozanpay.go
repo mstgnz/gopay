@@ -35,9 +35,6 @@ const (
 	statusFailed    = "FAILED"
 	statusCancelled = "CANCELLED"
 	statusRefunded  = "REFUNDED"
-
-	// Default Values
-	defaultTimeout = 30 * time.Second
 )
 
 // OzanPayProvider implements the provider.PaymentProvider interface for OzanPay
@@ -124,7 +121,7 @@ func (p *OzanPayProvider) Initialize(conf map[string]string) error {
 	}
 
 	// Initialize HTTP client
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

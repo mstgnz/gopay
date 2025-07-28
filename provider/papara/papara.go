@@ -32,10 +32,6 @@ const (
 	statusRefunded  = "REFUNDED"
 	statusFailed    = "FAILED"
 	statusCancelled = "CANCELLED"
-
-	// Default Values
-	defaultCurrency = "TRY"
-	defaultTimeout  = 30 * time.Second
 )
 
 // PaparaProvider implements the provider.PaymentProvider interface for Papara
@@ -100,7 +96,7 @@ func (p *PaparaProvider) Initialize(conf map[string]string) error {
 	}
 
 	// Initialize HTTP client
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

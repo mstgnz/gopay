@@ -38,7 +38,6 @@ const (
 
 	// Default Values
 	defaultCurrency = "TRY"
-	defaultTimeout  = 30 * time.Second
 	defaultLanguage = "tr"
 )
 
@@ -115,7 +114,7 @@ func (p *PayUProvider) Initialize(conf map[string]string) error {
 	}
 
 	// Initialize HTTP client
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

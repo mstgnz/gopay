@@ -46,7 +46,6 @@ const (
 	defaultIdentityNumber = "74300864791" // Test identity number
 	defaultItemType       = "PHYSICAL"
 	defaultRegisterCard   = 0
-	defaultTimeout        = 30 * time.Second
 )
 
 // IyzicoProvider implements the provider.PaymentProvider interface for Iyzico
@@ -121,8 +120,7 @@ func (p *IyzicoProvider) Initialize(conf map[string]string) error {
 		p.baseURL = apiSandboxURL
 	}
 
-	// Initialize HTTP client
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction, defaultTimeout))
+	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
 	return nil
 }

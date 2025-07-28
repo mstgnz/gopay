@@ -243,17 +243,13 @@ func (c *ProviderHTTPClient) ParseJSONResponse(response *HTTPResponse, target an
 }
 
 // CreateHTTPClientConfig creates a standard HTTP client configuration for providers
-func CreateHTTPClientConfig(baseURL string, isProduction bool, timeout time.Duration) *HTTPClientConfig {
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-
+func CreateHTTPClientConfig(baseURL string, isProduction bool) *HTTPClientConfig {
 	return &HTTPClientConfig{
 		BaseURL:            baseURL,
-		Timeout:            timeout,
+		Timeout:            45 * time.Second,
 		InsecureSkipVerify: true, // Skip TLS verification by default for all environments
 		DefaultHeaders: map[string]string{
-			"Accept":     "application/json",
+			"Accept":     "application/json, text/html",
 			"User-Agent": "GoPay/1.0",
 		},
 	}
