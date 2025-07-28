@@ -42,7 +42,7 @@ func NewPaymentService(logger PaymentLogger) *PaymentService {
 func (s *PaymentService) CreatePayment(ctx context.Context, environment, providerName string, request PaymentRequest) (*PaymentResponse, error) {
 
 	// check amount is greater than 1000 for installment payments
-	if request.InstallmentCount > 0 && request.Amount < 1000 {
+	if request.InstallmentCount > 1 && request.Amount < 1000 {
 		return nil, errors.New("amount must be greater than 1000 for installment payments")
 	}
 
