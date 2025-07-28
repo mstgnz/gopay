@@ -40,6 +40,12 @@ func NewPaymentService(logger PaymentLogger) *PaymentService {
 
 // CreatePayment processes a payment using the specified provider
 func (s *PaymentService) CreatePayment(ctx context.Context, environment, providerName string, request PaymentRequest) (*PaymentResponse, error) {
+
+	// check amount is greater than 1000 for installment payments
+	if request.InstallmentCount > 0 && request.Amount < 1000 {
+		return nil, errors.New("amount must be greater than 1000 for installment payments")
+	}
+
 	tenantID, err := getTenantIDFromContext(ctx)
 	if err != nil {
 		return nil, err
