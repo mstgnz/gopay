@@ -539,7 +539,7 @@ func TestOzanPayProvider_CreatePayment(t *testing.T) {
 			"amount":   float64(10050),
 			"currency": "USD",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -594,7 +594,7 @@ func TestOzanPayProvider_Create3DPayment(t *testing.T) {
 			"status":      statusPending,
 			"redirectUrl": "https://3ds.ozanpay.com/redirect",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -652,7 +652,7 @@ func TestOzanPayProvider_GetPaymentStatus(t *testing.T) {
 			"status": statusApproved,
 			"amount": float64(10050),
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -693,7 +693,7 @@ func TestOzanPayProvider_RefundPayment(t *testing.T) {
 			"transactionId": "refund123", // OzanPay uses transactionId for refund ID
 			"status":        statusApproved,
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

@@ -43,7 +43,7 @@ func CustomValidate() {
 // In the case of slices, this tag checks if the slice itself exists, but does not check if the contents of the slice are empty.
 // We have written a special validation function to check if slices are empty.
 func CustomNoEmptyValidate() {
-	config.App().Validator.RegisterValidation("nonempty", func(fl validator.FieldLevel) bool {
+	_ = config.App().Validator.RegisterValidation("nonempty", func(fl validator.FieldLevel) bool {
 		field := fl.Field()
 		// Ensure the field is a slice or array
 		if field.Kind() != reflect.Slice && field.Kind() != reflect.Array {

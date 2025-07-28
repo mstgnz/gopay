@@ -110,7 +110,9 @@ func (s *PostgresStorage) SaveTenantConfig(tenantID, providerName string, config
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	// Determine environment from config or default to 'test'
 	environment := "test"

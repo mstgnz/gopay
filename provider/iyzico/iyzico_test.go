@@ -467,7 +467,7 @@ func TestIyzicoProvider_SendPaymentRequest(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				json.NewEncoder(w).Encode(tt.serverResponse)
+				_ = json.NewEncoder(w).Encode(tt.serverResponse)
 			}))
 			defer server.Close()
 
@@ -520,7 +520,7 @@ func TestIyzicoProvider_CreatePayment(t *testing.T) {
 			"price":     "100.50",
 			"currency":  "TRY",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -574,7 +574,7 @@ func TestIyzicoProvider_Create3DPayment(t *testing.T) {
 			"paymentId":          "payment123",
 			"threeDSHtmlContent": "<html>3D form</html>",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -630,7 +630,7 @@ func TestIyzicoProvider_GetPaymentStatus(t *testing.T) {
 			"paymentId": "payment123",
 			"price":     "100.50",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -670,7 +670,7 @@ func TestIyzicoProvider_RefundPayment(t *testing.T) {
 			"status":               statusSuccess,
 			"paymentTransactionId": "refund123",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

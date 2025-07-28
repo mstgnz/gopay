@@ -31,7 +31,7 @@ func (h *TenantRateLimitHandler) GetTenantStats(w http.ResponseWriter, r *http.R
 	// Get rate limiting statistics for this tenant
 	stats := h.rateLimiter.GetTenantRateLimitStats(tenantID)
 
-	response.WriteJSON(w, http.StatusOK, response.Response{
+	_ = response.WriteJSON(w, http.StatusOK, response.Response{
 		Success: true,
 		Message: "Tenant rate limiting statistics retrieved successfully",
 		Data:    stats,

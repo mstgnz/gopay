@@ -645,7 +645,7 @@ func TestPayUProvider_Integration_CreatePayment(t *testing.T) {
 			"amount":    "100.50",
 			"currency":  "TRY",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -699,7 +699,7 @@ func TestPayUProvider_Integration_GetPaymentStatus(t *testing.T) {
 			"paymentId": "payment123",
 			"amount":    "100.50",
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

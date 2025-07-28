@@ -173,12 +173,14 @@ func (l *Logger) SearchPaymentLogs(ctx context.Context, tenantID int, provider s
 	if startDate, ok := filters["start_date"].(time.Time); ok {
 		query += fmt.Sprintf(" AND request_at >= $%d", argIndex)
 		args = append(args, startDate)
+		//nolint:gosec
 		argIndex++
 	}
 
 	if endDate, ok := filters["end_date"].(time.Time); ok {
 		query += fmt.Sprintf(" AND request_at <= $%d", argIndex)
 		args = append(args, endDate)
+		//nolint:gosec
 		argIndex++
 	}
 
@@ -186,6 +188,7 @@ func (l *Logger) SearchPaymentLogs(ctx context.Context, tenantID int, provider s
 	if paymentID, ok := filters["payment_id"].(string); ok {
 		query += fmt.Sprintf(" AND request::text LIKE $%d", argIndex)
 		args = append(args, "%"+paymentID+"%")
+		//nolint:gosec
 		argIndex++
 	}
 
@@ -250,6 +253,7 @@ func (l *Logger) SearchSystemLogs(ctx context.Context, filters map[string]any) (
 	if level, ok := filters["level"].(string); ok {
 		query += fmt.Sprintf(" AND level = $%d", argIndex)
 		args = append(args, level)
+		//nolint:gosec
 		argIndex++
 	}
 
@@ -257,12 +261,14 @@ func (l *Logger) SearchSystemLogs(ctx context.Context, filters map[string]any) (
 	if startDate, ok := filters["start_date"].(time.Time); ok {
 		query += fmt.Sprintf(" AND created_at >= $%d", argIndex)
 		args = append(args, startDate)
+		//nolint:gosec
 		argIndex++
 	}
 
 	if endDate, ok := filters["end_date"].(time.Time); ok {
 		query += fmt.Sprintf(" AND created_at <= $%d", argIndex)
 		args = append(args, endDate)
+		//nolint:gosec
 		argIndex++
 	}
 
@@ -270,6 +276,7 @@ func (l *Logger) SearchSystemLogs(ctx context.Context, filters map[string]any) (
 	if component, ok := filters["component"].(string); ok {
 		query += fmt.Sprintf(" AND log::text LIKE $%d", argIndex)
 		args = append(args, "%"+component+"%")
+		//nolint:gosec
 		argIndex++
 	}
 

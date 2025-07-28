@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/postgres"
 )
 
@@ -42,7 +43,7 @@ func (rw *responseWriter) WriteHeader(statusCode int) {
 }
 
 // PaymentLoggingMiddleware creates a middleware for logging payment requests/responses
-func PaymentLoggingMiddleware(logger *postgres.Logger) func(http.Handler) http.Handler {
+func PaymentLoggingMiddleware(postgresLogger *postgres.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip logging for non-payment endpoints
@@ -126,9 +127,12 @@ func PaymentLoggingMiddleware(logger *postgres.Logger) func(http.Handler) http.H
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
-				if err := logger.LogPaymentRequest(ctx, paymentLog); err != nil {
-					// Log error to standard logger, but don't fail the request
-					// log.Printf("Failed to log payment request to PostgreSQL: %v", err)
+				if err := postgresLogger.LogPaymentRequest(ctx, paymentLog); err != nil {
+					logger.Warn("Failed to log payment request to PostgreSQL", logger.LogContext{
+						Fields: map[string]any{
+							"error": err.Error(),
+						},
+					})
 				}
 			}()
 		})
@@ -272,7 +276,7 @@ func LoggingStatsMiddleware(logger *postgres.Logger) func(http.Handler) http.Han
 }
 
 // handleStatsRequest handles requests for logging statistics
-func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *postgres.Logger) {
+func handleStatsRequest(w http.ResponseWriter, r *http.Request, postgresLogger *postgres.Logger) {
 	provider := r.URL.Query().Get("provider")
 	hoursStr := r.URL.Query().Get("hours")
 	tenantID := r.Header.Get("X-Tenant-ID")
@@ -299,7 +303,7 @@ func handleStatsRequest(w http.ResponseWriter, r *http.Request, logger *postgres
 		}
 	}
 
-	stats, err := logger.GetPaymentStats(ctx, tenantIDInt, provider, hours)
+	stats, err := postgresLogger.GetPaymentStats(ctx, tenantIDInt, provider, hours)
 	if err != nil {
 		http.Error(w, "Failed to get stats: "+err.Error(), http.StatusInternalServerError)
 		return

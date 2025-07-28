@@ -136,7 +136,7 @@ func (h *HealthHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusServiceUnavailable
 	}
 
-	response.WriteJSON(w, statusCode, response.Response{
+	_ = response.WriteJSON(w, statusCode, response.Response{
 		Success: health.Status != "unhealthy",
 		Message: fmt.Sprintf("Service is %s", health.Status),
 		Data:    health,

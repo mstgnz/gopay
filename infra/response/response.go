@@ -21,7 +21,7 @@ func Success(w http.ResponseWriter, statusCode int, message string, data any) {
 		Message: message,
 		Data:    data,
 	}
-	WriteJSON(w, statusCode, resp)
+	_ = WriteJSON(w, statusCode, resp)
 }
 
 // Return writes a response with data
@@ -32,7 +32,7 @@ func Return(w http.ResponseWriter, statusCode int, success bool, message string,
 		Message: message,
 		Data:    data,
 	}
-	WriteJSON(w, statusCode, resp)
+	_ = WriteJSON(w, statusCode, resp)
 }
 
 // Error writes an error response
@@ -47,5 +47,5 @@ func Error(w http.ResponseWriter, statusCode int, message string, err error) {
 		resp.Error = err.Error()
 	}
 
-	WriteJSON(w, statusCode, resp)
+	_ = WriteJSON(w, statusCode, resp)
 }

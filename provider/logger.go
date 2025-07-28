@@ -469,6 +469,7 @@ func (l *ProviderSpecificLogger) SearchLogs(ctx context.Context, tenantID, provi
 	if status, ok := extractStatusFromQuery(query); ok && status != "" {
 		querySQL += fmt.Sprintf(" AND status = $%d", argIndex)
 		args = append(args, status)
+		//nolint:gosec
 		argIndex++
 	}
 

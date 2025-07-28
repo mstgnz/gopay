@@ -256,7 +256,7 @@ func TestSystemLogger_LogToConsole(t *testing.T) {
 
 	// Read captured output
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Verify output contains expected elements

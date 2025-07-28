@@ -670,7 +670,7 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 			// nkolay işlemlerinde referans kodu sonradan geldiği için 3d complete işlemlerine akarılamıyor.
 			// bunu çözmek için burada atmamız gerek onun içinde callbacks state güncellememiz gerekiyor.
 			if stateId != "" {
-				provider.UpdateCallbackState(context.Background(), stateId, refCode)
+				_ = provider.UpdateCallbackState(context.Background(), stateId, refCode)
 			}
 		}
 

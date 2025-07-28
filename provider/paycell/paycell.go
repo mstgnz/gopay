@@ -1124,7 +1124,7 @@ func (p *PaycellProvider) generateReferenceNumber() string {
 
 	// Generate 4-digit random number using crypto/rand
 	randomBytes := make([]byte, 2)
-	rand.Read(randomBytes)
+	_, _ = rand.Read(randomBytes)
 	random := int64(randomBytes[0])<<8 | int64(randomBytes[1])
 	random = random % 10000 // Ensure it's 4 digits
 
