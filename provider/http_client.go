@@ -251,7 +251,7 @@ func CreateHTTPClientConfig(baseURL string, isProduction bool, timeout time.Dura
 	return &HTTPClientConfig{
 		BaseURL:            baseURL,
 		Timeout:            timeout,
-		InsecureSkipVerify: !isProduction, // Skip TLS verification in sandbox
+		InsecureSkipVerify: true, // Skip TLS verification by default for all environments
 		DefaultHeaders: map[string]string{
 			"Accept":     "application/json",
 			"User-Agent": "GoPay/1.0",
