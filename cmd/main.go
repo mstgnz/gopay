@@ -143,7 +143,7 @@ func main() {
 
 		// Set content type and send the modified content
 		w.Header().Set("Content-Type", "text/yaml")
-		w.Write(scalarContent)
+		_, _ = w.Write(scalarContent)
 	})
 
 	// Login page route

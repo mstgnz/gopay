@@ -362,7 +362,7 @@ func (h *PaymentHandler) postRedirect(w http.ResponseWriter, url string, data ma
 </html>`
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(html))
+	_, _ = w.Write([]byte(html))
 }
 
 // Enhanced HandleWebhook with async processing and retry logic

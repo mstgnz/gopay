@@ -325,7 +325,7 @@ func parseTenantID(tenantID string) int {
 	}
 
 	var id int
-	fmt.Sscanf(tenantID, "%d", &id)
+	_, _ = fmt.Sscanf(tenantID, "%d", &id)
 	return id
 }
 

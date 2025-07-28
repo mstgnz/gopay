@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -573,13 +572,6 @@ func (p *PayUProvider) mapPayUStatus(status string) provider.PaymentStatus {
 	default:
 		return provider.StatusFailed
 	}
-}
-
-// addAuthHeaders adds authentication headers to the request
-func (p *PayUProvider) addAuthHeaders(req *http.Request) {
-	req.Header.Set("Authorization", "Bearer "+p.secretKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "GoPay/1.0")
 }
 
 // generateSignature generates PayU signature for authentication

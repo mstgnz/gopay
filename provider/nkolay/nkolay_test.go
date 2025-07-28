@@ -336,7 +336,7 @@ func TestNkolayProvider_CreatePayment(t *testing.T) {
 
 		// Mock successful payment response
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<response>SUCCESS</response>`))
+		_, _ = w.Write([]byte(`<response>SUCCESS</response>`))
 	}))
 	defer server.Close()
 
@@ -396,7 +396,7 @@ func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Mock payment list response
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<result>SUCCESS</result>`))
+		_, _ = w.Write([]byte(`<result>SUCCESS</result>`))
 	}))
 	defer server.Close()
 
