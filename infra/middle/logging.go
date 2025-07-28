@@ -89,10 +89,10 @@ func PaymentLoggingMiddleware(logger *postgres.Logger) func(http.Handler) http.H
 			responseData := make(map[string]any)
 
 			if len(requestBody) > 0 {
-				json.Unmarshal(requestBody, &requestData)
+				_ = json.Unmarshal(requestBody, &requestData)
 			}
 			if rw.body.Len() > 0 {
-				json.Unmarshal(rw.body.Bytes(), &responseData)
+				_ = json.Unmarshal(rw.body.Bytes(), &responseData)
 			}
 
 			paymentLog := postgres.PaymentLog{

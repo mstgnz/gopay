@@ -10,16 +10,15 @@ import (
 )
 
 func TestAuthMiddleware(t *testing.T) {
-	// Set test API key
-	os.Setenv("API_KEY", "test-api-key")
-	defer os.Unsetenv("API_KEY")
-
+	// Test with nil JWT service - should fail validation
 	middleware := JWTAuthMiddleware(nil)
 
 	// Test handler
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		if _, err := w.Write([]byte("success")); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
 	}))
 
 	tests := []struct {
@@ -28,28 +27,23 @@ func TestAuthMiddleware(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:           "Valid API key",
-			authHeader:     "Bearer test-api-key",
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "Invalid API key",
-			authHeader:     "Bearer wrong-key",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
 			name:           "Missing Authorization header",
 			authHeader:     "",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Invalid format",
-			authHeader:     "Basic test-api-key",
+			authHeader:     "Basic test-token",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Empty Bearer token",
 			authHeader:     "Bearer ",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "Any token with nil service",
+			authHeader:     "Bearer any-token",
 			expectedStatus: http.StatusUnauthorized,
 		},
 	}
@@ -113,7 +107,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 	middleware := RateLimitMiddleware(rl)
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// First request should succeed
@@ -170,7 +164,7 @@ func TestIPWhitelistMiddleware(t *testing.T) {
 	middleware := IPWhitelistMiddleware()
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	tests := []struct {

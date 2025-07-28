@@ -217,7 +217,7 @@ func TestTenantRateLimitMiddleware(t *testing.T) {
 	middleware := TenantRateLimitMiddleware(rl)
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Test with tenant context
@@ -283,7 +283,7 @@ func TestTenantRateLimitMiddleware_UnauthenticatedRequests(t *testing.T) {
 	middleware := TenantRateLimitMiddleware(rl)
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	// Test unauthenticated request (no tenant context)

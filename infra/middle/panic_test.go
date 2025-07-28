@@ -22,7 +22,7 @@ func TestPanicRecoveryMiddleware(t *testing.T) {
 			name: "Normal request - no panic",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("success"))
+				_, _ = w.Write([]byte("success"))
 			},
 			expectedStatus: http.StatusOK,
 			shouldPanic:    false,
@@ -129,7 +129,7 @@ func TestPanicRecoveryWithCustomHandler(t *testing.T) {
 		customHandlerCalled = true
 		capturedPanic = panicValue
 		w.WriteHeader(http.StatusTeapot) // Unique status for testing
-		w.Write([]byte("custom panic handler"))
+		_, _ = w.Write([]byte("custom panic handler"))
 	}
 
 	middleware := PanicRecoveryWithCustomHandler(customHandler)
