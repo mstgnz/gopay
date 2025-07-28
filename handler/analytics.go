@@ -464,13 +464,88 @@ func (h *AnalyticsHandler) getPaymentStatsWithEnv(ctx context.Context, tenantID 
 		return nil, err
 	}
 
-	// If environment filter is specified, we might need to filter the results
-	// This would ideally be done at the database level, but for now we'll return as-is
-	// The environment filtering would need to be implemented in the PostgreSQL logger methods
+	// If environment filter is specified, filter the results based on environment
 	if environment != nil {
-		// TODO: Add environment-specific filtering logic here
-		// For now, we'll assume the data includes both environments
-		// In a real implementation, you'd modify the SQL queries to filter by environment
+		// Get detailed logs to filter by environment
+		searchFilters := map[string]any{
+			"start_date": time.Now().Add(-time.Duration(hours) * time.Hour),
+			"end_date":   time.Now(),
+		}
+
+		logs, err := h.logger.SearchPaymentLogs(ctx, tenantID, provider, searchFilters)
+		if err != nil {
+			// If we can't get detailed logs, return unfiltered stats
+			return stats, nil
+		}
+
+		// Filter logs by environment
+		var filteredLogs []postgres.PaymentLog
+		for _, log := range logs {
+			// Check if the log contains environment information
+			if log.Request != nil {
+				// Check for environment in request data
+				if env, ok := log.Request["environment"].(string); ok {
+					if env == *environment {
+						filteredLogs = append(filteredLogs, log)
+					}
+				} else {
+					// If no environment in request, check response data
+					if log.Response != nil {
+						if env, ok := log.Response["environment"].(string); ok {
+							if env == *environment {
+								filteredLogs = append(filteredLogs, log)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Recalculate stats based on filtered logs
+		if len(filteredLogs) > 0 {
+			totalRequests := len(filteredLogs)
+			successCount := 0
+			errorCount := 0
+			var totalProcessingMs float64
+			processingCount := 0
+
+			for _, log := range filteredLogs {
+				// Check success status
+				if log.Response != nil {
+					if success, ok := log.Response["success"].(bool); ok && success {
+						successCount++
+					} else {
+						errorCount++
+					}
+				}
+
+				// Calculate processing time
+				if log.ProcessingMs > 0 {
+					totalProcessingMs += float64(log.ProcessingMs)
+					processingCount++
+				}
+			}
+
+			// Update stats with filtered data
+			stats["total_requests"] = totalRequests
+			stats["success_count"] = successCount
+			stats["error_count"] = errorCount
+
+			if totalRequests > 0 {
+				stats["success_rate"] = (float64(successCount) / float64(totalRequests)) * 100
+			}
+
+			if processingCount > 0 {
+				stats["avg_processing_ms"] = totalProcessingMs / float64(processingCount)
+			}
+		} else {
+			// No logs found for the specified environment, return zero stats
+			stats["total_requests"] = 0
+			stats["success_count"] = 0
+			stats["error_count"] = 0
+			stats["success_rate"] = 0.0
+			stats["avg_processing_ms"] = 0.0
+		}
 	}
 
 	return stats, nil
