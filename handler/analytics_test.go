@@ -549,7 +549,7 @@ func TestAnalyticsHandler_RealDataFunctions(t *testing.T) {
 		}
 
 		var response map[string]any
-		json.NewDecoder(w.Body).Decode(&response)
+		_ = json.NewDecoder(w.Body).Decode(&response)
 
 		if data, ok := response["data"]; ok {
 			if providers, ok := data.([]any); ok && len(providers) > 0 {
@@ -612,7 +612,7 @@ func TestAnalyticsHandler_RealDataFunctions(t *testing.T) {
 				}
 
 				var response map[string]any
-				json.NewDecoder(w.Body).Decode(&response)
+				_ = json.NewDecoder(w.Body).Decode(&response)
 
 				if data, ok := response["data"]; ok {
 					if trends, ok := data.(map[string]any); ok {

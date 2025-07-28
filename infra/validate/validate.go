@@ -26,6 +26,7 @@ func Validate(structure any) error {
 		for _, err := range err.(validator.ValidationErrors) {
 			errStr = fmt.Sprintf("%s %s %s %s", err.Tag(), err.Param(), err.Field(), err.Type().String())
 			errSlc = append(errSlc, errors.New(errStr))
+			//nolint:ineffassign
 			errStr = ""
 		}
 		// from here you can create your own error messages in whatever language you wish
