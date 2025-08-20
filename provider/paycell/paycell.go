@@ -929,7 +929,7 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		RequestHeader:           requestHeader,
 		AcquirerBankCode:        "",
 		Amount:                  amountInKurus,
-		CardID:                  "",
+		CardID:                  cardToken,
 		CardToken:               cardToken,
 		Currency:                request.Currency,
 		InstallmentCount:        request.InstallmentCount,
