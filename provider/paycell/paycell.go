@@ -383,6 +383,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		"currency":                "TRY",
 		"paymentType":             "SALE",
 		"cardToken":               cardToken,
+		"orderId":                 originalReferenceNumber,
 		"requestHeader": PaycellRequestHeader{
 			TransactionID:       transactionID,
 			TransactionDateTime: transactionDateTime,
