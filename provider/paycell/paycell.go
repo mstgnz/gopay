@@ -1119,17 +1119,19 @@ func (p *PaycellProvider) generateReferenceNumber() string {
 	now := time.Now()
 	// Generate 20-digit numeric reference number
 	// Use Unix timestamp (10 digits) + nanoseconds (6 digits) + crypto random (4 digits)
-	timestamp := now.Unix()
-	nanos := now.Nanosecond() / 1000 // Get microseconds (6 digits)
+	timestamp := max(now.Unix(), 0)
+
+	nanos := max(now.Nanosecond()/1000, 0) // Get microseconds (6 digits)
 
 	// Generate 4-digit random number using crypto/rand
 	randomBytes := make([]byte, 2)
 	_, _ = rand.Read(randomBytes)
 	random := int64(randomBytes[0])<<8 | int64(randomBytes[1])
-	random = random % 10000 // Ensure it's 4 digits
+	random = max(random%10000, 0) // Ensure it's 4 digits and non-negative
 
-	// Combine to create 20-digit number
-	reference := timestamp*100000000000000 + int64(nanos)*10000 + random
+	// Combine to create 20-digit number, ensuring no overflow
+	// Use uint64 to avoid negative values
+	reference := uint64(timestamp)*100000000000000 + uint64(nanos)*10000 + uint64(random)
 
 	return fmt.Sprintf("%020d", reference)
 }
