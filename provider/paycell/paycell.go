@@ -925,6 +925,7 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	// Convert amount to kuruş (multiply by 100)
 	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
 
+	referenceNumber := p.generateReferenceNumber()
 	paycellReq := PaycellProvisionRequest{
 		ExtraParameters:         nil,
 		RequestHeader:           requestHeader,
@@ -941,8 +942,9 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		PaymentMethodType:       "CREDIT_CARD",
 		Pin:                     "",
 		PointAmount:             "",
-		ReferenceNumber:         p.generateReferenceNumber(),
+		ReferenceNumber:         referenceNumber,
 		ThreeDSessionID:         threeDSessionID,
+		OrderID:                 referenceNumber,
 	}
 
 	// add provider request to client request
@@ -1226,6 +1228,7 @@ type PaycellProvisionRequest struct {
 	PointAmount             string               `json:"pointAmount"`
 	ReferenceNumber         string               `json:"referenceNumber"`
 	ThreeDSessionID         string               `json:"threeDSessionId"`
+	OrderID                 string               `json:"orderId"`
 }
 
 // PaycellProvisionResponse represents provision response
