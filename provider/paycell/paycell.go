@@ -251,6 +251,7 @@ func (p *PaycellProvider) Create3DPayment(ctx context.Context, request provider.
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
 	p.logID = callbackState.LogID
+	p.clientIP = callbackState.ClientIP
 
 	cardToken, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "cardToken")
 	if err != nil {

@@ -134,6 +134,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 	}
 
 	data["currency"] = callbackState.Currency
+	data["clientIp"] = callbackState.ClientIP
 	data["paymentId"] = callbackState.PaymentID
 	data["amount"] = fmt.Sprintf("%.2f", callbackState.Amount)
 
