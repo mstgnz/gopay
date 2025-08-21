@@ -926,25 +926,33 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	amountInKurus := strconv.FormatFloat(request.Amount*100, 'f', 0, 64)
 
 	referenceNumber := p.generateReferenceNumber()
-	paycellReq := PaycellProvisionRequest{
-		ExtraParameters:         nil,
-		RequestHeader:           requestHeader,
-		AcquirerBankCode:        "",
-		Amount:                  amountInKurus,
-		CardID:                  cardToken,
-		CardToken:               cardToken,
-		Currency:                request.Currency,
-		InstallmentCount:        request.InstallmentCount,
-		MerchantCode:            p.merchantID,
-		MSISDN:                  request.Customer.PhoneNumber,
-		OriginalReferenceNumber: "",
-		PaymentType:             "SALE",
-		PaymentMethodType:       "CREDIT_CARD",
-		Pin:                     "",
-		PointAmount:             "",
-		ReferenceNumber:         referenceNumber,
-		ThreeDSessionID:         threeDSessionID,
-		OrderID:                 referenceNumber,
+	/* paycellReq := PaycellProvisionRequest{
+		ExtraParameters:   nil,
+		RequestHeader:     requestHeader,
+		Amount:            amountInKurus,
+		CardToken:         cardToken,
+		Currency:          request.Currency,
+		InstallmentCount:  request.InstallmentCount,
+		MerchantCode:      p.merchantID,
+		MSISDN:            request.Customer.PhoneNumber,
+		PaymentType:       "SALE",
+		PaymentMethodType: "CREDIT_CARD",
+		ReferenceNumber:   referenceNumber,
+		ThreeDSessionID:   threeDSessionID,
+	} */
+
+	paycellReq := map[string]any{
+		"requestHeader":     requestHeader,
+		"amount":            amountInKurus,
+		"cardToken":         cardToken,
+		"currency":          request.Currency,
+		"installmentCount":  request.InstallmentCount,
+		"merchantCode":      p.merchantID,
+		"msisdn":            request.Customer.PhoneNumber,
+		"paymentType":       "SALE",
+		"paymentMethodType": "CREDIT_CARD",
+		"referenceNumber":   referenceNumber,
+		"threeDSessionID":   threeDSessionID,
 	}
 
 	// add provider request to client request
@@ -1228,7 +1236,6 @@ type PaycellProvisionRequest struct {
 	PointAmount             string               `json:"pointAmount"`
 	ReferenceNumber         string               `json:"referenceNumber"`
 	ThreeDSessionID         string               `json:"threeDSessionId"`
-	OrderID                 string               `json:"orderId"`
 }
 
 // PaycellProvisionResponse represents provision response
