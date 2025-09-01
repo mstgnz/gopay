@@ -688,7 +688,7 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		if bankRequestMessage, ok := jsonResponse["BANK_REQUEST_MESSAGE"].(string); ok && bankRequestMessage != "" && strings.Contains(bankRequestMessage, "form") {
 			response.Success = true
 			response.Status = provider.StatusPending
-			response.Message = "3D Secure authentication required"
+			response.Message = bankRequestMessage
 
 			// Clean HTML for client use
 			cleanHTML := p.cleanHTMLForClient(bankRequestMessage)
@@ -701,7 +701,6 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		if htmlStr, ok := htmlString.(string); ok && htmlStr != "" && strings.Contains(htmlStr, "form") {
 			response.Success = true
 			response.Status = provider.StatusPending
-			response.Message = "3D Secure authentication required"
 			response.HTML = htmlStr
 
 			return response, nil
@@ -772,7 +771,6 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		// 3D Secure form returned
 		response.Success = true
 		response.Status = provider.StatusPending
-		response.Message = "3D Secure authentication required"
 		response.HTML = responseStr
 	} else if strings.Contains(responseStr, "SUCCESS") || strings.Contains(responseStr, "APPROVED") {
 		// Payment successful

@@ -1043,7 +1043,7 @@ func (p *PaycellProvider) provision3D(ctx context.Context, request provider.Paym
 		Amount:           request.Amount,
 		Currency:         request.Currency,
 		HTML:             p.generate3DSecureHTML(threeDSession.ThreeDSessionId, gopayCallbackURL),
-		Message:          "3D secure authentication required",
+		Message:          threeDSession.ResponseHeader.ResponseDescription,
 		SystemTime:       &now,
 		ProviderResponse: threeDSession,
 	}, nil

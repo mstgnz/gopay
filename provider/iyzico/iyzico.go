@@ -543,7 +543,6 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 		if htmlContent, ok := resp["threeDSHtmlContent"].(string); ok && htmlContent != "" {
 			paymentResp.Status = provider.StatusPending
 			paymentResp.HTML = htmlContent
-			paymentResp.Message = "3D Secure authentication required"
 		}
 
 		// Check for redirect URL in 3D response
