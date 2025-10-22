@@ -334,6 +334,11 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		return "", errors.New("database connection not available")
 	}
 
+	// Validate tenant ID
+	if state.TenantID <= 0 {
+		return "", fmt.Errorf("invalid tenant ID: %d", state.TenantID)
+	}
+
 	// Serialize state data
 	stateData, err := json.Marshal(state)
 	if err != nil {
@@ -361,7 +366,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 	).Scan(&stateID)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to store callback state: %w", err)
+		return "", fmt.Errorf("failed to store callback state (tenant_id: %d): %w", state.TenantID, err)
 	}
 
 	return fmt.Sprintf("%d", stateID), nil
@@ -467,9 +472,12 @@ func HandleCallbackState(ctx context.Context, state string) (*CallbackState, err
 	// Try new integer ID system first (primary method)
 	if _, err := strconv.Atoi(state); err == nil {
 		// It's a valid integer, try database lookup
-		if callbackState, err := RetrieveCallbackState(ctx, state); err == nil {
+		callbackState, dbErr := RetrieveCallbackState(ctx, state)
+		if dbErr == nil {
 			return callbackState, nil
 		}
+		// If it's clearly an integer ID but not found in DB, return more specific error
+		return nil, fmt.Errorf("callback state not found or expired (ID: %s): %w", state, dbErr)
 	}
 
 	// Fallback to old encrypted system for backward compatibility
