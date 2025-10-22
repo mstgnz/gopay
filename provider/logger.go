@@ -67,6 +67,10 @@ func NewDBPaymentLogger(db *conn.DB) PaymentLogger {
 
 // LogRequest logs the payment request to the appropriate provider table
 func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, providerName string, method, endpoint string, request any, userAgent, clientIP string) (int64, error) {
+	if tenantID <= 0 {
+		return 0, fmt.Errorf("invalid tenant ID: %d", tenantID)
+	}
+
 	// Convert request to map[string]any for sanitization
 	var requestMap map[string]any
 	requestBytes, err := json.Marshal(request)

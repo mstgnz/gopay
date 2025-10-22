@@ -86,6 +86,10 @@ func PaymentLoggingMiddleware(postgresLogger *postgres.Logger) func(http.Handler
 				}
 			}
 
+			if tenantIDInt <= 0 {
+				return
+			}
+
 			requestData := make(map[string]any)
 			responseData := make(map[string]any)
 
