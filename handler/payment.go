@@ -312,32 +312,50 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Complete 3D payment
-	response, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
+	paymentResp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
 
 	if err != nil {
-		h.postRedirect(w, response.RedirectURL, map[string]string{
-			"success":   "false",
-			"status":    "failed",
-			"errorCode": "500",
-			"message":   err.Error(),
-		})
+		// Check if response and RedirectURL are available
+		if paymentResp != nil && paymentResp.RedirectURL != "" {
+			h.postRedirect(w, paymentResp.RedirectURL, map[string]string{
+				"success":   "false",
+				"status":    "failed",
+				"errorCode": "500",
+				"message":   err.Error(),
+			})
+		} else {
+			// Fallback: return JSON error response if no redirect URL
+			response.Error(w, http.StatusInternalServerError, "Payment callback failed: "+err.Error(), nil)
+		}
 		return
 	}
 
-	h.postRedirect(w, response.RedirectURL, map[string]string{
-		"success":       strconv.FormatBool(response.Success),
-		"paymentId":     response.PaymentID,
-		"status":        string(response.Status),
-		"message":       response.Message,
-		"errorCode":     response.ErrorCode,
-		"transactionId": response.TransactionID,
-		"amount":        fmt.Sprintf("%.2f", response.Amount),
-		"currency":      response.Currency,
+	// Check if response is valid before using it
+	if paymentResp == nil || paymentResp.RedirectURL == "" {
+		response.Error(w, http.StatusInternalServerError, "Invalid payment response", nil)
+		return
+	}
+
+	h.postRedirect(w, paymentResp.RedirectURL, map[string]string{
+		"success":       strconv.FormatBool(paymentResp.Success),
+		"paymentId":     paymentResp.PaymentID,
+		"status":        string(paymentResp.Status),
+		"message":       paymentResp.Message,
+		"errorCode":     paymentResp.ErrorCode,
+		"transactionId": paymentResp.TransactionID,
+		"amount":        fmt.Sprintf("%.2f", paymentResp.Amount),
+		"currency":      paymentResp.Currency,
 	})
 }
 
 // postRedirect creates an HTML form and auto-submits it to perform POST redirect
 func (h *PaymentHandler) postRedirect(w http.ResponseWriter, url string, data map[string]string) {
+	// Safety check for empty URL
+	if url == "" {
+		response.Error(w, http.StatusInternalServerError, "Redirect URL is empty", nil)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
