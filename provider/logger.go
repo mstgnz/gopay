@@ -346,9 +346,14 @@ func AddProviderRequestToClientRequest(providerName, keyName string, providerReq
 		return fmt.Errorf("failed to unmarshal log request: %w", err)
 	}
 
-	providerRequestBytes, err := json.Marshal(providerRequest)
+	providerRequestMap, ok := providerRequest.(map[string]any)
+	if !ok {
+		return fmt.Errorf("provider request is not a map[string]any")
+	}
+	providerRequestMap = postgres.SanitizeForLog(providerRequestMap)
+	providerRequestBytes, err := json.Marshal(providerRequestMap)
 	if err != nil {
-		return fmt.Errorf("failed to marshal provider request: %w", err)
+		return fmt.Errorf("failed to marshal sanitized provider request: %w", err)
 	}
 	logRequest[keyName] = json.RawMessage(providerRequestBytes)
 

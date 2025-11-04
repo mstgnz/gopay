@@ -515,6 +515,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"clientRefCode":   clientRefCode,
 		"amount":          fmt.Sprintf("%.2f", request.Amount),
 		"transactionType": "SALES",
+		"detail":          "true",
+		"description":     request.Description,
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
 		"instalments":     strconv.Itoa(request.InstallmentCount),
 		"installmentNo":   strconv.Itoa(request.InstallmentCount),
