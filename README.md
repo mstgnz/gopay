@@ -124,6 +124,7 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 | ----------- | ----------- | ------ | --------------------------- |
 | **Paycell** | Production  | Turkey | Payment, 3D, Refund, Cancel |
 | **Nkolay**  | Production  | Turkey | Payment, 3D, Refund, Cancel |
+| **Akbank**  | Production  | Turkey | Payment, 3D, Refund, Cancel |
 | **İyzico**  | Development | Turkey | Payment, 3D, Refund, Cancel |
 | **OzanPay** | Development | Turkey | Payment, 3D, Refund, Cancel |
 | **Papara**  | Development | Turkey | Payment, 3D, Refund, Cancel |
