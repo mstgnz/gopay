@@ -341,7 +341,9 @@ func (p *PayTRProvider) processIFramePayment(ctx context.Context, request provid
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paytr", "providerRequest", data, p.logID)
+	if reqMap, err := provider.StructToMap(data); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paytr", "providerRequest", reqMap, p.logID)
+	}
 
 	return p.mapToIFrameResponse(response, merchantOid), nil
 }

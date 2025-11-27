@@ -373,7 +373,9 @@ func (p *AkbankProvider) sendPaymentRequest(ctx context.Context, requestData map
 	}
 
 	// Add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("akbank", "providerRequest", requestData, p.logID)
+	if reqMap, err := provider.StructToMap(requestData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("akbank", "providerRequest", reqMap, p.logID)
+	}
 
 	// Map Akbank response to common PaymentResponse
 	paymentResp := &provider.PaymentResponse{

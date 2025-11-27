@@ -339,7 +339,9 @@ func (p *PayUProvider) processPayment(ctx context.Context, request provider.Paym
 		return nil, fmt.Errorf("payu: failed to parse response: %w", err)
 	}
 
-	_ = provider.AddProviderRequestToClientRequest("payu", "providerRequest", payuReq, p.logID)
+	if reqMap, err := provider.StructToMap(payuReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("payu", "providerRequest", reqMap, p.logID)
+	}
 
 	return p.mapToPaymentResponse(payuResp), nil
 }

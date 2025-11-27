@@ -509,7 +509,9 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("iyzico", "providerRequest", requestData, p.logID)
+	if reqMap, err := provider.StructToMap(requestData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("iyzico", "providerRequest", reqMap, p.logID)
+	}
 
 	// Map Iyzico response to our common PaymentResponse
 	paymentResp := &provider.PaymentResponse{

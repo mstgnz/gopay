@@ -395,7 +395,9 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	}
 
 	// Add provider request to client request log
-	_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -508,7 +510,9 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 	}
 
 	// Add provider request to client request log
-	_ = provider.AddProviderRequestToClientRequest("paycell", "reverseRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "reverseRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -611,7 +615,9 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	}
 
 	// Add provider request to client request log
-	_ = provider.AddProviderRequestToClientRequest("paycell", "refundRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "refundRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -755,7 +761,9 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 		p.logID = logID
 	}
 
-	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -861,7 +869,10 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", cardTokenRequest, p.logID)
+
+	if reqMap, err := provider.StructToMap(cardTokenRequest); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -886,7 +897,9 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	}
 
 	// add provider response to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenResponse", cardTokenResp, p.logID)
+	if respMap, err := provider.StructToMap(cardTokenResp); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenResponse", respMap, p.logID)
+	}
 
 	// Return the card token
 	return cardTokenResp.CardToken, nil
@@ -960,7 +973,9 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{
@@ -980,7 +995,9 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", reqMap, p.logID)
+	}
 
 	success := paycellResp.ResponseHeader.ResponseCode == responseCodeSuccess
 	status := provider.StatusFailed
@@ -1080,7 +1097,9 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", paycellReq, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", reqMap, p.logID)
+	}
 
 	// Use new HTTP client
 	httpReq := &provider.HTTPRequest{

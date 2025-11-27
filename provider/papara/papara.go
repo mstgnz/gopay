@@ -313,7 +313,9 @@ func (p *PaparaProvider) processPayment(ctx context.Context, request provider.Pa
 		return nil, fmt.Errorf("papara: failed to parse response: %w", err)
 	}
 
-	_ = provider.AddProviderRequestToClientRequest("papara", "providerRequest", paparaReq, p.logID)
+	if reqMap, err := provider.StructToMap(paparaReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("papara", "providerRequest", reqMap, p.logID)
+	}
 
 	return p.mapToPaymentResponse(paparaResp), nil
 }

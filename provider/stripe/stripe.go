@@ -401,7 +401,9 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("stripe", "providerRequest", piParams, p.logID)
+	if reqMap, err := provider.StructToMap(piParams); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("stripe", "providerRequest", reqMap, p.logID)
+	}
 
 	return p.mapPaymentIntentToResponse(pi), nil
 }

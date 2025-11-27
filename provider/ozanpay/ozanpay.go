@@ -423,7 +423,9 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("ozanpay", "providerRequest", paymentData, p.logID)
+	if reqMap, err := provider.StructToMap(paymentData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("ozanpay", "providerRequest", reqMap, p.logID)
+	}
 
 	// Map response to common format
 	return p.mapToPaymentResponse(response)

@@ -614,7 +614,9 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	// add provider request to client request
-	_ = provider.AddProviderRequestToClientRequest("nkolay", "providerRequest", formData, p.logID)
+	if reqMap, err := provider.StructToMap(formData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("nkolay", "providerRequest", reqMap, p.logID)
+	}
 
 	return p.parsePaymentResponse(responseBody, clientRefCode, request.Amount, stateId)
 }

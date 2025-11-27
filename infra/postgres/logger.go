@@ -444,10 +444,7 @@ func sanitizeMap(data map[string]any) map[string]any {
 
 	// Define sensitive field patterns
 	sensitiveFields := []string{
-		"cardnumber", "card_number", "cvv", "cvc", "cardholdername", "card_holder_name",
-		"apikey", "api_key", "secretkey", "secret_key", "password", "token",
-		"authorization", "x-api-key", "x-secret-key", "expiremonth", "expire_month",
-		"expireyear", "expire_year",
+		"cardnumber", "card_number", "credit",
 	}
 
 	for key, value := range data {

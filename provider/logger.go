@@ -333,7 +333,26 @@ func loadProviderFromDB(tenantID int, providerName, environment string) (Payment
 	return provider, nil
 }
 
-func AddProviderRequestToClientRequest(providerName, keyName string, providerRequest any, logID int64) error {
+// StructToMap converts any struct or value to map[string]any via JSON marshaling
+func StructToMap(v any) (map[string]any, error) {
+	if m, ok := v.(map[string]any); ok {
+		return m, nil
+	}
+
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal to JSON: %w", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to map: %w", err)
+	}
+
+	return m, nil
+}
+
+func AddProviderRequestToClientRequest(providerName, keyName string, providerRequest map[string]any, logID int64) error {
 	var requestJSON []byte
 	err := config.App().DB.QueryRow(fmt.Sprintf("SELECT request FROM %s WHERE id = $1", providerName), logID).Scan(&requestJSON)
 	if err != nil {
@@ -346,11 +365,7 @@ func AddProviderRequestToClientRequest(providerName, keyName string, providerReq
 		return fmt.Errorf("failed to unmarshal log request: %w", err)
 	}
 
-	providerRequestMap, ok := providerRequest.(map[string]any)
-	if !ok {
-		return fmt.Errorf("provider request is not a map[string]any")
-	}
-	providerRequestMap = postgres.SanitizeForLog(providerRequestMap)
+	providerRequestMap := postgres.SanitizeForLog(providerRequest)
 	providerRequestBytes, err := json.Marshal(providerRequestMap)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sanitized provider request: %w", err)
