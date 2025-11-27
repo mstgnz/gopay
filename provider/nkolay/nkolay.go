@@ -3,6 +3,7 @@ package nkolay
 import (
 	"context"
 	"crypto/sha1"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -167,9 +168,14 @@ func (p *NkolayProvider) Initialize(conf map[string]string) error {
 // GetInstallmentCount returns the installment count for a payment
 func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
 	formData := map[string]string{
-		"sx":     p.sx,
-		"amount": fmt.Sprintf("%.2f", request.Amount),
+		"sx":         p.sx,
+		"amount":     fmt.Sprintf("%.2f", request.Amount),
+		"hashDatav2": "",
 	}
+
+	// Generate hash: sx+date+secretkey - // Base64(SHA512(sx + "|" + date + "|" + merchantSecretKey))
+	input := formData["sx"] + time.Now().Format("02.01.2006") + p.secretKey
+	formData["hashDatav2"] = base64.StdEncoding.EncodeToString(sha512.New512_256().Sum([]byte(input)))
 
 	responseBody, err := p.doNkolayFormRequest(ctx, endpointPaymentInstallments, formData)
 	if err != nil {
@@ -520,7 +526,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
 		"instalments":     strconv.Itoa(request.InstallmentCount),
 		"installmentNo":   strconv.Itoa(request.InstallmentCount),
-		"ECOMM_PLATFORM":  "GOPAY",
+		"ECOMM_PLATFORM":  request.Description,
 	}
 
 	if request.InstallmentCount > 0 {
