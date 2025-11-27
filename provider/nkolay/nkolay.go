@@ -520,7 +520,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		"rnd":             time.Now().Format("02-01-2006 15:04:05"),
 		"instalments":     strconv.Itoa(request.InstallmentCount),
 		"installmentNo":   strconv.Itoa(request.InstallmentCount),
-		"ECOMM_PLATFORM":  request.Description,
+		"ECOMM_PLATFORM":  "GOPAY",
 	}
 
 	if request.InstallmentCount > 0 {
