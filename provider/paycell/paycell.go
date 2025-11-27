@@ -885,6 +885,9 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 		return "", fmt.Errorf("card token error: %s - %s", cardTokenResp.Header.ResponseCode, cardTokenResp.Header.ResponseDescription)
 	}
 
+	// add provider response to client request
+	_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenResponse", cardTokenResp, p.logID)
+
 	// Return the card token
 	return cardTokenResp.CardToken, nil
 }
