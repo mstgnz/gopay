@@ -312,6 +312,7 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 			Customer: provider.Customer{
 				PhoneNumber: msisdn,
 			},
+			InstallmentCount: callbackState.Installment,
 		}
 		_, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
 		if err != nil {
@@ -1038,6 +1039,7 @@ func (p *PaycellProvider) provision3D(ctx context.Context, request provider.Paym
 		Environment:      request.Environment,
 		Timestamp:        time.Now(),
 		ClientIP:         request.ClientIP,
+		Installment:      request.InstallmentCount,
 	}
 
 	// Use short callback URL system with database storage

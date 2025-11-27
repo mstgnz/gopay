@@ -167,6 +167,7 @@ type RefundResponse struct {
 // CallbackState represents encrypted state data for secure callbacks across all providers
 type CallbackState struct {
 	TenantID         int       `json:"tenantId"`
+	Installment      int       `json:"installment"`
 	PaymentID        string    `json:"paymentId"`
 	OriginalCallback string    `json:"originalCallback"`
 	Amount           float64   `json:"amount"`
