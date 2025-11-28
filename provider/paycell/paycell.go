@@ -417,11 +417,6 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, resp.RawBody)
 	}
 
-	// Add provider request to client request log
-	if reqMap, err := provider.StructToMap(inquireResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireResponse", reqMap, p.logID)
-	}
-
 	// Convert to standard payment response
 	now := time.Now()
 	response := &provider.PaymentResponse{
@@ -1005,8 +1000,8 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 	}
 
 	// add provider request to client request
-	if reqMap, err := provider.StructToMap(paycellResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionResponse", reqMap, p.logID)
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", reqMap, p.logID)
 	}
 
 	success := paycellResp.ResponseHeader.ResponseCode == responseCodeSuccess
