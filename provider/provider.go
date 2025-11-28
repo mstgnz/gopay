@@ -357,7 +357,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		INSERT INTO callbacks (
 			tenant_id, provider, payment_id, original_callback, 
 			amount, currency, conversation_id, log_id, environment, 
-			client_ip, state_data, expires_at, installment, session_id
+			client_ip, state_data, expires_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id
 	`
@@ -367,7 +367,6 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		state.TenantID, state.Provider, state.PaymentID, state.OriginalCallback,
 		state.Amount, state.Currency, state.ConversationID, state.LogID, state.Environment,
 		state.ClientIP, string(stateData), expiresAt,
-		state.Installment, state.SessionID,
 	).Scan(&stateID)
 
 	if err != nil {
