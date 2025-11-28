@@ -313,6 +313,8 @@ CREATE TABLE "public"."callbacks" (
     "log_id" int8,
     "environment" varchar(20),
     "client_ip" varchar(45),
+    "installment" int2,
+    "session_id" varchar(100),
     "state_data" jsonb NOT NULL,
     "created_at" timestamp DEFAULT now(),
     "expires_at" timestamp NOT NULL,

@@ -352,21 +352,52 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 	// Set expiration (30 minutes from now)
 	expiresAt := time.Now().Add(30 * time.Minute)
 
+	// Prepare nullable fields
+	var originalCallback sql.NullString
+	if state.OriginalCallback != "" {
+		originalCallback = sql.NullString{String: state.OriginalCallback, Valid: true}
+	}
+
+	var currency sql.NullString
+	if state.Currency != "" {
+		currency = sql.NullString{String: state.Currency, Valid: true}
+	}
+
+	var conversationID sql.NullString
+	if state.ConversationID != "" {
+		conversationID = sql.NullString{String: state.ConversationID, Valid: true}
+	}
+
+	var logID sql.NullInt64
+	if state.LogID > 0 {
+		logID = sql.NullInt64{Int64: state.LogID, Valid: true}
+	}
+
+	var installment sql.NullInt32
+	if state.Installment > 0 {
+		installment = sql.NullInt32{Int32: int32(state.Installment), Valid: true}
+	}
+
+	var sessionID sql.NullString
+	if state.SessionID != "" {
+		sessionID = sql.NullString{String: state.SessionID, Valid: true}
+	}
+
 	// Insert into database and get auto-generated ID
 	query := `
 		INSERT INTO callbacks (
 			tenant_id, provider, payment_id, original_callback, 
 			amount, currency, conversation_id, log_id, environment, 
-			client_ip, state_data, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			client_ip, installment, session_id, state_data, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id
 	`
 
 	var stateID int
 	err = db.QueryRowContext(ctx, query,
-		state.TenantID, state.Provider, state.PaymentID, state.OriginalCallback,
-		state.Amount, state.Currency, state.ConversationID, state.LogID, state.Environment,
-		state.ClientIP, string(stateData), expiresAt,
+		state.TenantID, state.Provider, state.PaymentID, originalCallback,
+		state.Amount, currency, conversationID, logID, state.Environment,
+		state.ClientIP, installment, sessionID, string(stateData), expiresAt,
 	).Scan(&stateID)
 
 	if err != nil {
