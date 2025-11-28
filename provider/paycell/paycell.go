@@ -783,6 +783,10 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 		return nil, fmt.Errorf("failed to unmarshal getThreeDSessionResult response: %w. Response body: %s", err, resp.RawBody)
 	}
 
+	if reqMap, err := provider.StructToMap(threeDSessionResp); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultResponse", reqMap, p.logID)
+	}
+
 	return &threeDSessionResp, nil
 }
 
