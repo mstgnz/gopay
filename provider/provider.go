@@ -103,6 +103,7 @@ type PaymentRequest struct {
 	ClientUserAgent  string   `json:"clientUserAgent,omitempty"`
 	Environment      string   `json:"environment,omitempty"`
 	TenantID         int      `json:"tenantId,omitempty"`
+	SessionID        string   `json:"sessionId,omitempty"`
 }
 
 // PaymentResponse contains the result of a payment request
@@ -121,6 +122,7 @@ type PaymentResponse struct {
 	SystemTime       *time.Time    `json:"systemTime,omitempty"`
 	FraudStatus      int           `json:"fraudStatus,omitempty"`
 	ProviderResponse any           `json:"providerResponse,omitempty"`
+	SessionID        string        `json:"sessionId,omitempty"`
 }
 
 // RefundRequest contains information to request a refund
@@ -178,6 +180,7 @@ type CallbackState struct {
 	Environment      string    `json:"environment"`
 	Timestamp        time.Time `json:"timestamp"`
 	ClientIP         string    `json:"clientIp"`
+	SessionID        string    `json:"sessionId"`
 }
 
 // InquireRequest contains information to request an installment count
@@ -354,7 +357,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		INSERT INTO callbacks (
 			tenant_id, provider, payment_id, original_callback, 
 			amount, currency, conversation_id, log_id, environment, 
-			client_ip, state_data, expires_at
+			client_ip, state_data, expires_at, installment, session_id
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id
 	`
@@ -364,6 +367,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		state.TenantID, state.Provider, state.PaymentID, state.OriginalCallback,
 		state.Amount, state.Currency, state.ConversationID, state.LogID, state.Environment,
 		state.ClientIP, string(stateData), expiresAt,
+		state.Installment, state.SessionID,
 	).Scan(&stateID)
 
 	if err != nil {

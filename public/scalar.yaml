@@ -549,6 +549,10 @@ components:
           type: string
           example: "Mozilla/5.0..."
           description: Client user agent
+        sessionId:
+          type: string
+          example: "session123"
+          description: If the session is lost during the payment routing steps, you provide the record ID you created, which will be sent back to you as a callback. You can restart the user session using the session ID in callback transactions.
 
     PaymentResponse:
       type: object
@@ -605,6 +609,10 @@ components:
         providerResponse:
           type: object
           description: Raw provider response
+        sessionId:
+          type: string
+          example: "session123"
+          description: If the session is lost during the payment routing steps, you provide the record ID you created, which will be sent back to you as a callback. You can restart the user session using the session ID in callback transactions.
 
     RefundRequest:
       type: object

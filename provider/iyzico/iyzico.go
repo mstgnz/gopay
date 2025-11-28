@@ -486,6 +486,8 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 			Provider:         "iyzico",
 			Environment:      map[bool]string{true: "production", false: "sandbox"}[p.isProduction],
 			Timestamp:        time.Now(),
+			Installment:      request.InstallmentCount,
+			SessionID:        request.SessionID,
 		}
 
 		// Use short callback URL system with fallback

@@ -345,6 +345,7 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		"transactionId": paymentResp.TransactionID,
 		"amount":        fmt.Sprintf("%.2f", paymentResp.Amount),
 		"currency":      paymentResp.Currency,
+		"sessionId":     paymentResp.SessionID,
 	})
 }
 

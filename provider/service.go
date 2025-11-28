@@ -88,6 +88,11 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 		response, err = provider.CreatePayment(ctx, request)
 	}
 
+	// Preserve session ID in response
+	if response != nil {
+		response.SessionID = request.SessionID
+	}
+
 	// Calculate processing time
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -152,6 +157,11 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 	callbackState.LogID = logID
 
 	response, err := provider.Complete3DPayment(ctx, callbackState, data)
+
+	// Restore session ID from callback state
+	if response != nil {
+		response.SessionID = callbackState.SessionID
+	}
 
 	processingMs := time.Since(startTime).Milliseconds()
 

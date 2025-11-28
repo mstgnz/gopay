@@ -1049,6 +1049,7 @@ func (p *PaycellProvider) provision3D(ctx context.Context, request provider.Paym
 		Timestamp:        time.Now(),
 		ClientIP:         request.ClientIP,
 		Installment:      request.InstallmentCount,
+		SessionID:        request.SessionID,
 	}
 
 	// Use short callback URL system with database storage

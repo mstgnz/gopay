@@ -570,6 +570,8 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			Timestamp:        time.Now(),
 			OriginalCallback: request.CallbackURL,
 			ClientIP:         request.ClientIP,
+			Installment:      request.InstallmentCount,
+			SessionID:        request.SessionID,
 		}
 
 		gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "nkolay", state)
