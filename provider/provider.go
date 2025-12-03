@@ -423,14 +423,15 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	var stateData string
 	var used bool
 	var expiresAt time.Time
+	var sessionID string
 
 	query := `
-		SELECT state_data, used, expires_at 
+		SELECT state_data, used, expires_at, session_id
 		FROM callbacks 
 		WHERE id = $1
 	`
 
-	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &used, &expiresAt)
+	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &used, &expiresAt, &sessionID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("callback state not found")
@@ -460,6 +461,8 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	if err := json.Unmarshal([]byte(stateData), &state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
+
+	state.SessionID = sessionID
 
 	return &state, nil
 }

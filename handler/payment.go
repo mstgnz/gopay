@@ -322,6 +322,7 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 				"status":    "failed",
 				"errorCode": "500",
 				"message":   err.Error(),
+				"sessionId": paymentResp.SessionID,
 			})
 		} else {
 			// Fallback: return JSON error response if no redirect URL
