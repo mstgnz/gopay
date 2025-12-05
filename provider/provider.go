@@ -423,7 +423,7 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	var stateData string
 	var used bool
 	var expiresAt time.Time
-	var sessionID string
+	var sessionID sql.NullString
 
 	query := `
 		SELECT state_data, used, expires_at, session_id
@@ -462,7 +462,7 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
 
-	state.SessionID = sessionID
+	state.SessionID = sessionID.String
 
 	return &state, nil
 }
