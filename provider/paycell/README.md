@@ -2,6 +2,8 @@
 
 This package provides a complete integration between GoPay and Paycell (TPay), Turkcell's payment processing solution. Paycell offers secure payment processing for Turkish market with comprehensive tPay REST API support.
 
+3D flow: Bu ödeme yöntemi, kart sahibinin bankanın doğrulama ekranına yönlendirilip işlemi onaylaması ile gerçekleşen güvenli bir akıştır. İlk olarak, kart bilgileri kullanılarak getCardTokenSecure servisi ile bir token alınır. Ardından bu token, get3dSession servisine iletilerek 3D doğrulama için gerekli olan threeDSessionId bilgisi elde edilir. Bu session ID ile oluşturulan yönlendirme ekranında kullanıcı, bankanın doğrulama sayfasına yönlendirilir. Doğrulama tamamlandığında, tanımlı callbackUrl üzerinden işlem sayfasına dönülür. Bu aşamada mutlaka get3dSessionResult servisi çağrılarak 3D doğrulamanın başarılı olup olmadığı kontrol edilmelidir.Eğer doğrulama başarılıysa, ödeme işlemi ProvisionAll servisi aracılığıyla tamamlanır ve bu çağrıda hem cardToken hem de threeDSessionId parametreleri birlikte iletilmelidir.
+
 [Paycell API Documentation](https://apiportal.paycell.com.tr/paycellapi)
 
 ## API URLs

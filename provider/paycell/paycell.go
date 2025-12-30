@@ -979,7 +979,7 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		"paymentType":       "SALE",
 		"paymentMethodType": "CREDIT_CARD",
 		"referenceNumber":   referenceNumber,
-		"threeDSessionID":   threeDSessionID,
+		"threeDSessionId":   threeDSessionID,
 	}
 
 	// add provider request to client request
