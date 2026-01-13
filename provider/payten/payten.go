@@ -151,93 +151,80 @@ func (p *PaytenProvider) GetCommission(ctx context.Context, request provider.Com
 }
 
 // CreatePayment makes a non-3D payment request
-// Note: Payten uses Hosted Page approach, so this creates a session token
 func (p *PaytenProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, false); err != nil {
 		return nil, fmt.Errorf("payten: invalid payment request: %w", err)
 	}
 
-	// Payten uses Hosted Page (HP) approach with SESSIONTOKEN
-	return p.processHostedPagePayment(ctx, request)
+	return p.processDirectPostNon3D(ctx, request)
 }
 
 // Create3DPayment starts a 3D secure payment process
-// Note: Payten uses Hosted Page approach, so this creates a session token
 func (p *PaytenProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	p.logID = request.LogID
 	if err := p.validatePaymentRequest(request, true); err != nil {
 		return nil, fmt.Errorf("payten: invalid 3D payment request: %w", err)
 	}
 
-	// Payten uses Hosted Page (HP) approach with SESSIONTOKEN
-	return p.processHostedPagePayment(ctx, request)
+	return p.processDirectPost3D(ctx, request)
 }
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (p *PaytenProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
 	p.logID = callbackState.LogID
 
-	// Payten Hosted Page returns sessionToken in callback
-	sessionToken, ok := data["sessionToken"]
+	// Validate hash from callback
+	receivedHash, ok := data["HASH"]
 	if !ok {
-		// Fallback: try alternative field names
-		sessionToken, _ = data["session_token"]
-		if sessionToken == "" {
-			sessionToken, _ = data["SESSIONTOKEN"]
-		}
+		return nil, errors.New("payten: missing HASH in callback data")
 	}
 
-	if sessionToken == "" {
-		return nil, errors.New("payten: missing sessionToken in callback data")
-	}
-
-	// Query transaction using session token
-	transactionResp, err := p.queryTransaction(ctx, sessionToken)
+	// Calculate expected hash
+	expectedHash, err := p.calculateHash(data)
 	if err != nil {
-		return nil, fmt.Errorf("payten: failed to query transaction: %w", err)
+		return nil, fmt.Errorf("payten: failed to calculate hash: %w", err)
 	}
 
-	// Extract transaction details
-	transactionList, ok := transactionResp["transactionList"].([]any)
-	if !ok || len(transactionList) == 0 {
-		return nil, errors.New("payten: no transaction found in response")
+	// Verify hash
+	if receivedHash != expectedHash {
+		return nil, errors.New("payten: invalid hash in callback data")
 	}
 
-	transaction, ok := transactionList[0].(map[string]any)
-	if !ok {
-		return nil, errors.New("payten: invalid transaction format")
-	}
+	// Extract payment status from callback
+	mdStatus, _ := data["mdStatus"]
+	responseCode, _ := data["Response"]
+	errorMsg, _ := data["ErrMsg"]
+	transactionId, _ := data["TransId"]
+	orderId, _ := data["oid"]
 
-	transactionId, _ := transaction["transactionId"].(string)
-	responseCode, _ := transactionResp["responseCode"].(string)
-	success := responseCode == "00"
+	// Determine success based on mdStatus and Response
+	// mdStatus: 1,2,3,4 = success, others = failure
+	// Response: "Approved" = success
+	success := (mdStatus == "1" || mdStatus == "2" || mdStatus == "3" || mdStatus == "4") && responseCode == "Approved"
 
 	now := time.Now()
 	response := &provider.PaymentResponse{
 		Success:          success,
-		PaymentID:        callbackState.PaymentID,
+		PaymentID:        orderId,
 		TransactionID:    transactionId,
 		Amount:           callbackState.Amount,
 		Currency:         callbackState.Currency,
 		SystemTime:       &now,
-		ProviderResponse: transactionResp,
+		ProviderResponse: data,
 		RedirectURL:      callbackState.OriginalCallback,
 	}
 
 	if success {
 		response.Status = provider.StatusSuccessful
-		response.Message = "Payment completed successfully"
-		if msg, ok := transactionResp["responseMsg"].(string); ok {
-			response.Message = msg
-		}
+		response.Message = "3D payment completed successfully"
 	} else {
 		response.Status = provider.StatusFailed
 		response.ErrorCode = responseCode
-		if msg, ok := transactionResp["errorMsg"].(string); ok {
-			response.Message = msg
+		if errorMsg != "" {
+			response.Message = errorMsg
 		} else {
-			response.Message = "Payment failed"
+			response.Message = "3D payment failed"
 		}
 	}
 
@@ -246,19 +233,9 @@ func (p *PaytenProvider) Complete3DPayment(ctx context.Context, callbackState *p
 
 // GetPaymentStatus retrieves the current status of a payment
 func (p *PaytenProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
-	// Get session token from log
-	sessionToken, err := provider.GetProviderRequestFromLogWithPaymentID("payten", request.PaymentID, "sessionToken")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get session token: %s %w", request.PaymentID, err)
-	}
-
-	// Query transaction
-	transactionResp, err := p.queryTransaction(ctx, sessionToken)
-	if err != nil {
-		return nil, fmt.Errorf("payten: failed to query transaction: %w", err)
-	}
-
-	return p.mapToPaymentResponse(transactionResp, request.PaymentID)
+	// Payten doesn't have a separate status inquiry endpoint for Direct Post
+	// Status would need to be checked through their reporting API
+	return nil, errors.New("payten: payment status inquiry not yet implemented")
 }
 
 // CancelPayment cancels a payment
@@ -384,8 +361,33 @@ func (p *PaytenProvider) validatePaymentRequest(request provider.PaymentRequest,
 	return nil
 }
 
-// processHostedPagePayment handles Hosted Page payment using SESSIONTOKEN
-func (p *PaytenProvider) processHostedPagePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+// processDirectPostNon3D handles Direct Post Non-3D payment
+func (p *PaytenProvider) processDirectPostNon3D(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	// Generate merchant payment ID
+	merchantPaymentID := request.ID
+	if merchantPaymentID == "" {
+		merchantPaymentID = fmt.Sprintf("PAYTEN-%d", time.Now().UnixNano())
+	}
+
+	// Build form data with card information
+	formData := p.buildSaleRequest(request, merchantPaymentID, false)
+
+	// Send request
+	resp, err := p.sendFormRequest(ctx, formData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store request for logging
+	if reqMap, err := provider.StructToMap(formData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("payten", "providerRequest", reqMap, p.logID)
+	}
+
+	return p.mapToPaymentResponse(resp, merchantPaymentID)
+}
+
+// processDirectPost3D handles Direct Post 3D payment
+func (p *PaytenProvider) processDirectPost3D(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	// Generate merchant payment ID
 	merchantPaymentID := request.ID
 	if merchantPaymentID == "" {
@@ -414,40 +416,25 @@ func (p *PaytenProvider) processHostedPagePayment(ctx context.Context, request p
 		return nil, fmt.Errorf("failed to create callback URL: %w", err)
 	}
 
-	// Build SESSIONTOKEN request
-	formData := p.buildSessionTokenRequest(request, merchantPaymentID, gopayCallbackURL)
+	// Build 3D form parameters with card information
+	formParams := p.buildSaleRequest(request, merchantPaymentID, true)
+	formParams["RETURNURL"] = gopayCallbackURL
+	formParams["FAILURL"] = gopayCallbackURL
 
-	// Send multipart form request (no hash needed for SESSIONTOKEN)
-	resp, err := p.sendMultipartRequest(ctx, formData)
+	// Calculate hash for 3D form
+	hash, err := p.calculateHash(formParams)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to calculate 3D hash: %w", err)
 	}
+	formParams["HASH"] = hash
 
-	// Store request for logging
-	if reqMap, err := provider.StructToMap(formData); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("payten", "sessionTokenRequest", reqMap, p.logID)
+	// Generate HTML form
+	html := p.generate3DSecureHTML(formParams)
+
+	// Store form params for logging
+	if reqMap, err := provider.StructToMap(formParams); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("payten", "3dFormParams", reqMap, p.logID)
 	}
-
-	// Check response
-	responseCode, _ := resp["responseCode"].(string)
-	if responseCode != "00" {
-		errorMsg, _ := resp["errorMsg"].(string)
-		return nil, fmt.Errorf("payten: failed to create session token: %s", errorMsg)
-	}
-
-	// Extract session token
-	sessionToken, ok := resp["sessionToken"].(string)
-	if !ok {
-		return nil, errors.New("payten: sessionToken not found in response")
-	}
-
-	// Store session token for later use
-	if reqMap, err := provider.StructToMap(map[string]string{"sessionToken": sessionToken}); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("payten", "sessionToken", reqMap, p.logID)
-	}
-
-	// Generate redirect URL to Payten Hosted Page
-	redirectURL := fmt.Sprintf("%s?sessionToken=%s", p.threeDGatewayURL, sessionToken)
 
 	now := time.Now()
 	return &provider.PaymentResponse{
@@ -456,75 +443,95 @@ func (p *PaytenProvider) processHostedPagePayment(ctx context.Context, request p
 		PaymentID:        merchantPaymentID,
 		Amount:           request.Amount,
 		Currency:         request.Currency,
-		RedirectURL:      redirectURL,
-		Message:          "Redirect to Payten Hosted Page",
+		HTML:             html,
+		Message:          "3D Secure authentication required",
 		SystemTime:       &now,
-		ProviderResponse: resp,
+		ProviderResponse: formParams,
 	}, nil
 }
 
-// queryTransaction queries transaction status using session token
-func (p *PaytenProvider) queryTransaction(ctx context.Context, sessionToken string) (map[string]any, error) {
-	formData := map[string]string{
-		"ACTION":       actionQueryTransaction,
-		"SESSIONTOKEN": sessionToken,
-	}
-
-	resp, err := p.sendMultipartRequest(ctx, formData)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-// buildSessionTokenRequest builds form parameters for SESSIONTOKEN action
-func (p *PaytenProvider) buildSessionTokenRequest(request provider.PaymentRequest, merchantPaymentID, returnURL string) map[string]string {
+// buildSaleRequest builds form parameters for SALE action (Direct Post)
+func (p *PaytenProvider) buildSaleRequest(request provider.PaymentRequest, merchantPaymentID string, is3D bool) map[string]string {
 	// Format amount (with 2 decimal places)
 	amountStr := fmt.Sprintf("%.2f", request.Amount)
 
-	// Build customer ID (use customer email or ID)
-	customerID := request.Customer.ID
-	if customerID == "" {
-		customerID = request.Customer.Email
+	// Get year (last 2 digits)
+	expYear := request.CardInfo.ExpireYear
+	if len(expYear) > 2 {
+		expYear = expYear[len(expYear)-2:]
 	}
-	if customerID == "" {
-		customerID = fmt.Sprintf("CUSTOMER-%d", time.Now().UnixNano())
+
+	// Build customer name
+	customerName := strings.TrimSpace(request.CardInfo.CardHolderName)
+	if customerName == "" {
+		customerName = fmt.Sprintf("%s %s", request.Customer.Name, request.Customer.Surname)
 	}
 
 	params := map[string]string{
-		"ACTION":            actionSession,
-		"MERCHANT":          p.merchant,
-		"MERCHANTUSER":      p.merchantUser,
-		"MERCHANTPASSWORD":  p.merchantPassword,
-		"CUSTOMER":          customerID,
-		"SESSIONTYPE":       sessionTypePayment,
-		"MERCHANTPAYMENTID": merchantPaymentID,
-		"AMOUNT":            amountStr,
-		"CURRENCY":          currencyCodeTRY,
-		"RETURNURL":         returnURL,
-		"EXTRA[SaveCard]":   "NO",
+		"ACTION":                          actionSale,
+		"MERCHANT":                        p.merchant,
+		"MERCHANTUSER":                    p.merchantUser,
+		"MERCHANTPASSWORD":                p.merchantPassword,
+		"MERCHANTPAYMENTID":               merchantPaymentID,
+		"AMOUNT":                          amountStr,
+		"CURRENCY":                        currencyCodeTRY,
+		"CUSTOMEREMAIL":                   request.Customer.Email,
+		"CUSTOMERNAME":                    customerName,
+		"CUSTOMERPHONE":                   request.Customer.PhoneNumber,
+		"PAN":                             request.CardInfo.CardNumber,
+		"CVV2":                            request.CardInfo.CVV,
+		"ECOM_PAYMENT_CARD_EXPDATE_MONTH": request.CardInfo.ExpireMonth,
+		"ECOM_PAYMENT_CARD_EXPDATE_YEAR":  expYear,
+		"LANG":                            "tr",
+		"STORE_TYPE":                      "3D_PAY",
+		"HASHALGORITHM":                   "ver3",
 	}
 
-	// Add customer email if available
-	if request.Customer.Email != "" {
-		params["CUSTOMEREMAIL"] = request.Customer.Email
+	// Add installment if specified
+	if request.InstallmentCount > 1 {
+		params["SETINSTALLMENT"] = fmt.Sprintf("%d", request.InstallmentCount)
 	}
 
-	// Add customer name if available
-	if request.Customer.Name != "" || request.Customer.Surname != "" {
-		customerName := strings.TrimSpace(fmt.Sprintf("%s %s", request.Customer.Name, request.Customer.Surname))
-		if customerName != "" {
-			params["CUSTOMERNAME"] = customerName
-		}
-	}
-
-	// Add customer phone if available
-	if request.Customer.PhoneNumber != "" {
-		params["CUSTOMERPHONE"] = request.Customer.PhoneNumber
+	// Add customer IP if available
+	if request.ClientIP != "" {
+		params["CUSTOMERIPADDRESS"] = request.ClientIP
 	}
 
 	return params
+}
+
+// sendFormRequest sends a form request to Payten API (with hash calculation)
+func (p *PaytenProvider) sendFormRequest(ctx context.Context, formData map[string]string) (map[string]any, error) {
+	// Calculate hash
+	hash, err := p.calculateHash(formData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate hash: %w", err)
+	}
+	formData["HASH"] = hash
+
+	// Send POST request (application/x-www-form-urlencoded for Direct Post)
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: p.baseURL,
+		Body:     formData,
+		Headers: map[string]string{
+			"Content-Type": "application/x-www-form-urlencoded",
+			"Accept":       "application/json",
+		},
+	}
+
+	resp, err := p.httpClient.SendForm(ctx, httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	// Parse JSON response
+	var responseData map[string]any
+	if err := p.httpClient.ParseJSONResponse(resp, &responseData); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return responseData, nil
 }
 
 // buildVoidRequest builds form parameters for VOID action
