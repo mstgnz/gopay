@@ -118,13 +118,12 @@ func (p *ZiraatProvider) Initialize(conf map[string]string) error {
 	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
 
 	p.isProduction = conf["environment"] == "production"
+	p.baseURL = apiSandboxURL
 	if p.isProduction {
 		p.baseURL = apiProductionURL
-		p.threeDGatewayURL = api3DGatewayURL
-	} else {
-		p.baseURL = apiSandboxURL
-		p.threeDGatewayURL = api3DGatewayURL
 	}
+
+	p.threeDGatewayURL = api3DGatewayURL
 
 	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
