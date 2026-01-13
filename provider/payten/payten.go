@@ -387,11 +387,18 @@ func (p *PaytenProvider) processDirectPostNon3D(ctx context.Context, request pro
 }
 
 // processDirectPost3D handles Direct Post 3D payment
+// Payten Direct Post 3D uses sale3d endpoint with SESSIONTOKEN
 func (p *PaytenProvider) processDirectPost3D(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	// Generate merchant payment ID
 	merchantPaymentID := request.ID
 	if merchantPaymentID == "" {
 		merchantPaymentID = fmt.Sprintf("PAYTEN-%d", time.Now().UnixNano())
+	}
+
+	// Step 1: Get SESSIONTOKEN first
+	sessionToken, err := p.getSessionToken(ctx, request, merchantPaymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session token: %w", err)
 	}
 
 	// Create callback state
@@ -416,20 +423,11 @@ func (p *PaytenProvider) processDirectPost3D(ctx context.Context, request provid
 		return nil, fmt.Errorf("failed to create callback URL: %w", err)
 	}
 
-	// Build 3D form parameters with card information
-	formParams := p.buildSaleRequest(request, merchantPaymentID, true)
-	formParams["RETURNURL"] = gopayCallbackURL
-	formParams["FAILURL"] = gopayCallbackURL
+	// Step 2: Build 3D form parameters for sale3d endpoint (with card info)
+	formParams := p.buildSale3DFormParams(request, sessionToken, gopayCallbackURL)
 
-	// Calculate hash for 3D form
-	hash, err := p.calculateHash(formParams)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate 3D hash: %w", err)
-	}
-	formParams["HASH"] = hash
-
-	// Generate HTML form
-	html := p.generate3DSecureHTML(formParams)
+	// Generate HTML form pointing to sale3d endpoint
+	html := p.generateSale3DHTML(formParams, sessionToken)
 
 	// Store form params for logging
 	if reqMap, err := provider.StructToMap(formParams); err == nil {
@@ -450,6 +448,149 @@ func (p *PaytenProvider) processDirectPost3D(ctx context.Context, request provid
 	}, nil
 }
 
+// getSessionToken gets SESSIONTOKEN from Payten API
+func (p *PaytenProvider) getSessionToken(ctx context.Context, request provider.PaymentRequest, merchantPaymentID string) (string, error) {
+	// Create callback state for session token request
+	state := provider.CallbackState{
+		TenantID:         int(request.TenantID),
+		PaymentID:        merchantPaymentID,
+		OriginalCallback: request.CallbackURL,
+		Amount:           request.Amount,
+		Currency:         request.Currency,
+		LogID:            p.logID,
+		Provider:         "payten",
+		Environment:      request.Environment,
+		Timestamp:        time.Now(),
+		ClientIP:         request.ClientIP,
+		Installment:      request.InstallmentCount,
+		SessionID:        request.SessionID,
+	}
+
+	// Create short callback URL
+	gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "payten", state)
+	if err != nil {
+		return "", fmt.Errorf("failed to create callback URL: %w", err)
+	}
+
+	// Build customer ID
+	customerID := request.Customer.ID
+	if customerID == "" {
+		customerID = request.Customer.Email
+	}
+	if customerID == "" {
+		customerID = fmt.Sprintf("CUSTOMER-%d", time.Now().UnixNano())
+	}
+
+	// Format amount
+	amountStr := fmt.Sprintf("%.2f", request.Amount)
+
+	// Build SESSIONTOKEN request
+	formData := map[string]string{
+		"ACTION":            actionSession,
+		"MERCHANT":          p.merchant,
+		"MERCHANTUSER":      p.merchantUser,
+		"MERCHANTPASSWORD":  p.merchantPassword,
+		"CUSTOMER":          customerID,
+		"SESSIONTYPE":       sessionTypePayment,
+		"MERCHANTPAYMENTID": merchantPaymentID,
+		"AMOUNT":            amountStr,
+		"CURRENCY":          currencyCodeTRY,
+		"RETURNURL":         gopayCallbackURL,
+		"EXTRA[SaveCard]":   "NO",
+	}
+
+	// Add customer email if available
+	if request.Customer.Email != "" {
+		formData["CUSTOMEREMAIL"] = request.Customer.Email
+	}
+
+	// Send multipart request
+	resp, err := p.sendMultipartRequest(ctx, formData)
+	if err != nil {
+		return "", err
+	}
+
+	// Check response
+	responseCode, _ := resp["responseCode"].(string)
+	if responseCode != "00" {
+		errorMsg, _ := resp["errorMsg"].(string)
+		return "", fmt.Errorf("payten: failed to create session token: %s", errorMsg)
+	}
+
+	// Extract session token
+	sessionToken, ok := resp["sessionToken"].(string)
+	if !ok {
+		return "", errors.New("payten: sessionToken not found in response")
+	}
+
+	return sessionToken, nil
+}
+
+// buildSale3DFormParams builds form parameters for sale3d endpoint
+func (p *PaytenProvider) buildSale3DFormParams(request provider.PaymentRequest, sessionToken, callbackURL string) map[string]string {
+	// Build customer name
+	customerName := strings.TrimSpace(request.CardInfo.CardHolderName)
+	if customerName == "" {
+		customerName = fmt.Sprintf("%s %s", request.Customer.Name, request.Customer.Surname)
+	}
+
+	params := map[string]string{
+		"cardOwner":   customerName,
+		"pan":         request.CardInfo.CardNumber,
+		"expiryMonth": request.CardInfo.ExpireMonth,
+		"expiryYear":  request.CardInfo.ExpireYear, // Full year for sale3d
+		"cvv":         request.CardInfo.CVV,
+		"cardName":    customerName,
+	}
+
+	// Add installment if specified
+	if request.InstallmentCount > 1 {
+		params["installmentCount"] = fmt.Sprintf("%d", request.InstallmentCount)
+	} else {
+		params["installmentCount"] = ""
+	}
+
+	// Add optional fields
+	params["saveCard"] = ""
+	params["cardCutoffDay"] = ""
+	params["points"] = ""
+
+	return params
+}
+
+// generateSale3DHTML generates HTML form for sale3d endpoint
+func (p *PaytenProvider) generateSale3DHTML(params map[string]string, sessionToken string) string {
+	var formFields strings.Builder
+	for key, value := range params {
+		if value != "" {
+			formFields.WriteString(fmt.Sprintf(`<input type="hidden" name="%s" value="%s" />`, key, value))
+		}
+	}
+
+	// Build sale3d endpoint URL
+	sale3dURL := fmt.Sprintf("%s/post/sale3d/%s", p.baseURL, sessionToken)
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+	<title>3D Secure Authentication</title>
+	<meta charset="utf-8">
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+<body onload="document.threeDForm.submit();">
+	<div style="text-align: center; margin-top: 50px;">
+		<p>Ödeme işleminiz 3D güvenlik sayfasına yönlendiriliyor...</p>
+		<p>Payment is being redirected to 3D secure page...</p>
+	</div>
+	<form name="threeDForm" method="POST" action="%s">
+		%s
+	</form>
+</body>
+</html>`, sale3dURL, formFields.String())
+
+	return html
+}
+
 // buildSaleRequest builds form parameters for SALE action (Direct Post)
 func (p *PaytenProvider) buildSaleRequest(request provider.PaymentRequest, merchantPaymentID string, is3D bool) map[string]string {
 	// Format amount (with 2 decimal places)
@@ -467,6 +608,9 @@ func (p *PaytenProvider) buildSaleRequest(request provider.PaymentRequest, merch
 		customerName = fmt.Sprintf("%s %s", request.Customer.Name, request.Customer.Surname)
 	}
 
+	// For Direct Post 3D, we need to first get SESSIONTOKEN, then create form with sale3d endpoint
+	// But based on user's requirement, we should use Direct Post 3D without SESSIONTOKEN
+	// Using the standard Direct Post 3D format (like Ziraat)
 	params := map[string]string{
 		"ACTION":                          actionSale,
 		"MERCHANT":                        p.merchant,
