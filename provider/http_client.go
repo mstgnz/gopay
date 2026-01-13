@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -99,13 +100,51 @@ func (c *ProviderHTTPClient) sendRequest(ctx context.Context, req *HTTPRequest, 
 	fullURL := c.buildURL(req.Endpoint, req.QueryParams)
 	// Prepare request body
 	var body io.Reader
-	if contentType == "application/x-www-form-urlencoded" {
+	var actualContentType string
+
+	// Check if we should use multipart/form-data (when FormData is set and no explicit content-type)
+	if len(req.FormData) > 0 && contentType == "application/x-www-form-urlencoded" {
+		// Check if any header explicitly requests multipart
+		useMultipart := false
+		if ct, ok := req.Headers["Content-Type"]; ok && strings.Contains(ct, "multipart") {
+			useMultipart = true
+			actualContentType = ct
+		}
+
+		if useMultipart {
+			// Create multipart form
+			var buf bytes.Buffer
+			writer := multipart.NewWriter(&buf)
+
+			for key, value := range req.FormData {
+				if err := writer.WriteField(key, value); err != nil {
+					return nil, fmt.Errorf("failed to write multipart field: %w", err)
+				}
+			}
+
+			if err := writer.Close(); err != nil {
+				return nil, fmt.Errorf("failed to close multipart writer: %w", err)
+			}
+
+			body = &buf
+			actualContentType = writer.FormDataContentType()
+		} else {
+			// Use URL-encoded form
+			formData := url.Values{}
+			for key, value := range req.FormData {
+				formData.Set(key, value)
+			}
+			body = strings.NewReader(formData.Encode())
+			actualContentType = contentType
+		}
+	} else if contentType == "application/x-www-form-urlencoded" {
 		if len(req.FormData) > 0 {
 			formData := url.Values{}
 			for key, value := range req.FormData {
 				formData.Set(key, value)
 			}
 			body = strings.NewReader(formData.Encode())
+			actualContentType = contentType
 		} else if req.Body != nil {
 			// fallback: Body'den form-data üret
 			if formMap, ok := req.Body.(map[string]string); ok {
@@ -114,6 +153,7 @@ func (c *ProviderHTTPClient) sendRequest(ctx context.Context, req *HTTPRequest, 
 					formData.Set(key, value)
 				}
 				body = strings.NewReader(formData.Encode())
+				actualContentType = contentType
 			} else {
 				// Body başka bir tipteyse, string veya []byte olarak kullan
 				if rawBody, ok := req.Body.(string); ok {
@@ -121,9 +161,11 @@ func (c *ProviderHTTPClient) sendRequest(ctx context.Context, req *HTTPRequest, 
 				} else if rawBody, ok := req.Body.([]byte); ok {
 					body = bytes.NewBuffer(rawBody)
 				}
+				actualContentType = contentType
 			}
 		}
 	} else if contentType == "application/json" && req.Body != nil {
+		actualContentType = contentType
 		jsonData, err := json.Marshal(req.Body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal JSON body: %w", err)
@@ -154,7 +196,9 @@ func (c *ProviderHTTPClient) sendRequest(ctx context.Context, req *HTTPRequest, 
 	}
 
 	// Set content type if specified
-	if contentType != "" {
+	if actualContentType != "" {
+		httpReq.Header.Set("Content-Type", actualContentType)
+	} else if contentType != "" {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
 
