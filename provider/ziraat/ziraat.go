@@ -172,6 +172,8 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 
 	// Extract payment status from callback
 	// Note: Ziraat callback does not include HASH, only Response and ErrorCode
+	// Check status parameter first (from okurl/failUrl), then fallback to Response/ErrorCode
+	status, _ := data["status"]
 	responseCode, _ := data["Response"]
 	errorCode, _ := data["ErrorCode"]
 	errorMsg, _ := data["ErrMsg"]
@@ -179,10 +181,17 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 	orderId, _ := data["paymentId"]
 	procReturnCode, _ := data["ProcReturnCode"]
 
-	// Determine success based on Response
-	// Response: "Approved" = success, "Declined" = failure
-	// ProcReturnCode: "00" = success, others = failure
-	success := responseCode == "Approved" && (procReturnCode == "00" || procReturnCode == "")
+	// Determine success based on status parameter (from URL) or Response/ErrorCode
+	var success bool
+	if status != "" {
+		// Status parameter from okurl/failUrl
+		success = status == "SUCCESS"
+	} else {
+		// Fallback to Response and ProcReturnCode
+		// Response: "Approved" = success, "Declined" = failure
+		// ProcReturnCode: "00" = success, others = failure
+		success = responseCode == "Approved" && (procReturnCode == "00" || procReturnCode == "")
+	}
 
 	now := time.Now()
 	response := &provider.PaymentResponse{
@@ -196,22 +205,50 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		RedirectURL:      callbackState.OriginalCallback,
 	}
 
-	if success {
-		response.Status = provider.StatusSuccessful
-		response.Message = "3D payment completed successfully"
-	} else {
-		response.Status = provider.StatusFailed
-		if errorCode != "" {
-			response.ErrorCode = errorCode
-		} else if procReturnCode != "" {
-			response.ErrorCode = procReturnCode
-		} else {
-			response.ErrorCode = responseCode
+	// Set status and message based on status parameter or Response/ErrorCode
+	if status != "" {
+		// Status parameter from URL
+		switch status {
+		case "SUCCESS":
+			response.Status = provider.StatusSuccessful
+			response.Message = "3D payment completed successfully"
+		case "FAILED":
+			response.Status = provider.StatusFailed
+			if errorMsg != "" {
+				response.Message = errorMsg
+			} else {
+				response.Message = "3D payment failed"
+			}
+			if errorCode != "" {
+				response.ErrorCode = errorCode
+			} else if procReturnCode != "" {
+				response.ErrorCode = procReturnCode
+			} else if responseCode != "" {
+				response.ErrorCode = responseCode
+			}
+		default:
+			response.Status = provider.StatusPending
+			response.Message = "3D payment pending"
 		}
-		if errorMsg != "" {
-			response.Message = errorMsg
+	} else {
+		// Fallback to Response/ErrorCode (original Ziraat callback logic)
+		if success {
+			response.Status = provider.StatusSuccessful
+			response.Message = "3D payment completed successfully"
 		} else {
-			response.Message = "3D payment failed"
+			response.Status = provider.StatusFailed
+			if errorCode != "" {
+				response.ErrorCode = errorCode
+			} else if procReturnCode != "" {
+				response.ErrorCode = procReturnCode
+			} else {
+				response.ErrorCode = responseCode
+			}
+			if errorMsg != "" {
+				response.Message = errorMsg
+			} else {
+				response.Message = "3D payment failed"
+			}
 		}
 	}
 
@@ -445,24 +482,15 @@ func (p *ZiraatProvider) process3DPayment(ctx context.Context, request provider.
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate 3D hash: %w", err)
 	}
-	formParams["HASH"] = hash
+	formParams["hash"] = hash
 
 	// Log hash calculation for tracking
-	hashLogData := map[string]any{
-		"formParams":     formParams,
-		"calculatedHash": hash,
-	}
-	if reqMap, err := provider.StructToMap(hashLogData); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("ziraat", "hashCalculation", reqMap, p.logID)
+	if reqMap, err := provider.StructToMap(formParams); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("ziraat", "3DRequestForm", reqMap, p.logID)
 	}
 
 	// Generate HTML form
 	html := p.generate3DSecureHTML(formParams)
-
-	// Store form params for logging
-	if reqMap, err := provider.StructToMap(formParams); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("ziraat", "3dFormParams", reqMap, p.logID)
-	}
 
 	now := time.Now()
 	return &provider.PaymentResponse{
@@ -509,11 +537,16 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, call
 	}
 
 	// Build form parameters (password and storekey should NOT be in form, only used for hash calculation)
+	// okurl and failUrl include status parameter
+	// callbackURL already has ?state=xxx, so we add &status=SUCCESS/FAILED
+	okURL := callbackURL + "&status=SUCCESS"
+	failURL := callbackURL + "&status=FAILED"
+
 	params := map[string]string{
 		"clientid":                        p.username,
 		"amount":                          amountStr,
-		"okurl":                           callbackURL,
-		"failUrl":                         callbackURL,
+		"okurl":                           okURL,
+		"failUrl":                         failURL,
 		"TranType":                        "Auth",
 		"Instalment":                      "",
 		"callbackUrl":                     callbackURL,
@@ -529,6 +562,7 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, call
 		"cardType":                        cardType,
 		"BillToName":                      customerName,
 		"BillToCompany":                   "",
+		"refreshtime":                     "5", // Optional: refresh time in seconds
 	}
 
 	// Add installment if specified (only if > 1)
