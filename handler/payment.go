@@ -283,6 +283,12 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Parse form data (required for POST form submissions from payment gateways)
+	if err := r.ParseForm(); err != nil {
+		response.Error(w, http.StatusBadRequest, "Failed to parse form data: "+err.Error(), nil)
+		return
+	}
+
 	// Combine form and query parameters
 	callbackData := make(map[string]string)
 	// form data

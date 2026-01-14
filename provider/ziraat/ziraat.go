@@ -140,14 +140,10 @@ func (p *ZiraatProvider) GetCommission(ctx context.Context, request provider.Com
 	return provider.CommissionResponse{}, nil
 }
 
-// CreatePayment makes a non-3D payment request
+// CreatePayment makes a payment request (Ziraat always uses 3D Secure)
 func (p *ZiraatProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
-	p.logID = request.LogID
-	if err := p.validatePaymentRequest(request, false); err != nil {
-		return nil, fmt.Errorf("ziraat: invalid payment request: %w", err)
-	}
-
-	return p.processPayment(ctx, request, false)
+	// Ziraat only supports 3D Secure payments, so always use 3D flow
+	return p.Create3DPayment(ctx, request)
 }
 
 // Create3DPayment starts a 3D secure payment process
@@ -174,33 +170,13 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		_ = provider.AddProviderRequestToClientRequest("ziraat", "callbackData", reqMap, p.logID)
 	}
 
-	// Validate hash from callback (HASH should be present in Ziraat callback)
-	receivedHash, ok := data["HASH"]
-	if !ok {
-		// HASH might not be present in callback - log warning but continue
-		// Some payment gateways don't send HASH in callback, only in initial request
+	// HASH must be present in callback data from Ziraat
+	if _, ok := data["HASH"]; !ok {
 		keys := make([]string, 0, len(data))
 		for k := range data {
 			keys = append(keys, k)
 		}
-		// Log warning but don't fail - Ziraat might not send HASH in callback
-		if reqMap, err := provider.StructToMap(map[string]any{
-			"warning":      "HASH not found in callback",
-			"receivedKeys": keys,
-		}); err == nil {
-			_ = provider.AddProviderRequestToClientRequest("ziraat", "hashWarning", reqMap, p.logID)
-		}
-	} else {
-		// Calculate expected hash from callback data
-		expectedHash, err := p.calculate3DHash(data)
-		if err != nil {
-			return nil, fmt.Errorf("ziraat: failed to calculate hash: %w", err)
-		}
-
-		// Verify hash
-		if receivedHash != expectedHash {
-			return nil, fmt.Errorf("ziraat: invalid hash in callback data. Expected: %s, Received: %s", expectedHash, receivedHash)
-		}
+		return nil, fmt.Errorf("ziraat: missing HASH in callback data. Received keys: %v", keys)
 	}
 
 	// Extract payment status from callback
@@ -456,7 +432,7 @@ func (p *ZiraatProvider) process3DPayment(ctx context.Context, request provider.
 		SessionID:        request.SessionID,
 	}
 
-	// Create short callback URL
+	// Create short callback URL (state will be stored in DB)
 	gopayCallbackURL, err := provider.CreateShortCallbackURL(ctx, p.gopayBaseURL, "ziraat", state)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create callback URL: %w", err)
