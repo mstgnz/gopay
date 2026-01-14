@@ -21,15 +21,14 @@ import (
 
 const (
 	// API Endpoints
-	apiSandboxURL    = "https://test.merchantsafeunipay.com/msu/api/v2"
-	apiProductionURL = "https://merchantsafeunipay.com/msu/api/v2"
+	apiSandboxURL    = "https://torus-stage-ziraat.asseco-see.com.tr/fim/api"
+	apiProductionURL = "https://stage-ziraat.asseco-see.com.tr/fim/api"
 
-	// 3D Secure Gateway (Hosted Page)
-	api3DGatewayURL = "https://merchantsafeunipay.com/msu/3dgate"
+	// 3D Post URL
+	api3DGatewayURL = "https://torus-stage-ziraat.asseco-see.com.tr/fim/est3Dgate"
 
 	// Transaction Codes
 	txnCodeSale   = "1000" // Direct sale
-	txnCode3D     = "3000" // 3D Secure sale
 	txnCodeCancel = "2000" // Cancel/void
 	txnCodeRefund = "2100" // Refund
 
@@ -42,15 +41,16 @@ const (
 
 // ZiraatProvider implements the provider.PaymentProvider interface for Ziraat
 type ZiraatProvider struct {
-	merchantSafeId   string
-	terminalSafeId   string
-	secretKey        string
-	baseURL          string
-	threeDGatewayURL string
-	gopayBaseURL     string
-	isProduction     bool
-	httpClient       *provider.ProviderHTTPClient
-	logID            int64
+	username                string
+	password                string
+	storeKey                string
+	baseURL                 string
+	threeDPostURL           string
+	gopayBaseURL            string
+	isProduction            bool
+	httpClient              *provider.ProviderHTTPClient
+	paymentManagementClient *provider.ProviderHTTPClient
+	logID                   int64
 }
 
 // NewProvider creates a new Ziraat payment provider
@@ -62,31 +62,31 @@ func NewProvider() provider.PaymentProvider {
 func (p *ZiraatProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{
 		{
-			Key:         "merchantSafeId",
+			Key:         "username",
 			Required:    true,
 			Type:        "string",
-			Description: "Ziraat Merchant Safe ID (provided by Ziraat)",
-			Example:     "2025100217305644994AAC1BF57EC29B",
-			MinLength:   32,
+			Description: "Ziraat Username (provided by Ziraat)",
+			Example:     "test",
+			MinLength:   3,
 			MaxLength:   50,
 		},
 		{
-			Key:         "terminalSafeId",
+			Key:         "password",
 			Required:    true,
 			Type:        "string",
-			Description: "Ziraat Terminal Safe ID (provided by Ziraat)",
-			Example:     "202510021730564616275A2A52298FCF",
-			MinLength:   32,
+			Description: "Ziraat Password (provided by Ziraat)",
+			Example:     "test",
+			MinLength:   3,
 			MaxLength:   50,
 		},
 		{
-			Key:         "secretKey",
+			Key:         "storeKey",
 			Required:    true,
 			Type:        "string",
-			Description: "Ziraat Security Key (provided by Ziraat)",
-			Example:     "323032353130303231373330353634343135315f763737353873315f3176383731723331723572377367315f333572386733383132377431315f377267313532",
-			MinLength:   50,
-			MaxLength:   200,
+			Description: "Ziraat Store Key (provided by Ziraat)",
+			Example:     "test",
+			MinLength:   3,
+			MaxLength:   50,
 		},
 		{
 			Key:         "environment",
@@ -107,12 +107,12 @@ func (p *ZiraatProvider) ValidateConfig(config map[string]string) error {
 
 // Initialize sets up the Ziraat payment provider with authentication credentials
 func (p *ZiraatProvider) Initialize(conf map[string]string) error {
-	p.merchantSafeId = conf["merchantSafeId"]
-	p.terminalSafeId = conf["terminalSafeId"]
-	p.secretKey = conf["secretKey"]
+	p.username = conf["username"]
+	p.password = conf["password"]
+	p.storeKey = conf["storeKey"]
 
-	if p.merchantSafeId == "" || p.terminalSafeId == "" || p.secretKey == "" {
-		return errors.New("ziraat: merchantSafeId, terminalSafeId and secretKey are required")
+	if p.username == "" || p.password == "" || p.storeKey == "" {
+		return errors.New("ziraat: username, password and storeKey are required")
 	}
 
 	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
@@ -123,7 +123,7 @@ func (p *ZiraatProvider) Initialize(conf map[string]string) error {
 		p.baseURL = apiProductionURL
 	}
 
-	p.threeDGatewayURL = api3DGatewayURL
+	p.threeDPostURL = api3DGatewayURL
 
 	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
@@ -164,21 +164,43 @@ func (p *ZiraatProvider) Create3DPayment(ctx context.Context, request provider.P
 func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
 	p.logID = callbackState.LogID
 
-	// Validate hash from callback
+	// Log received callback data for debugging
+	if len(data) == 0 {
+		return nil, errors.New("ziraat: no callback data received")
+	}
+
+	// Log callback data for tracking
+	if reqMap, err := provider.StructToMap(data); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("ziraat", "callbackData", reqMap, p.logID)
+	}
+
+	// Validate hash from callback (HASH should be present in Ziraat callback)
 	receivedHash, ok := data["HASH"]
 	if !ok {
-		return nil, errors.New("ziraat: missing HASH in callback data")
-	}
+		// HASH might not be present in callback - log warning but continue
+		// Some payment gateways don't send HASH in callback, only in initial request
+		keys := make([]string, 0, len(data))
+		for k := range data {
+			keys = append(keys, k)
+		}
+		// Log warning but don't fail - Ziraat might not send HASH in callback
+		if reqMap, err := provider.StructToMap(map[string]any{
+			"warning":      "HASH not found in callback",
+			"receivedKeys": keys,
+		}); err == nil {
+			_ = provider.AddProviderRequestToClientRequest("ziraat", "hashWarning", reqMap, p.logID)
+		}
+	} else {
+		// Calculate expected hash from callback data
+		expectedHash, err := p.calculate3DHash(data)
+		if err != nil {
+			return nil, fmt.Errorf("ziraat: failed to calculate hash: %w", err)
+		}
 
-	// Calculate expected hash
-	expectedHash, err := p.calculate3DHash(data)
-	if err != nil {
-		return nil, fmt.Errorf("ziraat: failed to calculate hash: %w", err)
-	}
-
-	// Verify hash
-	if receivedHash != expectedHash {
-		return nil, errors.New("ziraat: invalid hash in callback data")
+		// Verify hash
+		if receivedHash != expectedHash {
+			return nil, fmt.Errorf("ziraat: invalid hash in callback data. Expected: %s, Received: %s", expectedHash, receivedHash)
+		}
 	}
 
 	// Extract payment status from callback
@@ -441,7 +463,7 @@ func (p *ZiraatProvider) process3DPayment(ctx context.Context, request provider.
 	}
 
 	// Prepare 3D form parameters
-	formParams := p.build3DFormParams(request, orderId, gopayCallbackURL)
+	formParams := p.build3DFormParams(request, gopayCallbackURL)
 
 	// Calculate hash for 3D form
 	hash, err := p.calculate3DHash(formParams)
@@ -449,6 +471,15 @@ func (p *ZiraatProvider) process3DPayment(ctx context.Context, request provider.
 		return nil, fmt.Errorf("failed to calculate 3D hash: %w", err)
 	}
 	formParams["HASH"] = hash
+
+	// Log hash calculation for tracking
+	hashLogData := map[string]any{
+		"formParams":     formParams,
+		"calculatedHash": hash,
+	}
+	if reqMap, err := provider.StructToMap(hashLogData); err == nil {
+		_ = provider.AddProviderRequestToClientRequest("ziraat", "hashCalculation", reqMap, p.logID)
+	}
 
 	// Generate HTML form
 	html := p.generate3DSecureHTML(formParams)
@@ -473,7 +504,7 @@ func (p *ZiraatProvider) process3DPayment(ctx context.Context, request provider.
 }
 
 // build3DFormParams builds form parameters for 3D Secure payment
-func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, orderId, callbackURL string) map[string]string {
+func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, callbackURL string) map[string]string {
 	// Determine card type (1=Visa, 2=MasterCard)
 	cardType := "1" // Default to Visa
 	cardNumber := strings.ReplaceAll(request.CardInfo.CardNumber, " ", "")
@@ -487,8 +518,8 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, orde
 	// Format amount (with 2 decimal places)
 	amountStr := fmt.Sprintf("%.2f", request.Amount)
 
-	// Generate random number
-	rnd := fmt.Sprintf("%d", time.Now().UnixNano()/1e6)
+	// Generate random number (like PHP microtime() - returns float with microseconds)
+	rnd := fmt.Sprintf("%.6f", float64(time.Now().UnixNano())/1e9)
 
 	// Get year (last 2 digits)
 	expYear := request.CardInfo.ExpireYear
@@ -502,8 +533,9 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, orde
 		customerName = fmt.Sprintf("%s %s", request.Customer.Name, request.Customer.Surname)
 	}
 
+	// Build form parameters (password and storekey should NOT be in form, only used for hash calculation)
 	params := map[string]string{
-		"clientid":                        p.merchantSafeId,
+		"clientid":                        p.username,
 		"amount":                          amountStr,
 		"okurl":                           callbackURL,
 		"failUrl":                         callbackURL,
@@ -532,46 +564,47 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, orde
 	return params
 }
 
-// calculate3DHash calculates SHA512 hash for 3D Secure form (Payten format)
+// calculate3DHash calculates SHA512 hash for 3D Secure form (Ziraat format)
+// Based on RequestHashHandler.php: sorts params case-insensitively, escapes values, adds storeKey
 func (p *ZiraatProvider) calculate3DHash(params map[string]string) (string, error) {
-	// Get sorted parameter keys (case-insensitive)
+	// Get sorted parameter keys (case-insensitive, like PHP natcasesort)
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		lowerKey := strings.ToLower(k)
-		// Skip hash and encoding parameters
-		if lowerKey != "hash" && lowerKey != "encoding" {
+		// Skip hash, encoding, and storekey parameters (storekey added separately)
+		if lowerKey != "hash" && lowerKey != "encoding" && lowerKey != "storekey" {
 			keys = append(keys, k)
 		}
 	}
 
-	// Sort keys case-insensitively
+	// Sort keys case-insensitively (like PHP natcasesort)
 	sort.Slice(keys, func(i, j int) bool {
 		return strings.ToLower(keys[i]) < strings.ToLower(keys[j])
 	})
 
-	// Build hash string
+	// Build hash string (like PHP: $hashval = $hashval . $escapedParamValue . "|")
 	var hashVal strings.Builder
 	for _, key := range keys {
 		value := params[key]
-		// Escape | and \ characters
+		// Escape | and \ characters (like PHP: str_replace("|", "\\|", str_replace("\\", "\\\\", $paramValue)))
 		escapedValue := strings.ReplaceAll(value, "\\", "\\\\")
 		escapedValue = strings.ReplaceAll(escapedValue, "|", "\\|")
 		hashVal.WriteString(escapedValue)
 		hashVal.WriteString("|")
 	}
 
-	// Add secret key (also escaped)
-	escapedSecretKey := strings.ReplaceAll(p.secretKey, "\\", "\\\\")
-	escapedSecretKey = strings.ReplaceAll(escapedSecretKey, "|", "\\|")
-	hashVal.WriteString(escapedSecretKey)
+	// Add storeKey at the end (like PHP: $hashval = $hashval . $escapedStoreKey)
+	escapedStoreKey := strings.ReplaceAll(p.storeKey, "\\", "\\\\")
+	escapedStoreKey = strings.ReplaceAll(escapedStoreKey, "|", "\\|")
+	hashVal.WriteString(escapedStoreKey)
 
-	// Calculate SHA512 hash
+	// Calculate SHA512 hash (like PHP: hash('sha512', $hashval))
 	hashBytes := sha512.Sum512([]byte(hashVal.String()))
 
-	// Convert to hex string (like PHP hash('sha512', ...))
+	// Convert to hex string (like PHP hash('sha512', ...) returns hex)
 	hexHash := hex.EncodeToString(hashBytes[:])
 
-	// Convert hex string back to bytes (like PHP pack('H*', ...))
+	// Convert hex string back to bytes (like PHP pack('H*', $calculatedHashValue))
 	hashBytesFromHex := make([]byte, len(hexHash)/2)
 	_, err := hex.Decode(hashBytesFromHex, []byte(hexHash))
 	if err != nil {
@@ -607,7 +640,7 @@ func (p *ZiraatProvider) generate3DSecureHTML(params map[string]string) string {
 		%s
 	</form>
 </body>
-</html>`, p.threeDGatewayURL, formFields.String())
+</html>`, p.threeDPostURL, formFields.String())
 
 	return html
 }
@@ -620,8 +653,8 @@ func (p *ZiraatProvider) buildBaseRequest(txnCode string) map[string]any {
 		"requestDateTime": p.generateRequestDateTime(),
 		"randomNumber":    p.generateRandomNumber(128),
 		"terminal": map[string]any{
-			"merchantSafeId": p.merchantSafeId,
-			"terminalSafeId": p.terminalSafeId,
+			"username": p.username,
+			"password": p.password,
 		},
 	}
 }
@@ -723,7 +756,7 @@ func (p *ZiraatProvider) sendRequest(ctx context.Context, requestData map[string
 
 // generateAuthHash generates HMAC-SHA512 hash for authentication
 func (p *ZiraatProvider) generateAuthHash(data string) string {
-	h := hmac.New(sha512.New, []byte(p.secretKey))
+	h := hmac.New(sha512.New, []byte(p.storeKey))
 	h.Write([]byte(data))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }

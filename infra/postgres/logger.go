@@ -444,7 +444,7 @@ func sanitizeMap(data map[string]any) map[string]any {
 
 	// Define sensitive field patterns
 	sensitiveFields := []string{
-		"cardnumber", "card_number", "credit",
+		"cardnumber", "card_number", "credit", "pan",
 	}
 
 	for key, value := range data {
