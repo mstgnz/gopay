@@ -170,26 +170,19 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		_ = provider.AddProviderRequestToClientRequest("ziraat", "callbackData", reqMap, p.logID)
 	}
 
-	// HASH must be present in callback data from Ziraat
-	if _, ok := data["HASH"]; !ok {
-		keys := make([]string, 0, len(data))
-		for k := range data {
-			keys = append(keys, k)
-		}
-		return nil, fmt.Errorf("ziraat: missing HASH in callback data. Received keys: %v", keys)
-	}
-
 	// Extract payment status from callback
-	mdStatus, _ := data["mdStatus"]
+	// Note: Ziraat callback does not include HASH, only Response and ErrorCode
 	responseCode, _ := data["Response"]
+	errorCode, _ := data["ErrorCode"]
 	errorMsg, _ := data["ErrMsg"]
-	transactionId, _ := data["TransId"]
-	orderId, _ := data["oid"]
+	transactionId, _ := data["traceId"]
+	orderId, _ := data["paymentId"]
+	procReturnCode, _ := data["ProcReturnCode"]
 
-	// Determine success based on mdStatus and Response
-	// mdStatus: 1,2,3,4 = success, others = failure
-	// Response: "Approved" = success
-	success := (mdStatus == "1" || mdStatus == "2" || mdStatus == "3" || mdStatus == "4") && responseCode == "Approved"
+	// Determine success based on Response
+	// Response: "Approved" = success, "Declined" = failure
+	// ProcReturnCode: "00" = success, others = failure
+	success := responseCode == "Approved" && (procReturnCode == "00" || procReturnCode == "")
 
 	now := time.Now()
 	response := &provider.PaymentResponse{
@@ -208,7 +201,13 @@ func (p *ZiraatProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		response.Message = "3D payment completed successfully"
 	} else {
 		response.Status = provider.StatusFailed
-		response.ErrorCode = responseCode
+		if errorCode != "" {
+			response.ErrorCode = errorCode
+		} else if procReturnCode != "" {
+			response.ErrorCode = procReturnCode
+		} else {
+			response.ErrorCode = responseCode
+		}
 		if errorMsg != "" {
 			response.Message = errorMsg
 		} else {
@@ -532,7 +531,7 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, call
 		"BillToCompany":                   "",
 	}
 
-	// Add installment if specified
+	// Add installment if specified (only if > 1)
 	if request.InstallmentCount > 1 {
 		params["Instalment"] = strconv.Itoa(request.InstallmentCount)
 	}
@@ -541,9 +540,10 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, call
 }
 
 // calculate3DHash calculates SHA512 hash for 3D Secure form (Ziraat format)
-// Based on RequestHashHandler.php: sorts params case-insensitively, escapes values, adds storeKey
+// Based on GenericVer3RequestHashHandler.jsp: sorts params case-insensitively (toUpperCase), escapes values, adds storeKey
+// JSP: MessageDigest.getInstance("SHA-512") -> Base64.encodeBase64(digest) (no hex conversion)
 func (p *ZiraatProvider) calculate3DHash(params map[string]string) (string, error) {
-	// Get sorted parameter keys (case-insensitive, like PHP natcasesort)
+	// Get sorted parameter keys (case-insensitive, like JSP TreeMap with toUpperCase comparator)
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		lowerKey := strings.ToLower(k)
@@ -553,42 +553,33 @@ func (p *ZiraatProvider) calculate3DHash(params map[string]string) (string, erro
 		}
 	}
 
-	// Sort keys case-insensitively (like PHP natcasesort)
+	// Sort keys case-insensitively using toUpperCase comparison (like JSP: str1.toUpperCase().compareTo(str2.toUpperCase()))
 	sort.Slice(keys, func(i, j int) bool {
-		return strings.ToLower(keys[i]) < strings.ToLower(keys[j])
+		return strings.ToUpper(keys[i]) < strings.ToUpper(keys[j])
 	})
 
-	// Build hash string (like PHP: $hashval = $hashval . $escapedParamValue . "|")
+	// Build hash string (like JSP: hashval3 += escapedValue + "|")
 	var hashVal strings.Builder
 	for _, key := range keys {
 		value := params[key]
-		// Escape | and \ characters (like PHP: str_replace("|", "\\|", str_replace("\\", "\\\\", $paramValue)))
+		// Escape | and \ characters (like JSP: replace("\\", "\\\\").replace("|", "\\|"))
 		escapedValue := strings.ReplaceAll(value, "\\", "\\\\")
 		escapedValue = strings.ReplaceAll(escapedValue, "|", "\\|")
 		hashVal.WriteString(escapedValue)
 		hashVal.WriteString("|")
 	}
 
-	// Add storeKey at the end (like PHP: $hashval = $hashval . $escapedStoreKey)
+	// Add storeKey at the end (like JSP: hashval3 += escapedStoreKey, no "|" after storeKey)
 	escapedStoreKey := strings.ReplaceAll(p.storeKey, "\\", "\\\\")
 	escapedStoreKey = strings.ReplaceAll(escapedStoreKey, "|", "\\|")
 	hashVal.WriteString(escapedStoreKey)
 
-	// Calculate SHA512 hash (like PHP: hash('sha512', $hashval))
+	// Calculate SHA512 hash (like JSP: MessageDigest.getInstance("SHA-512"))
 	hashBytes := sha512.Sum512([]byte(hashVal.String()))
 
-	// Convert to hex string (like PHP hash('sha512', ...) returns hex)
-	hexHash := hex.EncodeToString(hashBytes[:])
-
-	// Convert hex string back to bytes (like PHP pack('H*', $calculatedHashValue))
-	hashBytesFromHex := make([]byte, len(hexHash)/2)
-	_, err := hex.Decode(hashBytesFromHex, []byte(hexHash))
-	if err != nil {
-		return "", fmt.Errorf("failed to decode hex hash: %w", err)
-	}
-
-	// Base64 encode (like PHP base64_encode(...))
-	hashBase64 := base64.StdEncoding.EncodeToString(hashBytesFromHex)
+	// Base64 encode directly (like JSP: Base64.encodeBase64(messageDigest.digest()))
+	// JSP does NOT convert to hex first, it directly Base64 encodes the digest bytes
+	hashBase64 := base64.StdEncoding.EncodeToString(hashBytes[:])
 
 	return hashBase64, nil
 }
