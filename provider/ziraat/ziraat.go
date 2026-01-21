@@ -22,7 +22,7 @@ import (
 const (
 	// API Endpoints
 	apiSandboxURL    = "https://torus-stage-ziraat.asseco-see.com.tr/fim/api"
-	apiProductionURL = "https://stage-ziraat.asseco-see.com.tr/fim/api"
+	apiProductionURL = "https://sanalpos2.ziraatbank.com.tr/fim/api"
 
 	// 3D Post URL
 	api3DSandboxURL    = "https://torus-stage-ziraat.asseco-see.com.tr/fim/est3Dgate"
