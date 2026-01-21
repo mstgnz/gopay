@@ -141,8 +141,8 @@ func TestZiraatProvider_Initialize(t *testing.T) {
 				}
 
 				// Verify 3D gateway URL
-				if p.threeDPostURL != api3DGatewayURL {
-					t.Errorf("Expected threeDPostURL '%s', got '%s'", api3DGatewayURL, p.threeDPostURL)
+				if p.threeDPostURL != api3DSandboxURL {
+					t.Errorf("Expected threeDPostURL '%s', got '%s'", api3DSandboxURL, p.threeDPostURL)
 				}
 			}
 		})

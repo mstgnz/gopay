@@ -25,7 +25,8 @@ const (
 	apiProductionURL = "https://stage-ziraat.asseco-see.com.tr/fim/api"
 
 	// 3D Post URL
-	api3DGatewayURL = "https://torus-stage-ziraat.asseco-see.com.tr/fim/est3Dgate"
+	api3DSandboxURL    = "https://torus-stage-ziraat.asseco-see.com.tr/fim/est3Dgate"
+	api3DProductionURL = "https://sanalpos2.ziraatbank.com.tr/fim/est3Dgate"
 
 	// Transaction Codes
 	txnCodeSale   = "1000" // Direct sale
@@ -123,7 +124,10 @@ func (p *ZiraatProvider) Initialize(conf map[string]string) error {
 		p.baseURL = apiProductionURL
 	}
 
-	p.threeDPostURL = api3DGatewayURL
+	p.threeDPostURL = api3DSandboxURL
+	if p.isProduction {
+		p.threeDPostURL = api3DProductionURL
+	}
 
 	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
 
