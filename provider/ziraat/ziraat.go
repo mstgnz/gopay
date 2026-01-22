@@ -556,7 +556,7 @@ func (p *ZiraatProvider) build3DFormParams(request provider.PaymentRequest, call
 		"callbackUrl":                     callbackURL,
 		"currency":                        "949", // TRY
 		"rnd":                             rnd,
-		"storetype":                       "3D_PAY",
+		"storetype":                       "3D_PAY_HOSTING",
 		"hashAlgorithm":                   "ver3",
 		"lang":                            "tr",
 		"pan":                             request.CardInfo.CardNumber,
