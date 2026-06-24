@@ -353,32 +353,23 @@ func StructToMap(v any) (map[string]any, error) {
 }
 
 func AddProviderRequestToClientRequest(providerName, keyName string, providerRequest map[string]any, logID int64) error {
-	var requestJSON []byte
-	err := config.App().DB.QueryRow(fmt.Sprintf("SELECT request FROM %s WHERE id = $1", providerName), logID).Scan(&requestJSON)
-	if err != nil {
-		return fmt.Errorf("failed to get log request: %w", err)
-	}
-
-	// 2. JSON'dan Go map'e çevir
-	var logRequest map[string]any
-	if err := json.Unmarshal(requestJSON, &logRequest); err != nil {
-		return fmt.Errorf("failed to unmarshal log request: %w", err)
-	}
-
 	providerRequestMap := postgres.SanitizeForLog(providerRequest)
 	providerRequestBytes, err := json.Marshal(providerRequestMap)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sanitized provider request: %w", err)
 	}
-	logRequest[keyName] = json.RawMessage(providerRequestBytes)
 
-	updatedRequestBytes, err := json.Marshal(logRequest)
-	if err != nil {
-		return fmt.Errorf("failed to marshal updated request: %w", err)
-	}
-
-	_, err = config.App().DB.Exec(fmt.Sprintf("UPDATE %s SET request = $1 WHERE id = $2", providerName), updatedRequestBytes, logID)
-	if err != nil {
+	// Single atomic statement instead of SELECT + unmarshal + marshal + UPDATE. The old
+	// read-modify-write pattern lost updates whenever two appends ran against the same log row
+	// at the same time: with 3 API instances and several provider calls sharing one logID
+	// (getThreeDSession, provisionAll, inquire ... all writing into the same row), two callers
+	// could read the same snapshot and the last UPDATE would drop the other's key. jsonb_set
+	// under PostgreSQL row-level locking serializes the writes, so each key survives.
+	query := fmt.Sprintf(
+		`UPDATE %s SET request = jsonb_set(COALESCE(request, '{}'::jsonb), ARRAY[$1], $2::jsonb, true) WHERE id = $3`,
+		providerName,
+	)
+	if _, err := config.App().DB.Exec(query, keyName, string(providerRequestBytes), logID); err != nil {
 		return fmt.Errorf("failed to update log: %w", err)
 	}
 

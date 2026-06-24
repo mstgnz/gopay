@@ -341,6 +341,11 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
+	// Bind the log row so the inquire request/response are persisted. Without this p.logID stays
+	// 0 and AddProviderRequestToClientRequest updates no row, leaving standalone status queries
+	// with only the bare paymentId logged (no visibility into what was sent to Paycell).
+	p.logID = request.LogID
+
 	// Get the reference number from the actual provision request specifically. A generic
 	// recursive lookup returns an arbitrary "referenceNumber" among several stored in the log
 	// (both providerProvisionRequest and providerInquireRequest carry one), which makes the
