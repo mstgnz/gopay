@@ -341,8 +341,11 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	// Get reference number from log
-	originalReferenceNumber, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "referenceNumber")
+	// Get the reference number from the actual provision request specifically. A generic
+	// recursive lookup returns an arbitrary "referenceNumber" among several stored in the log
+	// (both providerProvisionRequest and providerInquireRequest carry one), which makes the
+	// inquire query target the wrong order and Paycell returns "Order is not found" (2013).
+	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}

@@ -419,6 +419,36 @@ func GetProviderRequestFromLogWithPaymentID(providerName string, paymentID strin
 	return result, nil
 }
 
+// GetProviderNestedRequestValueFromLog retrieves a value from a specific nested object
+// (parentKey -> childKey) of the request log for a given paymentID. Unlike the recursive
+// GetProviderRequestFromLogWithPaymentID, this targets one exact JSON path, so a key name
+// that repeats across sub-objects (e.g. referenceNumber exists in both providerProvisionRequest
+// and providerInquireRequest) cannot shadow the intended value. When several log rows share the
+// paymentID, the most recent row that actually contains the path wins.
+func GetProviderNestedRequestValueFromLog(providerName, paymentID, parentKey, childKey string) (string, error) {
+	query := fmt.Sprintf(`
+		SELECT request -> $2 ->> $3
+		FROM %s
+		WHERE payment_id = $1 AND request -> $2 ->> $3 IS NOT NULL
+		ORDER BY id DESC
+		LIMIT 1;
+	`, providerName)
+
+	var result sql.NullString
+	err := config.App().DB.QueryRow(query, paymentID, parentKey, childKey).Scan(&result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("nested key %s.%s not found", parentKey, childKey)
+		}
+		return "", fmt.Errorf("failed to find nested key in JSON: %w", err)
+	}
+	if !result.Valid {
+		return "", fmt.Errorf("nested key %s.%s not found", parentKey, childKey)
+	}
+
+	return result.String, nil
+}
+
 func GetProviderRequestFromLogWithLogID(providerName string, logID int64, key string) (string, error) {
 	query := fmt.Sprintf(`
 		WITH RECURSIVE json_tree AS (
