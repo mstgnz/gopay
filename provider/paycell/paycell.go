@@ -62,8 +62,10 @@ const (
 	statusProcessing = "PROCESSING"
 
 	// Paycell Response Codes
-	responseCodeSuccess = "0"
-	responseCodeError   = "1"
+	responseCodeSuccess       = "0"
+	responseCodeError         = "1"
+	responseCodeOrderNotFound = "2013" // status query before the order is queryable (transient)
+	responseCodeProcessing    = "3023" // transaction is still being processed (transient)
 
 	// Test constants from official PHP implementation
 	testPrefix          = "666"
@@ -441,32 +443,48 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		ProviderResponse: inquireResp,
 	}
 
-	// Set status and message based on inquire result
+	// Determine status from the provision list, not the top-level inquireResp.Status.
+	// Paycell returns inquireResp.Status empty on inquireAll, so the old switch fell through
+	// to "pending" and reported a declined SALE (e.g. 4001 "Kart Limiti yetersiz") as pending
+	// with message "Success" (the latter copied from the header, which only signals that the
+	// inquiry call itself succeeded). The authoritative payment result lives in
+	// provisionList[].responseCode.
 	if response.Success {
-		// Map PayCell status to provider status
-		switch inquireResp.Status {
-		case "SALE":
-			response.Status = provider.StatusSuccessful
-		case "PENDING":
-			response.Status = provider.StatusPending
-		case "REFUNDED":
-			response.Status = provider.StatusSuccessful
-		case "CANCELLED":
-			response.Status = provider.StatusCancelled
-		default:
-			response.Status = provider.StatusPending
-		}
-		response.Message = inquireResp.ResponseHeader.ResponseDescription
-
-		// Get amount from provision list if available
 		if len(inquireResp.ProvisionList) > 0 {
-			provision := inquireResp.ProvisionList[0]
-			if amountFloat, err := strconv.ParseFloat(provision.Amount, 64); err == nil {
-				response.Amount = amountFloat / 100 // Convert from kuruş to TRY
+			// Use the most recent provision (last element) as the current state.
+			provision := inquireResp.ProvisionList[len(inquireResp.ProvisionList)-1]
+			switch provision.ResponseCode {
+			case responseCodeSuccess:
+				response.Status = provider.StatusSuccessful
+				response.Message = provision.ResponseDescription
+				if amountFloat, err := strconv.ParseFloat(provision.Amount, 64); err == nil {
+					response.Amount = amountFloat / 100 // Convert from kuruş to TRY
+				}
+			case responseCodeProcessing:
+				// 3023 — transaction is still being processed by the bank.
+				response.Status = provider.StatusPending
+				response.Message = provision.ResponseDescription
+			default:
+				// Any other provision code is a decline/failure (4001 insufficient limit, etc.).
+				response.Status = provider.StatusFailed
+				response.Message = provision.ResponseDescription
+				response.ErrorCode = provision.ResponseCode
 			}
+		} else {
+			// Inquiry succeeded but no provision exists yet — still in progress.
+			response.Status = provider.StatusPending
+			response.Message = inquireResp.ResponseHeader.ResponseDescription
 		}
 	} else {
-		response.Status = provider.StatusFailed
+		// Header-level non-success. 2013 (order not queryable yet) and 3023 (processing) are
+		// transient: the order may not be queryable immediately after provisioning, so keep it
+		// pending instead of prematurely marking a real payment failed.
+		switch inquireResp.ResponseHeader.ResponseCode {
+		case responseCodeOrderNotFound, responseCodeProcessing:
+			response.Status = provider.StatusPending
+		default:
+			response.Status = provider.StatusFailed
+		}
 		response.Message = inquireResp.ResponseHeader.ResponseDescription
 		response.ErrorCode = inquireResp.ResponseHeader.ResponseCode
 	}
