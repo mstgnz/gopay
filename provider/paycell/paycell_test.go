@@ -596,6 +596,10 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 		{"test environment", "test", 6},
 	}
 
+	// eulaId is optional (only needed for card registration); every other field is required.
+	expectedFields := []string{"username", "password", "merchantId", "secureCode", "eulaId", "environment"}
+	optionalFields := map[string]bool{"eulaId": true}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := provider.GetRequiredConfig(tt.environment)
@@ -603,13 +607,11 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
 			}
 
-			// Check required fields
-			expectedFields := []string{"username", "password", "merchantId", "terminalId", "secureCode", "environment"}
 			for i, field := range result {
 				if field.Key != expectedFields[i] {
 					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
 				}
-				if !field.Required {
+				if !field.Required && !optionalFields[field.Key] {
 					t.Errorf("Field %s should be required", field.Key)
 				}
 				if field.Type != "string" {

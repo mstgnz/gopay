@@ -122,6 +122,7 @@ type PaycellProvider struct {
 	password                string
 	merchantID              string
 	secureCode              string // Paycell secure code for hash generation
+	eulaID                  string // Paycell EULA (terms) id, required by registerCard
 	baseURL                 string
 	paymentManagementURL    string // For 3D secure operations
 	gopayBaseURL            string // GoPay's own base URL for callbacks
@@ -178,6 +179,14 @@ func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.Confi
 			MaxLength:   100,
 		},
 		{
+			Key:         "eulaId",
+			Required:    false,
+			Type:        "string",
+			Description: "Paycell EULA (terms) id, required only for card registration (provided by Paycell)",
+			Example:     "17",
+			MaxLength:   20,
+		},
+		{
 			Key:         "environment",
 			Required:    true,
 			Type:        "string",
@@ -200,6 +209,7 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.password = conf["password"]
 	p.merchantID = conf["merchantId"]
 	p.secureCode = conf["secureCode"]
+	p.eulaID = conf["eulaId"] // optional, only needed for card registration
 
 	if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
 		return errors.New("paycell: username, password, merchantId and secureCode are required")
@@ -255,9 +265,17 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 	p.logID = callbackState.LogID
 	p.clientIP = callbackState.ClientIP
 
-	cardToken, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "cardToken")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get card token: %s %w", callbackState.PaymentID, err)
+	// Detect saved-card 3D flow: if a saved cardId was logged for this 3D session, complete with
+	// the saved cardId (no one-off card token). Token flow below is unchanged when no cardId.
+	savedCardID, _ := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "savedCardId")
+
+	var cardToken string
+	var err error
+	if savedCardID == "" {
+		cardToken, err = provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "cardToken")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get card token: %s %w", callbackState.PaymentID, err)
+		}
 	}
 
 	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "msisdn")
@@ -307,16 +325,27 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 
 	if response.Success {
 
-		// ödemeyi tamamla
-		request := provider.PaymentRequest{
-			Amount:   callbackState.Amount,
-			Currency: callbackState.Currency,
-			Customer: provider.Customer{
-				PhoneNumber: msisdn,
-			},
-			InstallmentCount: callbackState.Installment,
+		if savedCardID != "" {
+			// Saved-card 3D completion: provision with cardId (no cardToken).
+			_, err = p.provisionAllWithCardId(ctx, provider.SavedCardPaymentRequest{
+				Amount:           callbackState.Amount,
+				Currency:         callbackState.Currency,
+				MSISDN:           msisdn,
+				ProviderCardID:   savedCardID,
+				InstallmentCount: callbackState.Installment,
+			}, callbackState.PaymentID)
+		} else {
+			// ödemeyi tamamla
+			request := provider.PaymentRequest{
+				Amount:   callbackState.Amount,
+				Currency: callbackState.Currency,
+				Customer: provider.Customer{
+					PhoneNumber: msisdn,
+				},
+				InstallmentCount: callbackState.Installment,
+			}
+			_, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
 		}
-		_, err = p.provisionAll(ctx, request, cardToken, callbackState.PaymentID)
 		if err != nil {
 			return nil, err
 		}

@@ -387,3 +387,31 @@ ALTER TABLE "public"."payu" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."t
 
 -- Indices
 CREATE INDEX payu_tenant_id ON public.payu USING btree (tenant_id);
+
+-- Sequence and defined type
+CREATE SEQUENCE IF NOT EXISTS saved_cards_id_seq;
+
+-- Table Definition
+CREATE TABLE "public"."saved_cards" (
+    "id" int4 NOT NULL DEFAULT nextval('saved_cards_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "provider_id" int2 NOT NULL,
+    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['sandbox'::character varying, 'production'::character varying])::text[])),
+    "msisdn" varchar(20) NOT NULL,
+    "provider_card_id" varchar(100) NOT NULL,
+    "masked_card_no" varchar(20),
+    "card_brand" varchar(30),
+    "card_type" varchar(30),
+    "alias" varchar(100),
+    "is_active" boolean NOT NULL DEFAULT true,
+    "created_at" timestamp DEFAULT now(),
+    "updated_at" timestamp,
+    PRIMARY KEY ("id")
+);
+
+-- Indices
+CREATE UNIQUE INDEX saved_cards_active_uniq ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn, provider_card_id) WHERE is_active;
+CREATE INDEX saved_cards_lookup ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn);
+CREATE INDEX saved_cards_tenant_id ON public.saved_cards USING btree (tenant_id);
+ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");

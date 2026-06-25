@@ -1344,6 +1344,361 @@ paths:
         '500':
           description: Internal server error
 
+  # Card Storage (Saved Cards) - currently supported only by paycell
+  /v1/payments/{provider}/cards/otp/send:
+    post:
+      summary: Send OTP SMS (card listing / PM_LIST flow)
+      description: |
+        Sends an OTP SMS to the customer's MSISDN and returns a `referenceNumber` that must be
+        reused in the OTP validate and card list calls. Card storage is currently supported
+        only by `paycell`.
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          description: Environment (defaults to sandbox)
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [msisdn]
+              properties:
+                msisdn:
+                  type: string
+                  description: Customer phone number (10 digits, country code stripped automatically)
+                  example: "5551234567"
+      responses:
+        '200':
+          description: OTP sent. `data.referenceNumber` is required for validate/list calls.
+        '400':
+          description: Provider does not support card storage, or invalid request
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/cards/otp/validate:
+    post:
+      summary: Validate OTP for card listing
+      description: |
+        Validates the OTP the customer received for the `referenceNumber` returned by the
+        OTP send call. Use the same `referenceNumber` here and in the card list call.
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [msisdn, referenceNumber, otp]
+              properties:
+                msisdn:
+                  type: string
+                  example: "5551234567"
+                referenceNumber:
+                  type: string
+                  description: referenceNumber returned by the OTP send call
+                otp:
+                  type: string
+                  example: "123456"
+                token:
+                  type: string
+                  description: Optional token returned by the OTP send call
+      responses:
+        '200':
+          description: OTP validated
+        '400':
+          description: Provider does not support card storage, or invalid OTP
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/cards/register:
+    post:
+      summary: Register (save) a card
+      description: |
+        Tokenizes the card with the provider and saves it for later charging. Returns the saved
+        card record with masked metadata and the GoPay card id (`data.card.id`) used to charge it
+        later. Raw card data is never stored.
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [msisdn, card]
+              properties:
+                msisdn:
+                  type: string
+                  example: "5551234567"
+                card:
+                  type: object
+                  required: [cardNumber, expireMonth, expireYear, cvv]
+                  properties:
+                    cardHolderName:
+                      type: string
+                      example: "John Doe"
+                    cardNumber:
+                      type: string
+                      example: "4355084355084358"
+                    expireMonth:
+                      type: string
+                      example: "12"
+                    expireYear:
+                      type: string
+                      example: "2030"
+                    cvv:
+                      type: string
+                      example: "000"
+                alias:
+                  type: string
+                  description: Optional label for the card
+                  example: "My Visa"
+      responses:
+        '200':
+          description: |
+            Card registered. `data.card` is the saved record (id, maskedCardNo, cardBrand,
+            providerCardId). Use `data.card.id` to charge this card later.
+        '400':
+          description: Provider does not support card storage, or registration failed
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/cards:
+    get:
+      summary: List saved cards for a customer
+      description: |
+        Returns the saved cards GoPay holds for the given MSISDN, scoped to the authenticated
+        tenant. Use a card's `id` to charge it.
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: msisdn
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Customer phone number
+          example: "5551234567"
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          example: sandbox
+      responses:
+        '200':
+          description: List of saved cards (masked) in `data`
+        '400':
+          description: Missing msisdn
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/cards/{cardId}:
+    delete:
+      summary: Delete a saved card
+      description: |
+        Removes the card from the provider wallet and soft-deletes the GoPay record. `cardId` is
+        the GoPay saved-card id returned by register/list.
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: GoPay saved-card id
+          example: 42
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          example: sandbox
+      responses:
+        '200':
+          description: Card deleted
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '404':
+          description: Saved card not found
+        '500':
+          description: Internal server error
+
+  /v1/payments/{provider}/cards/{cardId}/pay:
+    post:
+      summary: Charge a saved card
+      description: |
+        Charges a previously saved card identified by its GoPay `cardId` (no card data needed).
+        Set `use3D: true` to run a 3D secure flow; the response then contains the 3D HTML/redirect
+        and completion happens via the standard callback. Set `use3D: false` for a direct charge
+        (the auto top-up path).
+      tags: [Card Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [paycell]
+          description: Payment provider name
+          example: paycell
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: GoPay saved-card id (from register/list)
+          example: 42
+        - name: environment
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sandbox, production]
+            default: sandbox
+          example: sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency]
+              properties:
+                msisdn:
+                  type: string
+                  description: Optional; if set it must match the saved card's MSISDN
+                  example: "5551234567"
+                amount:
+                  type: number
+                  format: float
+                  example: 50.00
+                currency:
+                  type: string
+                  example: "TRY"
+                installmentCount:
+                  type: integer
+                  example: 1
+                use3D:
+                  type: boolean
+                  description: Run 3D secure flow when true
+                  example: false
+                callbackUrl:
+                  type: string
+                  description: Required when use3D is true
+                conversationId:
+                  type: string
+                sessionId:
+                  type: string
+      responses:
+        '200':
+          description: Payment processed (for 3D, `data.html` contains the redirect form)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Provider does not support card storage, or invalid request
+        '401':
+          description: Unauthorized - Invalid JWT token
+        '404':
+          description: Saved card not found
+        '500':
+          description: Internal server error
+
   /v1/payments/{provider}/{paymentID}:
     get:
       summary: Get payment status with specific provider

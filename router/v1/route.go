@@ -30,6 +30,11 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	paymentHandler := handler.NewPaymentHandler(paymentService, validator)
 	configHandler := handler.NewConfigHandler(providerConfig, paymentService, validator)
 
+	// Card storage (saved cards) handler
+	cardRepo := provider.NewSavedCardRepository(config.App().DB.DB)
+	cardService := provider.NewCardService(provider.NewDBPaymentLogger(config.App().DB), cardRepo, providerConfig)
+	cardHandler := handler.NewCardHandler(cardService, validator)
+
 	// Initialize provider-specific logger for logs handler
 	providerLogger := provider.NewProviderSpecificLogger(config.App().DB)
 	logsHandler := handler.NewLogsHandler(providerLogger, postgresLogger)
@@ -37,6 +42,16 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	// Payment routes (JWT protected)
 	r.Route("/payments", func(r chi.Router) {
 		r.Post("/{provider}", paymentHandler.ProcessPayment)
+
+		// Card storage (saved cards) routes. Static "cards" segment takes precedence over the
+		// {paymentID} wildcard in chi, so these do not collide with status/cancel routes.
+		r.Post("/{provider}/cards/otp/send", cardHandler.SendOTP)
+		r.Post("/{provider}/cards/otp/validate", cardHandler.ValidateOTP)
+		r.Post("/{provider}/cards/register", cardHandler.RegisterCard)
+		r.Get("/{provider}/cards", cardHandler.ListCards)
+		r.Delete("/{provider}/cards/{cardId}", cardHandler.DeleteCard)
+		r.Post("/{provider}/cards/{cardId}/pay", cardHandler.PayWithCard)
+
 		r.Get("/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
 		r.Delete("/{provider}/{paymentID}", paymentHandler.CancelPayment)
 		r.Post("/{provider}/refund", paymentHandler.RefundPayment)

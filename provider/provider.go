@@ -585,3 +585,159 @@ type PaymentProvider interface {
 
 // ProviderFactory is a function type that creates a new PaymentProvider
 type ProviderFactory func() PaymentProvider
+
+// ErrCardStorageUnsupported is returned when a card-storage operation is requested
+// from a provider that does not implement the optional CardStorageProvider capability.
+var ErrCardStorageUnsupported = errors.New("provider does not support card storage")
+
+// CardStorageProvider is an OPTIONAL capability interface implemented only by providers that
+// support saving a customer's card once (OTP-protected) and charging it later with just a
+// provider card id. Providers that do not implement it keep working unchanged; the card service
+// type-asserts on this interface and returns ErrCardStorageUnsupported otherwise. The core
+// PaymentProvider interface is intentionally NOT extended so existing providers are untouched.
+type CardStorageProvider interface {
+	// SendCardOTP sends an OTP SMS to the customer's MSISDN. It returns the referenceNumber
+	// that MUST be echoed back to ValidateCardOTP (and to ListProviderCards for the PM_LIST flow).
+	SendCardOTP(ctx context.Context, request CardOTPSendRequest) (*CardOTPSendResponse, error)
+
+	// ValidateCardOTP validates the OTP the customer received for the given referenceNumber.
+	ValidateCardOTP(ctx context.Context, request CardOTPValidateRequest) (*CardOTPValidateResponse, error)
+
+	// RegisterCard tokenizes and saves a card in the provider wallet and returns the provider
+	// card id plus masked metadata. The caller persists only the masked metadata + card id;
+	// raw card data must never be stored.
+	RegisterCard(ctx context.Context, request RegisterCardRequest) (*RegisterCardResponse, error)
+
+	// ListProviderCards lists the cards saved in the provider wallet for an MSISDN (requires a
+	// validated OTP referenceNumber for the PM_LIST flow).
+	ListProviderCards(ctx context.Context, request ListCardsRequest) (*ListCardsResponse, error)
+
+	// DeleteProviderCard removes a saved card from the provider wallet.
+	DeleteProviderCard(ctx context.Context, request DeleteCardRequest) (*DeleteCardResponse, error)
+
+	// PayWithSavedCard charges a saved card by provider card id, without 3D secure.
+	PayWithSavedCard(ctx context.Context, request SavedCardPaymentRequest) (*PaymentResponse, error)
+
+	// Create3DPaymentWithSavedCard starts a 3D secure payment using a saved provider card id.
+	// Completion reuses the standard Complete3DPayment callback path.
+	Create3DPaymentWithSavedCard(ctx context.Context, request SavedCardPaymentRequest) (*PaymentResponse, error)
+}
+
+// CardOTPSendRequest asks the provider to send an OTP SMS to MSISDN.
+type CardOTPSendRequest struct {
+	LogID    int64  `json:"logId,omitempty"`
+	MSISDN   string `json:"msisdn"`
+	ClientIP string `json:"clientIp,omitempty"`
+}
+
+// CardOTPSendResponse carries the referenceNumber that ties the OTP send/validate/list calls together.
+type CardOTPSendResponse struct {
+	Success          bool   `json:"success"`
+	ReferenceNumber  string `json:"referenceNumber"`
+	Token            string `json:"token,omitempty"`
+	ExpiresInSeconds int    `json:"expiresInSeconds,omitempty"`
+	Message          string `json:"message,omitempty"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	ProviderResponse any    `json:"providerResponse,omitempty"`
+}
+
+// CardOTPValidateRequest validates an OTP for a referenceNumber issued by SendCardOTP.
+type CardOTPValidateRequest struct {
+	LogID           int64  `json:"logId,omitempty"`
+	MSISDN          string `json:"msisdn"`
+	ReferenceNumber string `json:"referenceNumber"`
+	OTP             string `json:"otp"`
+	Token           string `json:"token,omitempty"`
+	ClientIP        string `json:"clientIp,omitempty"`
+}
+
+// CardOTPValidateResponse is the result of an OTP validation.
+type CardOTPValidateResponse struct {
+	Success          bool   `json:"success"`
+	Message          string `json:"message,omitempty"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	ProviderResponse any    `json:"providerResponse,omitempty"`
+}
+
+// RegisterCardRequest registers (tokenizes + saves) a card in the provider wallet for an MSISDN.
+type RegisterCardRequest struct {
+	LogID           int64    `json:"logId,omitempty"`
+	MSISDN          string   `json:"msisdn"`
+	Card            CardInfo `json:"card"`
+	Alias           string   `json:"alias,omitempty"`
+	ReferenceNumber string   `json:"referenceNumber,omitempty"`
+	ClientIP        string   `json:"clientIp,omitempty"`
+}
+
+// RegisterCardResponse returns the provider card id and masked metadata. No raw PAN/CVV.
+type RegisterCardResponse struct {
+	Success          bool   `json:"success"`
+	ProviderCardID   string `json:"providerCardId"`
+	MaskedCardNo     string `json:"maskedCardNo,omitempty"`
+	CardBrand        string `json:"cardBrand,omitempty"`
+	CardType         string `json:"cardType,omitempty"`
+	Message          string `json:"message,omitempty"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	ProviderResponse any    `json:"providerResponse,omitempty"`
+}
+
+// ProviderCard is a single card entry returned by the provider wallet.
+type ProviderCard struct {
+	ProviderCardID string `json:"providerCardId"`
+	MaskedCardNo   string `json:"maskedCardNo,omitempty"`
+	CardBrand      string `json:"cardBrand,omitempty"`
+	CardType       string `json:"cardType,omitempty"`
+	Alias          string `json:"alias,omitempty"`
+}
+
+// ListCardsRequest lists the provider wallet cards for an MSISDN.
+type ListCardsRequest struct {
+	LogID           int64  `json:"logId,omitempty"`
+	MSISDN          string `json:"msisdn"`
+	ReferenceNumber string `json:"referenceNumber,omitempty"`
+	ClientIP        string `json:"clientIp,omitempty"`
+}
+
+// ListCardsResponse is the provider wallet card list.
+type ListCardsResponse struct {
+	Success          bool           `json:"success"`
+	Cards            []ProviderCard `json:"cards"`
+	Message          string         `json:"message,omitempty"`
+	ErrorCode        string         `json:"errorCode,omitempty"`
+	ProviderResponse any            `json:"providerResponse,omitempty"`
+}
+
+// DeleteCardRequest removes a saved card from the provider wallet.
+type DeleteCardRequest struct {
+	LogID          int64  `json:"logId,omitempty"`
+	MSISDN         string `json:"msisdn"`
+	ProviderCardID string `json:"providerCardId"`
+	ClientIP       string `json:"clientIp,omitempty"`
+}
+
+// DeleteCardResponse is the result of a wallet card deletion.
+type DeleteCardResponse struct {
+	Success          bool   `json:"success"`
+	Message          string `json:"message,omitempty"`
+	ErrorCode        string `json:"errorCode,omitempty"`
+	ProviderResponse any    `json:"providerResponse,omitempty"`
+}
+
+// SavedCardPaymentRequest charges a previously saved card identified by ProviderCardID.
+// No card data or monetary fields beyond Amount/Currency cross the wire from the client; the
+// service resolves ProviderCardID from GoPay's saved_cards table scoped by tenant + MSISDN.
+type SavedCardPaymentRequest struct {
+	LogID            int64   `json:"logId,omitempty"`
+	TenantID         int     `json:"tenantId,omitempty"`
+	Environment      string  `json:"environment,omitempty"`
+	MSISDN           string  `json:"msisdn"`
+	ProviderCardID   string  `json:"providerCardId"`
+	Amount           float64 `json:"amount"`
+	Currency         string  `json:"currency"`
+	InstallmentCount int     `json:"installmentCount"`
+	CallbackURL      string  `json:"callbackUrl,omitempty"`
+	ClientIP         string  `json:"clientIp,omitempty"`
+	ClientUserAgent  string  `json:"clientUserAgent,omitempty"`
+	ConversationID   string  `json:"conversationId,omitempty"`
+	SessionID        string  `json:"sessionId,omitempty"`
+}
