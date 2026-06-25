@@ -518,6 +518,14 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		response.ErrorCode = inquireResp.ResponseHeader.ResponseCode
 	}
 
+	// success must reflect the actual payment outcome, not the inquiry envelope. Up to here
+	// response.Success was the header responseCode==0, which only means the status query itself was
+	// processed; a declined SALE (e.g. 4001 "Kart Limiti yetersiz") still arrives under a
+	// "successful" inquiry header. Rebind success to the resolved payment status so callers never
+	// see success=true on a failed/pending payment (critical for auto top-up: don't credit a
+	// balance for a payment that was not actually collected).
+	response.Success = response.Status == provider.StatusSuccessful
+
 	return response, nil
 }
 
