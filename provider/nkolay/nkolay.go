@@ -27,9 +27,7 @@ const (
 	// Real API Endpoints from postman collection
 	endpointPayment             = "/Vpos/v1/Payment"
 	endpointPaymentInstallments = "/Vpos/Payment/GetMerchandInformation"
-	endpointPaymentForm         = "/Vpos/Payment/Payment"
 	endpointCancelRefund        = "/Vpos/v1/CancelRefundPayment"
-	endpointPartialRefund       = "/Vpos/Payment/PartialRefundPayment"
 	endpointPaymentList         = "/Vpos/Payment/PaymentList"
 
 	// Test credentials provided
@@ -39,16 +37,11 @@ const (
 	testSecretKey = "_YckdxUbv4vrnMUZ6VQsr"
 
 	// Response Status Values from postman
-	statusSuccess   = "SUCCESS"
-	statusFailed    = "FAILED"
-	statusPending   = "PENDING"
-	statusCancelled = "CANCELLED"
-	statusRefunded  = "REFUNDED"
+	statusSuccess = "SUCCESS"
+	statusFailed  = "FAILED"
 
 	// Default Values
 	defaultCurrency = "TRY"
-	currencyCodeTRY = "949"
-	defaultTimeout  = 30 * time.Second
 )
 
 // NkolayProvider implements the provider.PaymentProvider interface for Nkolay
@@ -240,8 +233,14 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 				continue
 			}
 
-			// Extract commission rate
-			commission, ok := dataMap["MERCHANT_COMMISSION"].(float64)
+			// Extract merchant surcharge (vade farkı) rate. Nkolay renamed this
+			// field MERCHANT_COMMISSION -> MERCHANT_COMMISSION_RATE in the
+			// GetMerchandInformation response; read the new name first, fall back
+			// to the legacy name for backward compatibility during their rollout.
+			commission, ok := dataMap["MERCHANT_COMMISSION_RATE"].(float64)
+			if !ok {
+				commission, ok = dataMap["MERCHANT_COMMISSION"].(float64)
+			}
 			if !ok {
 				continue
 			}
@@ -825,11 +824,8 @@ func (p *NkolayProvider) formatDateForNkolay(systemTime string) (string, error) 
 	// Parse the systemTime which is in format "2025-07-23T11:30:21.163704+03"
 	// We want to extract just the date part and format as "2025.07.23"
 
-	// Find the first 'T' to split date and time
-	datepart := systemTime
-	if tIndex := strings.Index(systemTime, "T"); tIndex != -1 {
-		datepart = systemTime[:tIndex]
-	}
+	// Split on the first 'T' to keep just the date part
+	datepart, _, _ := strings.Cut(systemTime, "T")
 
 	// Parse the date part "2025-07-23"
 	parsedTime, err := time.Parse("2006-01-02", datepart)
