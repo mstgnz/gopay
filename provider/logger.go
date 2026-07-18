@@ -123,6 +123,13 @@ func (l *DBPaymentLogger) LogRequest(ctx context.Context, tenantID int, provider
 
 // LogResponse logs the payment response and updates the existing record
 func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response any, processingMs int64) error {
+	return l.logResponse(ctx, logID, response, processingMs, "")
+}
+
+// logResponse is the shared implementation. errorCodeOverride lets LogError put its own
+// error code on the row: the error payload is a plain map, so the *PaymentResponse type
+// assertion below cannot recover it and error_code would otherwise stay empty.
+func (l *DBPaymentLogger) logResponse(ctx context.Context, logID int64, response any, processingMs int64, errorCodeOverride string) error {
 	// Convert response to map[string]any for sanitization
 	var responseMap map[string]any
 	responseBytes, err := json.Marshal(response)
@@ -158,6 +165,10 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 		transactionID = resp.TransactionID
 	}
 
+	if errorCodeOverride != "" {
+		errorCode = errorCodeOverride
+	}
+
 	// Get the provider table name from our mapping
 	l.mapMutex.RLock()
 	tableName, exists := l.logProviderMap[logID]
@@ -167,10 +178,27 @@ func (l *DBPaymentLogger) LogResponse(ctx context.Context, logID int64, response
 		return fmt.Errorf("no provider table mapping found for log ID: %d", logID)
 	}
 
-	// Update the specific table directly instead of trying all tables
+	// Update the specific table directly instead of trying all tables.
+	//
+	// amount, currency and transaction_id keep their request-time values when the response
+	// carries none. On the error path the response is a plain map, so those variables are
+	// zero-valued and a straight assignment used to wipe what LogRequest had recorded.
+	//
+	// payment_id is deliberately NOT guarded the same way, even though it is wiped by the
+	// same mechanism. That column is the lookup key for GetProviderRequestFromLogWithPaymentID
+	// (logger.go:379), which recursively scans every matching row and takes LIMIT 1 with no
+	// ORDER BY. Populating it on error rows would enlarge that candidate set and can change
+	// which row wins: production currently holds 11 payments whose error rows carry a
+	// different "amount" than the row that wins today, and that value is sent to Paycell as
+	// the inquire amount (paycell/paycell.go:390 and :423). Restoring payment_id requires
+	// making that lookup deterministic first.
 	query := fmt.Sprintf(`
-		UPDATE %s 
-		SET response = $1, response_at = NOW(), status = $2, error_code = $3, amount = $4, currency = $5, processing_ms = $6, payment_id = $7, transaction_id = $8
+		UPDATE %s
+		SET response = $1, response_at = NOW(), status = $2, error_code = $3,
+		    amount = COALESCE(NULLIF($4, 0), amount),
+		    currency = COALESCE(NULLIF($5, ''), currency),
+		    processing_ms = $6, payment_id = $7,
+		    transaction_id = COALESCE(NULLIF($8, ''), transaction_id)
 		WHERE id = $9
 	`, tableName)
 
@@ -205,7 +233,7 @@ func (l *DBPaymentLogger) LogError(ctx context.Context, logID int64, errorCode, 
 		"time":    time.Now(),
 	}
 
-	return l.LogResponse(ctx, logID, errorResponse, processingMs)
+	return l.logResponse(ctx, logID, errorResponse, processingMs, errorCode)
 }
 
 // getActualProviderName extracts the actual provider name from providers table
