@@ -120,6 +120,52 @@ func TestSanitizeForLogDoesNotMutateInput(t *testing.T) {
 	}
 }
 
+// paycellHeader mirrors the provider header structs that are embedded as Go values inside
+// the request maps handed to AddProviderRequestToClientRequest.
+type paycellHeader struct {
+	TransactionID       string `json:"transactionId"`
+	TransactionDateTime string `json:"transactionDateTime"`
+	ClientIPAddress     string `json:"clientIPAddress"`
+	ApplicationName     string `json:"applicationName"`
+	ApplicationPwd      string `json:"applicationPwd"`
+}
+
+// TestSanitizeForLogRedactsInsideNestedStructs pins the regression that shipped to
+// production on 2026-07-18: the fixture must hold a real struct, not a map decoded from an
+// already-logged payload. sanitizeRecursive walks only maps and slices, so a struct value
+// slipped through and its applicationPwd was written to the provider table in cleartext.
+func TestSanitizeForLogRedactsInsideNestedStructs(t *testing.T) {
+	got := SanitizeForLog(map[string]any{
+		"msisdn":                  "5320698039",
+		"merchantCode":            "237431",
+		"originalReferenceNumber": "02510675017472106242",
+		"requestHeader": paycellHeader{
+			TransactionID:       "17843847670271274836",
+			TransactionDateTime: "20260718172607271",
+			ClientIPAddress:     "127.0.0.1",
+			ApplicationName:     "SOVTAJYERI",
+			ApplicationPwd:      "A092Z8QZ3N72G1PH",
+		},
+	})
+
+	header, ok := got["requestHeader"].(map[string]any)
+	if !ok {
+		t.Fatalf("requestHeader was not normalized into a map: %T", got["requestHeader"])
+	}
+	if header["applicationPwd"] != "***REDACTED***" {
+		t.Errorf("applicationPwd = %v, want ***REDACTED***", header["applicationPwd"])
+	}
+	if header["applicationName"] != "SOVTAJYERI" {
+		t.Errorf("applicationName was altered: %v", header["applicationName"])
+	}
+	if got["msisdn"] != "5320698039" {
+		t.Errorf("msisdn was altered: %v", got["msisdn"])
+	}
+	if got["originalReferenceNumber"] != "02510675017472106242" {
+		t.Errorf("originalReferenceNumber was altered: %v", got["originalReferenceNumber"])
+	}
+}
+
 // TestSanitizeForLogNoCleartextSecrets is the blunt end-to-end assertion: no secret value
 // from the payload may survive anywhere in the serialized log record.
 func TestSanitizeForLogNoCleartextSecrets(t *testing.T) {

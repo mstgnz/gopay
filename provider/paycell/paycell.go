@@ -530,14 +530,18 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 		return nil, errors.New("paycell: paymentID is required")
 	}
 
-	// Get original reference number from log
-	originalReferenceNumber, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "referenceNumber")
+	// reverse targets the provision by its referenceNumber, so both values have to come from
+	// providerProvisionRequest and nowhere else. A recursive any-key lookup also matches the
+	// referenceNumber that inquireAll generates for itself, which would reverse a different
+	// order, and it finds several representations of "amount" (TRY with a decimal point next
+	// to the kuruş value Paycell requires) with no defined winner. Missing keys must fail the
+	// cancel rather than fall back to a guess: reversing the wrong transaction moves money.
+	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
-	// Get amount from log for reverse operation
-	amountStr, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "amount")
+	amountStr, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "amount")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
 	}
@@ -637,8 +641,10 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 		return nil, errors.New("paycell: refund amount must be greater than 0")
 	}
 
-	// Get original reference number from log
-	originalReferenceNumber, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "referenceNumber")
+	// refundAll targets the provision by its referenceNumber. Same reasoning as CancelPayment:
+	// the recursive lookup can return inquireAll's own referenceNumber and refund a different
+	// order. The amount below is not affected, it comes from the caller's request.
+	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}

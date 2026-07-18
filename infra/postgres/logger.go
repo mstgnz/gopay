@@ -413,11 +413,37 @@ func (l *Logger) getProviderTableName(provider string) string {
 
 // SanitizeForLog removes sensitive information from data before logging
 func SanitizeForLog(data map[string]any) map[string]any {
+	// Normalize through JSON before walking. sanitizeRecursive only descends into
+	// map[string]any and []any, so a Go struct nested inside the map falls into its default
+	// branch and is returned untouched. AddProviderRequestToClientRequest hits exactly that
+	// case: StructToMap short-circuits when the top level is already a map, leaving values
+	// like PaycellRequestHeader as structs, and their applicationPwd reached the log in
+	// cleartext. LogRequest/LogResponse already round-trip, so for them this is a no-op.
+	if normalized, err := normalizeForSanitize(data); err == nil {
+		data = normalized
+	}
+
 	result := sanitizeRecursive(data)
 	if sanitizedMap, ok := result.(map[string]any); ok {
 		return sanitizedMap
 	}
 	return data // fallback to original data if type assertion fails
+}
+
+// normalizeForSanitize converts any nested structs into plain map[string]any so the
+// recursive walk below can actually see their fields.
+func normalizeForSanitize(data map[string]any) (map[string]any, error) {
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var normalized map[string]any
+	if err := json.Unmarshal(encoded, &normalized); err != nil {
+		return nil, err
+	}
+
+	return normalized, nil
 }
 
 // sanitizeRecursive recursively sanitizes nested objects and arrays

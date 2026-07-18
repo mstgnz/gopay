@@ -195,10 +195,10 @@ func (l *DBPaymentLogger) logResponse(ctx context.Context, logID int64, response
 	query := fmt.Sprintf(`
 		UPDATE %s
 		SET response = $1, response_at = NOW(), status = $2, error_code = $3,
-		    amount = COALESCE(NULLIF($4, 0), amount),
-		    currency = COALESCE(NULLIF($5, ''), currency),
+		    amount = COALESCE(NULLIF($4::numeric, 0), amount),
+		    currency = COALESCE(NULLIF($5::varchar, ''), currency),
 		    processing_ms = $6, payment_id = $7,
-		    transaction_id = COALESCE(NULLIF($8, ''), transaction_id)
+		    transaction_id = COALESCE(NULLIF($8::varchar, ''), transaction_id)
 		WHERE id = $9
 	`, tableName)
 
