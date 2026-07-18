@@ -442,16 +442,29 @@ func sanitizeRecursive(data any) any {
 func sanitizeMap(data map[string]any) map[string]any {
 	sanitized := make(map[string]any)
 
-	// Define sensitive field patterns
+	// Define sensitive field patterns. "cvv"/"cvc" and the credential patterns must stay in
+	// this list: previously they were missing, so the isCVV branch below was unreachable and
+	// CVV plus Paycell's applicationPwd were written to the provider tables in cleartext.
+	// Storing CVV after authorization violates PCI-DSS 3.2, so it is dropped entirely.
+	//
+	// Do NOT add "token" here. cardToken is read back out of the log to complete 3D payments
+	// (provider/paycell/paycell.go:275 and :396); masking it would break payment completion.
 	sensitiveFields := []string{
 		"cardnumber", "card_number", "credit", "pan",
+		"cvv", "cvc",
+		"applicationpwd", "password", "passwd", "pwd", "secret", "securecode",
 	}
+
+	// Credentials are redacted whole. maskGenericSensitive keeps the first and last two
+	// characters, which is fine for a PAN fragment but still leaks a short shared secret.
+	credentialFields := []string{"applicationpwd", "password", "passwd", "pwd", "secret", "securecode"}
 
 	for key, value := range data {
 		keyLower := strings.ToLower(key)
 		shouldSanitize := false
 		isCardNumber := false
 		isCVV := false
+		isCredential := false
 
 		// Check if field should be sanitized
 		for _, sensitiveField := range sensitiveFields {
@@ -468,8 +481,19 @@ func sanitizeMap(data map[string]any) map[string]any {
 		}
 
 		if shouldSanitize {
+			for _, credentialField := range credentialFields {
+				if strings.Contains(keyLower, credentialField) {
+					isCredential = true
+					break
+				}
+			}
+		}
+
+		if shouldSanitize {
 			if strValue, ok := value.(string); ok {
-				if isCardNumber {
+				if isCredential {
+					sanitized[key] = "***REDACTED***"
+				} else if isCardNumber {
 					sanitized[key] = maskCardNumber(strValue)
 				} else if isCVV {
 					sanitized[key] = "***"
