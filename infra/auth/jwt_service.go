@@ -40,6 +40,15 @@ func NewJWTService() *JWTService {
 	}
 }
 
+// Expiry returns the lifetime this service signs tokens with. Callers building a
+// login or refresh response must derive expires_at from this rather than
+// hardcoding a duration: reporting an expiry longer than the real one makes
+// clients cache a dead token and take a 401 on every request until their own
+// cache lapses.
+func (s *JWTService) Expiry() time.Duration {
+	return s.expiry
+}
+
 // GenerateToken generates a new JWT token for a tenant
 func (s *JWTService) GenerateToken(tenantID, username string) (string, error) {
 	now := time.Now()

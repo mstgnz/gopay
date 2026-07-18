@@ -148,8 +148,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate expiry time
-	expiresAt := time.Now().Add(24 * time.Hour) // Default 24 hours
+	// Expiry comes from the signing service so the reported value can never
+	// outlive the token itself.
+	expiresAt := time.Now().Add(h.jwtService.Expiry())
 
 	registerResp := LoginResponse{
 		Token:     token,
@@ -351,8 +352,8 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate new expiry time (24 hours from now)
-	expiresAt := time.Now().Add(24 * time.Hour)
+	// RefreshToken signs with the service's own expiry, so report that.
+	expiresAt := time.Now().Add(h.jwtService.Expiry())
 
 	// Return new token
 	tokenResponse := map[string]any{

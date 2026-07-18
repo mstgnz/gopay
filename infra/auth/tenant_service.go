@@ -105,8 +105,10 @@ func (s *TenantService) Login(req LoginRequest) (*LoginResponse, error) {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	// Calculate expiry time
-	expiresAt := time.Now().Add(24 * time.Hour) // Default 24 hours
+	// Expiry must come from the signing service, not a local constant: a client
+	// that trusts a longer expires_at than the token actually has caches a dead
+	// token and 401s until its own cache lapses.
+	expiresAt := time.Now().Add(s.jwtService.Expiry())
 
 	return &LoginResponse{
 		Token:     token,
