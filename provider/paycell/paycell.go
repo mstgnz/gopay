@@ -386,19 +386,16 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
-	// Get amount from log
-	amountStr, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "amount")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
-	}
-
-	// Get card token from log
-	cardToken, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "cardToken")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get card token: %s %w", request.PaymentID, err)
-	}
-
-	// Get card token from log
+	// amount and cardToken are deliberately not read here. inquireAll's request body is
+	// paymentMethodType, merchantCode, originalReferenceNumber, referenceNumber and msisdn;
+	// neither field is part of it, so Paycell ignored them. The proof is in the logs: every
+	// inquire we ever sent carried amount in TRY with a decimal point ("103412.6") while
+	// Paycell requires kuruş with no separator ("10341260"), and the queries still succeeded.
+	//
+	// Dropping them also removes two failure modes. Both lookups returned an error when the
+	// key was missing, failing a status query over a value Paycell never read. And "amount"
+	// resolved through a recursive any-key search that finds four different representations
+	// of the same figure in one payment's log, picked with LIMIT 1 and no ORDER BY.
 	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "msisdn")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get msisdn: %s %w", request.PaymentID, err)
@@ -420,10 +417,8 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		"msisdn":                  msisdn,
 		"originalReferenceNumber": originalReferenceNumber,
 		"referenceNumber":         p.generateReferenceNumber(),
-		"amount":                  amountStr,
 		"currency":                "TRY",
 		"paymentType":             "SALE",
-		"cardToken":               cardToken,
 		"orderId":                 originalReferenceNumber,
 		"requestHeader": PaycellRequestHeader{
 			TransactionID:       transactionID,
