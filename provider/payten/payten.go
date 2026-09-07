@@ -58,6 +58,12 @@ func NewProvider() provider.PaymentProvider {
 	return &PaytenProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *PaytenProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Payten
 func (p *PaytenProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

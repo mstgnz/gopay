@@ -54,6 +54,12 @@ func NewProvider() provider.PaymentProvider {
 	return &OzanPayProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *OzanPayProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for OzanPay
 func (p *OzanPayProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

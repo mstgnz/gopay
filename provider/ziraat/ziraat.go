@@ -59,6 +59,12 @@ func NewProvider() provider.PaymentProvider {
 	return &ZiraatProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *ZiraatProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Ziraat
 func (p *ZiraatProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

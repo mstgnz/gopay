@@ -164,7 +164,7 @@ func (p *PaycellProvider) SendCardOTP(ctx context.Context, request provider.Card
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "sendOtpRequest", reqMap, p.logID)
+		p.logRequest("sendOtpRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointSendOTP, Body: paycellReq}
@@ -179,7 +179,7 @@ func (p *PaycellProvider) SendCardOTP(ctx context.Context, request provider.Card
 	}
 
 	if respMap, err := provider.StructToMap(otpResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "sendOtpResponse", respMap, p.logID)
+		p.logRequest("sendOtpResponse", respMap, p.logID)
 	}
 
 	success := otpResp.ResponseHeader.ResponseCode == responseCodeSuccess
@@ -217,7 +217,7 @@ func (p *PaycellProvider) ValidateCardOTP(ctx context.Context, request provider.
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "validateOtpRequest", reqMap, p.logID)
+		p.logRequest("validateOtpRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointValidateOTP, Body: paycellReq}
@@ -232,7 +232,7 @@ func (p *PaycellProvider) ValidateCardOTP(ctx context.Context, request provider.
 	}
 
 	if respMap, err := provider.StructToMap(otpResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "validateOtpResponse", respMap, p.logID)
+		p.logRequest("validateOtpResponse", respMap, p.logID)
 	}
 
 	success := otpResp.ResponseHeader.ResponseCode == responseCodeSuccess
@@ -276,7 +276,7 @@ func (p *PaycellProvider) RegisterCard(ctx context.Context, request provider.Reg
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "registerCardRequest", reqMap, p.logID)
+		p.logRequest("registerCardRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointRegisterCard, Body: paycellReq}
@@ -291,7 +291,7 @@ func (p *PaycellProvider) RegisterCard(ctx context.Context, request provider.Reg
 	}
 
 	if respMap, err := provider.StructToMap(regResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "registerCardResponse", respMap, p.logID)
+		p.logRequest("registerCardResponse", respMap, p.logID)
 	}
 
 	if regResp.ResponseHeader.ResponseCode != responseCodeSuccess {
@@ -334,7 +334,7 @@ func (p *PaycellProvider) ListProviderCards(ctx context.Context, request provide
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getPaymentMethodsRequest", reqMap, p.logID)
+		p.logRequest("getPaymentMethodsRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointGetPaymentMethods, Body: paycellReq}
@@ -349,7 +349,7 @@ func (p *PaycellProvider) ListProviderCards(ctx context.Context, request provide
 	}
 
 	if respMap, err := provider.StructToMap(pmResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getPaymentMethodsResponse", respMap, p.logID)
+		p.logRequest("getPaymentMethodsResponse", respMap, p.logID)
 	}
 
 	cards := make([]provider.ProviderCard, 0, len(pmResp.CardList))
@@ -390,7 +390,7 @@ func (p *PaycellProvider) DeleteProviderCard(ctx context.Context, request provid
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "deleteCardRequest", reqMap, p.logID)
+		p.logRequest("deleteCardRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointDeleteCard, Body: paycellReq}
@@ -405,7 +405,7 @@ func (p *PaycellProvider) DeleteProviderCard(ctx context.Context, request provid
 	}
 
 	if respMap, err := provider.StructToMap(delResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "deleteCardResponse", respMap, p.logID)
+		p.logRequest("deleteCardResponse", respMap, p.logID)
 	}
 
 	return &provider.DeleteCardResponse{
@@ -458,7 +458,7 @@ func (p *PaycellProvider) Create3DPaymentWithSavedCard(ctx context.Context, requ
 	// Persist the saved cardId on the same log row so Complete3DPayment can detect the
 	// saved-card flow and finish with provisionAllWithCardId instead of provisionAll(cardToken).
 	savedCardMap := map[string]any{"savedCardId": request.ProviderCardID, "msisdn": normalizeMsisdn(request.MSISDN)}
-	_ = provider.AddProviderRequestToClientRequest("paycell", "savedCard", savedCardMap, p.logID)
+	p.logRequest("savedCard", savedCardMap, p.logID)
 
 	state := provider.CallbackState{
 		TenantID:         request.TenantID,
@@ -522,7 +522,7 @@ func (p *PaycellProvider) get3dSessionWithCardId(ctx context.Context, request pr
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", reqMap, p.logID)
+		p.logRequest("getThreeDSessionRequest", reqMap, p.logID)
 	}
 
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointGetThreeDSession, Body: paycellReq}
@@ -576,22 +576,29 @@ func (p *PaycellProvider) provisionAllWithCardId(ctx context.Context, request pr
 	paycellReq := p.buildCardIdProvisionRequest(request, threeDSessionID)
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", reqMap, p.logID)
+		p.logRequest("providerProvisionRequest", reqMap, p.logID)
 	}
 
+	// Same unknown-outcome handling as provisionAll in paycell.go.
 	httpReq := &provider.HTTPRequest{Method: "POST", Endpoint: endpointProvisionAll, Body: paycellReq}
 	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "send_error"))
 		return nil, fmt.Errorf("failed to send provisionAll request: %w", err)
 	}
 
 	var paycellResp PaycellProvisionResponse
 	if err := p.httpClient.ParseJSONResponse(resp, &paycellResp); err != nil {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "parse_error"))
 		return nil, fmt.Errorf("failed to parse provisionAll response: %w. Response body: %s", err, resp.RawBody)
 	}
 
+	if provisionTimeoutCodes[paycellResp.ResponseHeader.ResponseCode] {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "timeout_code_"+paycellResp.ResponseHeader.ResponseCode))
+	}
+
 	if respMap, err := provider.StructToMap(paycellResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionResponse", respMap, p.logID)
+		p.logRequest("providerProvisionResponse", respMap, p.logID)
 	}
 
 	success := paycellResp.ResponseHeader.ResponseCode == responseCodeSuccess

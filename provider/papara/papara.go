@@ -49,6 +49,12 @@ func NewProvider() provider.PaymentProvider {
 	return &PaparaProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *PaparaProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Papara
 func (p *PaparaProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

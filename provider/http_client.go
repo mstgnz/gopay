@@ -69,18 +69,11 @@ func NewProviderHTTPClient(config *HTTPClientConfig) *ProviderHTTPClient {
 	}
 }
 
-// SendJSON sends a JSON request and returns the response
+// SendJSON sends a JSON request and returns the response.
+//
+// The request body is never printed here. It carries the card number, the CVV and the provider
+// password in cleartext, and stdout on Cloud Run is retained like any other log.
 func (c *ProviderHTTPClient) SendJSON(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error) {
-	fullURL := c.buildURL(req.Endpoint, req.QueryParams)
-	var debugBody any
-	if req.Body != nil {
-		debugBody = req.Body
-	} else if req.FormData != nil {
-		debugBody = req.FormData
-	}
-	jsonBody, _ := json.Marshal(debugBody)
-	fmt.Printf("[DEBUG] SendJSON URL: %s\n", fullURL)
-	fmt.Printf("[DEBUG] SendJSON Body: %s\n", string(jsonBody))
 	return c.sendRequest(ctx, req, "application/json")
 }
 

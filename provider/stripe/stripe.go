@@ -35,6 +35,12 @@ func NewProvider() provider.PaymentProvider {
 	return &StripeProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *StripeProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Stripe
 func (p *StripeProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

@@ -581,6 +581,12 @@ type PaymentProvider interface {
 
 	// ValidateWebhook validates an incoming webhook notification
 	ValidateWebhook(ctx context.Context, data map[string]string, headers map[string]string) (bool, map[string]string, error)
+
+	// Clone returns a per-request copy of the provider. GetProvider caches one instance per
+	// tenant/provider/environment and every concurrent request would otherwise share it, while
+	// these methods write per-request fields (logID, clientIP, msisdn) onto the struct. A shallow
+	// copy is what is wanted: credentials and HTTP clients are read-only and meant to be shared.
+	Clone() PaymentProvider
 }
 
 // ProviderFactory is a function type that creates a new PaymentProvider

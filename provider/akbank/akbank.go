@@ -52,6 +52,12 @@ func NewProvider() provider.PaymentProvider {
 	return &AkbankProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *AkbankProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Akbank
 func (p *AkbankProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

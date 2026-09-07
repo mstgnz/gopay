@@ -96,7 +96,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 			config: map[string]string{
 				"username":   "test_user",
 				"merchantId": "test_merchant",
-				"terminalId": "test_terminal",
 				"secureCode": "test_secure",
 			},
 			expectError: true,
@@ -107,18 +106,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 			config: map[string]string{
 				"username":   "test_user",
 				"password":   "test_pass",
-				"terminalId": "test_terminal",
-				"secureCode": "test_secure",
-			},
-			expectError: true,
-			errorMsg:    "username, password, merchantId and secureCode are required",
-		},
-		{
-			name: "missing terminalId",
-			config: map[string]string{
-				"username":   "test_user",
-				"password":   "test_pass",
-				"merchantId": "test_merchant",
 				"secureCode": "test_secure",
 			},
 			expectError: true,
@@ -130,7 +117,6 @@ func TestPaycellProvider_Initialize(t *testing.T) {
 				"username":   "test_user",
 				"password":   "test_pass",
 				"merchantId": "test_merchant",
-				"terminalId": "test_terminal",
 			},
 			expectError: true,
 			errorMsg:    "username, password, merchantId and secureCode are required",
@@ -391,51 +377,37 @@ func TestPaycellProvider_GenerateSignature(t *testing.T) {
 }
 
 func TestPaycellProvider_CreatePayment(t *testing.T) {
-	// Create a test server
+	// A non-3D payment is two calls: getCardTokenSecure on the payment-management host, then
+	// provisionAll on the provision host. Both are served here.
+	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request method and path
 		if r.Method != "POST" {
 			t.Errorf("Expected POST method, got %s", r.Method)
 		}
-		if r.URL.Path != endpointProvision {
-			t.Errorf("Expected path %s, got %s", endpointProvision, r.URL.Path)
-		}
-
-		// Verify headers
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("Expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
 		}
-		if r.Header.Get("X-Paycell-Username") == "" {
-			t.Error("Expected X-Paycell-Username header")
-		}
-		if r.Header.Get("X-Paycell-Signature") == "" {
-			t.Error("Expected X-Paycell-Signature header")
-		}
-
-		// Mock successful response - amount should match actual API response format (kuruş/100)
-		response := PaycellResponse{
-			Success:       true,
-			Status:        statusSuccess,
-			PaymentID:     "pay123",
-			TransactionID: "txn123",
-			Amount:        "10050", // 100.50 TRY = 10050 kuruş
-			Currency:      "TRY",
-			Message:       "Payment successful",
-			ResponseHeader: struct {
-				TransactionID       string `json:"transactionId"`
-				ResponseDateTime    string `json:"responseDateTime"`
-				ResponseCode        string `json:"responseCode"`
-				ResponseDescription string `json:"responseDescription"`
-			}{
-				TransactionID:       "txn123",
-				ResponseDateTime:    "20240101120000",
-				ResponseCode:        responseCodeSuccess,
-				ResponseDescription: "Islem basarili",
-			},
-		}
+		paths = append(paths, r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(response)
+
+		switch r.URL.Path {
+		case endpointGetCardTokenSecure:
+			_ = json.NewEncoder(w).Encode(PaycellGetCardTokenSecureResponse{
+				Header:    PaycellResponseHeader{TransactionID: "txn123", ResponseCode: responseCodeSuccess, ResponseDescription: "Success"},
+				CardToken: "card-token-123",
+			})
+		case endpointProvisionAll:
+			_ = json.NewEncoder(w).Encode(PaycellProvisionResponse{
+				ResponseHeader:     PaycellResponseHeader{TransactionID: "txn123", ResponseDateTime: "20240101120000", ResponseCode: responseCodeSuccess, ResponseDescription: "Islem basarili"},
+				ApprovalCode:       "123456",
+				ReconciliationDate: "20240101",
+				Amount:             "10050", // 100.50 TRY in kuruş
+			})
+		default:
+			t.Errorf("Unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	defer server.Close()
 
@@ -445,7 +417,6 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 		"username":    "test_user",
 		"password":    "test_pass",
 		"merchantId":  "test_merchant",
-		"terminalId":  "test_terminal",
 		"secureCode":  "test_secure",
 		"environment": "sandbox",
 	}
@@ -453,9 +424,7 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to initialize provider: %v", err)
 	}
-
-	// Override baseURL to use test server
-	p.baseURL = server.URL
+	pointProviderAtTestServer(p, server.URL)
 
 	// Create payment request
 	request := provider.PaymentRequest{
@@ -490,9 +459,23 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 	if response.Status != provider.StatusSuccessful {
 		t.Errorf("Expected status %v, got %v", provider.StatusSuccessful, response.Status)
 	}
-	expectedAmount := 100.50 // From mock response
-	if response.Amount != expectedAmount {
-		t.Errorf("Expected amount %f, got %f", expectedAmount, response.Amount)
+	if response.TransactionID != "txn123" {
+		t.Errorf("Expected transactionId txn123, got %q", response.TransactionID)
+	}
+
+	// Both hosts must have been called, in this order.
+	want := []string{endpointGetCardTokenSecure, endpointProvisionAll}
+	if len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {
+		t.Errorf("Expected calls %v, got %v", want, paths)
+	}
+
+	// provisionAll's own response carries no amount, so these come from the request. Without
+	// them a non-3D payment used to answer with amount 0.
+	if response.Amount != 100.50 {
+		t.Errorf("Expected amount 100.50, got %f", response.Amount)
+	}
+	if response.Currency != "TRY" {
+		t.Errorf("Expected currency TRY, got %q", response.Currency)
 	}
 }
 
@@ -591,14 +574,16 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 		environment string
 		expected    int
 	}{
-		{"sandbox environment", "sandbox", 6},
-		{"production environment", "production", 6},
-		{"test environment", "test", 6},
+		{"sandbox environment", "sandbox", 7},
+		{"production environment", "production", 7},
+		{"test environment", "test", 7},
 	}
 
-	// eulaId is optional (only needed for card registration); every other field is required.
-	expectedFields := []string{"username", "password", "merchantId", "secureCode", "eulaId", "environment"}
-	optionalFields := map[string]bool{"eulaId": true}
+	// eulaId (card registration) and compensationEnabled (provision timeout compensation) are
+	// optional; every other field is required.
+	expectedFields := []string{"username", "password", "merchantId", "secureCode", "eulaId", "compensationEnabled", "environment"}
+	optionalFields := map[string]bool{"eulaId": true, "compensationEnabled": true}
+	fieldTypes := map[string]string{"compensationEnabled": "boolean"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -614,8 +599,12 @@ func TestPaycellProvider_GetRequiredConfig(t *testing.T) {
 				if !field.Required && !optionalFields[field.Key] {
 					t.Errorf("Field %s should be required", field.Key)
 				}
-				if field.Type != "string" {
-					t.Errorf("Field %s should be string type", field.Key)
+				wantType := "string"
+				if declared, ok := fieldTypes[field.Key]; ok {
+					wantType = declared
+				}
+				if field.Type != wantType {
+					t.Errorf("Field %s should be %s type, got %s", field.Key, wantType, field.Type)
 				}
 			}
 		})
@@ -637,7 +626,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: false,
@@ -648,7 +637,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "PAYCELL_USER_PROD",
 				"password":    "PAYCELL_PASS_PROD123456",
 				"merchantId":  "PRODMERCHANT123",
-				"terminalId":  "VPPROD123456",
+				"secureCode":  "PAYCELL_SECURE_PROD_1234",
 				"environment": "production",
 			},
 			expectError: false,
@@ -658,7 +647,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 			config: map[string]string{
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
@@ -669,7 +658,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 			config: map[string]string{
 				"username":    "PAYCELL_USER_TEST",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
@@ -680,14 +669,14 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 			config: map[string]string{
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
 			errorMsg:    "required field 'merchantId' is missing",
 		},
 		{
-			name: "missing terminalId",
+			name: "missing secureCode",
 			config: map[string]string{
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
@@ -695,7 +684,19 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"environment": "sandbox",
 			},
 			expectError: true,
-			errorMsg:    "required field 'terminalId' is missing",
+			errorMsg:    "required field 'secureCode' is missing",
+		},
+		{
+			name: "optional eulaId is accepted",
+			config: map[string]string{
+				"username":    "PAYCELL_USER_TEST",
+				"password":    "PAYCELL_PASS_123456",
+				"merchantId":  "MERCHANT123",
+				"secureCode":  "PAYCELL_SECURE_1234",
+				"environment": "sandbox",
+				"eulaId":      "17",
+			},
+			expectError: false,
 		},
 		{
 			name: "empty username",
@@ -703,7 +704,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
@@ -715,7 +716,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "invalid_env",
 			},
 			expectError: true,
@@ -727,7 +728,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "AB",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
@@ -739,7 +740,7 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "12345",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
@@ -751,23 +752,23 @@ func TestPaycellProvider_ValidateConfig(t *testing.T) {
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "ABCD",
-				"terminalId":  "VP123456",
+				"secureCode":  "PAYCELL_SECURE_1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
 			errorMsg:    "must be at least 5 characters",
 		},
 		{
-			name: "terminalId too short",
+			name: "secureCode too short",
 			config: map[string]string{
 				"username":    "PAYCELL_USER_TEST",
 				"password":    "PAYCELL_PASS_123456",
 				"merchantId":  "MERCHANT123",
-				"terminalId":  "ABCD",
+				"secureCode":  "SHORT1234",
 				"environment": "sandbox",
 			},
 			expectError: true,
-			errorMsg:    "must be at least 5 characters",
+			errorMsg:    "must be at least 10 characters",
 		},
 	}
 

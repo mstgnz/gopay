@@ -132,11 +132,39 @@ type PaycellProvider struct {
 	clientIP                string
 	httpClient              *provider.ProviderHTTPClient
 	paymentManagementClient *provider.ProviderHTTPClient
+
+	// compensationEnabled turns on the provisionAll timeout compensation in compensation.go.
+	// Off unless the tenant config says compensationEnabled=true.
+	compensationEnabled bool
+	timing              compensationTiming
+
+	// logWriter is nil in production. Tests set it to capture what would be written, because
+	// the real writer reaches the database through config.App(), which aborts the process when
+	// Postgres is unreachable.
+	logWriter func(kind string, payload map[string]any, logID int64)
+}
+
+// logRequest appends one provider request or response to the payment's log row.
+func (p *PaycellProvider) logRequest(kind string, payload map[string]any, logID int64) {
+	if p.logWriter != nil {
+		p.logWriter(kind, payload, logID)
+		return
+	}
+	_ = provider.AddProviderRequestToClientRequest("paycell", kind, payload, logID)
 }
 
 // NewProvider creates a new Paycell payment provider
 func NewProvider() provider.PaymentProvider {
 	return &PaycellProvider{}
+}
+
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone. Paycell needs this more
+// than the others: CancelPayment and RefundPayment write p.phoneNumber and read it back a few
+// lines later, so a concurrent request on the shared instance could send a reverse for one
+// subscriber under another subscriber's msisdn.
+func (p *PaycellProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
 }
 
 // GetRequiredConfig returns the configuration fields required for Paycell
@@ -187,6 +215,14 @@ func (p *PaycellProvider) GetRequiredConfig(environment string) []provider.Confi
 			MaxLength:   20,
 		},
 		{
+			Key:         "compensationEnabled",
+			Required:    false,
+			Type:        "boolean",
+			Description: "Send reverse/refundAll when a provisionAll times out and inquireAll shows the money was captured (default off)",
+			Example:     "true",
+			MaxLength:   5,
+		},
+		{
 			Key:         "environment",
 			Required:    true,
 			Type:        "string",
@@ -210,6 +246,8 @@ func (p *PaycellProvider) Initialize(conf map[string]string) error {
 	p.merchantID = conf["merchantId"]
 	p.secureCode = conf["secureCode"]
 	p.eulaID = conf["eulaId"] // optional, only needed for card registration
+	p.compensationEnabled = conf["compensationEnabled"] == "true"
+	p.timing = defaultCompensationTiming()
 
 	if p.username == "" || p.password == "" || p.merchantID == "" || p.secureCode == "" {
 		return errors.New("paycell: username, password, merchantId and secureCode are required")
@@ -373,7 +411,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	}
 
 	// Bind the log row so the inquire request/response are persisted. Without this p.logID stays
-	// 0 and AddProviderRequestToClientRequest updates no row, leaving standalone status queries
+	// 0 and logRequest updates no row, leaving standalone status queries
 	// with only the bare paymentId logged (no visibility into what was sent to Paycell).
 	p.logID = request.LogID
 
@@ -431,7 +469,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 
 	// Add provider request to client request log
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireRequest", reqMap, p.logID)
+		p.logRequest("providerInquireRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -453,7 +491,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 
 	// Add provider request to client request log
 	if reqMap, err := provider.StructToMap(inquireResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerInquireResponse", reqMap, p.logID)
+		p.logRequest("providerInquireResponse", reqMap, p.logID)
 	}
 
 	// Convert to standard payment response
@@ -579,7 +617,7 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 
 	// Add provider request to client request log
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "reverseRequest", reqMap, p.logID)
+		p.logRequest("reverseRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -686,7 +724,7 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 
 	// Add provider request to client request log
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "refundRequest", reqMap, p.logID)
+		p.logRequest("refundRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -832,7 +870,7 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 	}
 
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultRequest", reqMap, p.logID)
+		p.logRequest("getThreeDSessionResultRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -853,7 +891,7 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 	}
 
 	if reqMap, err := provider.StructToMap(threeDSessionResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionResultResponse", reqMap, p.logID)
+		p.logRequest("getThreeDSessionResultResponse", reqMap, p.logID)
 	}
 
 	return &threeDSessionResp, nil
@@ -945,7 +983,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 	// add provider request to client request
 
 	if reqMap, err := provider.StructToMap(cardTokenRequest); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenRequest", reqMap, p.logID)
+		p.logRequest("cardTokenRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -972,7 +1010,7 @@ func (p *PaycellProvider) getCardTokenSecure(ctx context.Context, request provid
 
 	// add provider response to client request
 	if respMap, err := provider.StructToMap(cardTokenResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "cardTokenResponse", respMap, p.logID)
+		p.logRequest("cardTokenResponse", respMap, p.logID)
 	}
 
 	// Return the card token
@@ -1048,7 +1086,7 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 
 	// add provider request to client request
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionRequest", reqMap, p.logID)
+		p.logRequest("providerProvisionRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client
@@ -1058,19 +1096,28 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		Body:     paycellReq,
 	}
 
+	// From here on the outcome may be unknown rather than failed: the money can be captured at
+	// Paycell while this call reports an error. compensation.go resolves those; the error the
+	// caller gets is unchanged.
 	resp, err := p.httpClient.SendJSON(ctx, httpReq)
 	if err != nil {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "send_error"))
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	var paycellResp PaycellProvisionResponse
 	if err := p.httpClient.ParseJSONResponse(resp, &paycellResp); err != nil {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "parse_error"))
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if provisionTimeoutCodes[paycellResp.ResponseHeader.ResponseCode] {
+		p.scheduleProvisionCompensation(newUnknownProvision(paycellReq, p.logID, p.clientIP, "timeout_code_"+paycellResp.ResponseHeader.ResponseCode))
 	}
 
 	// add provider request to client request
 	if reqMap, err := provider.StructToMap(paycellResp); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "providerProvisionResponse", reqMap, p.logID)
+		p.logRequest("providerProvisionResponse", reqMap, p.logID)
 	}
 
 	success := paycellResp.ResponseHeader.ResponseCode == responseCodeSuccess
@@ -1079,12 +1126,17 @@ func (p *PaycellProvider) provisionAll(ctx context.Context, request provider.Pay
 		status = provider.StatusSuccessful
 	}
 
+	// Amount and Currency come from the request: provisionAll's response does not echo them, and
+	// without them a non-3D payment answered with amount 0. The saved-card path
+	// (provisionAllWithCardId) has always done this; the two now agree.
 	now := time.Now()
 	return &provider.PaymentResponse{
 		Success:          success,
 		Status:           status,
 		PaymentID:        paycellResp.ResponseHeader.TransactionID,
 		TransactionID:    paycellResp.ResponseHeader.TransactionID,
+		Amount:           request.Amount,
+		Currency:         request.Currency,
 		Message:          paycellResp.ResponseHeader.ResponseDescription,
 		ErrorCode:        paycellResp.ResponseHeader.ResponseCode,
 		SystemTime:       &now,
@@ -1174,7 +1226,7 @@ func (p *PaycellProvider) getThreeDSession(ctx context.Context, request provider
 
 	// add provider request to client request
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("paycell", "getThreeDSessionRequest", reqMap, p.logID)
+		p.logRequest("getThreeDSessionRequest", reqMap, p.logID)
 	}
 
 	// Use new HTTP client

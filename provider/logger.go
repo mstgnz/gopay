@@ -274,7 +274,9 @@ func GetProvider(tenantID int, providerName, environment string) (PaymentProvide
 				"environment": environment,
 			},
 		})
-		return cachedProvider, nil
+		// Hand out a copy, never the cached instance: the provider methods write per-request
+		// state (logID, clientIP, msisdn) onto the struct.
+		return cachedProvider.Clone(), nil
 	}
 
 	// Cache miss - load from database and initialize

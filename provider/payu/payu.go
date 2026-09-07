@@ -56,6 +56,12 @@ func NewProvider() provider.PaymentProvider {
 	return &PayUProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *PayUProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for PayU Turkey
 func (p *PayUProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{

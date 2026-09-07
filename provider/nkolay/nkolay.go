@@ -62,6 +62,12 @@ func NewProvider() provider.PaymentProvider {
 	return &NkolayProvider{}
 }
 
+// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+func (p *NkolayProvider) Clone() provider.PaymentProvider {
+	c := *p
+	return &c
+}
+
 // GetRequiredConfig returns the configuration fields required for Nkolay
 func (p *NkolayProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{
