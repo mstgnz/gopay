@@ -20,6 +20,10 @@ services:
       dockerfile: dockerfile
     image: gopay:latest
     restart: always
+    # Docker allows 10s between SIGTERM and SIGKILL by default, which is not enough to finish a
+    # payment that is already at the provider. The app drains for SHUTDOWN_TIMEOUT_SECONDS
+    # (25s), so the container has to be allowed to live at least that long plus a margin.
+    stop_grace_period: 40s
     deploy:
       mode: replicated
       replicas: 3

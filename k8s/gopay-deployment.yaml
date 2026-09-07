@@ -75,6 +75,9 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      # The app drains in-flight payments for SHUTDOWN_TIMEOUT_SECONDS (25s) before exiting.
+      # Kubernetes allows 30s by default, which leaves no margin for the background drain.
+      terminationGracePeriodSeconds: 45
       containers:
       - name: gopay
         image: ghcr.io/mstgnz/gopay:latest

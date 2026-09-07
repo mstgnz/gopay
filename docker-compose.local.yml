@@ -20,6 +20,9 @@ services:
       dockerfile: dockerfile
     image: gopay:latest
     restart: always
+    # Same as prod: the app drains in-flight payments for SHUTDOWN_TIMEOUT_SECONDS (25s) and
+    # Docker's default 10s would cut it.
+    stop_grace_period: 40s
     deploy:
       mode: replicated
       replicas: 3

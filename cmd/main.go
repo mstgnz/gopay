@@ -283,8 +283,10 @@ func main() {
 	logger.Info("Shutdown complete")
 }
 
-// shutdownTimeout bounds both drains. It must stay under the platform's grace period, which is
-// 30s by default on Kubernetes: a longer value is not honoured, the process is killed instead.
+// shutdownTimeout bounds both drains together. It must stay under the grace period the runtime
+// gives between SIGTERM and SIGKILL, or the drain is cut rather than honoured: Docker allows 10s
+// unless the compose file sets stop_grace_period, Kubernetes 30s unless the pod spec sets
+// terminationGracePeriodSeconds.
 func shutdownTimeout() time.Duration {
 	seconds, err := strconv.Atoi(config.GetEnv("SHUTDOWN_TIMEOUT_SECONDS", "25"))
 	if err != nil || seconds <= 0 {

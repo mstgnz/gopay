@@ -36,6 +36,14 @@ docker-compose up -d --scale api=$REPLICAS api
 echo " Starting Nginx load balancer..."
 docker-compose up -d nginx
 
+# Step 4b: Re-resolve the API replicas.
+# Nginx resolves the "api" hostname once, when its config is loaded. Recreating the API
+# containers above gave them new IPs, and an already running nginx keeps routing to the old ones
+# until it is told otherwise. Reload rather than restart: it rereads the config and re-resolves
+# the upstream without dropping the connections nginx is already serving.
+echo " Reloading Nginx so it picks up the new API containers..."
+docker-compose exec -T nginx nginx -s reload
+
 # Step 5: Health checks
 echo " Performing health checks..."
 sleep 5
