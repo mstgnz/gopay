@@ -138,7 +138,12 @@ func (p *PaycellProvider) scheduleProvisionCompensation(u unknownProvision) <-ch
 		worker.timing = defaultCompensationTiming()
 	}
 
+	// Counted before the goroutine starts, so a shutdown that begins right now already waits
+	// for this one.
+	provider.BackgroundTaskStarted()
+
 	go func() {
+		defer provider.BackgroundTaskDone()
 		defer close(done)
 		defer func() { <-compensationSlots }()
 		defer func() {

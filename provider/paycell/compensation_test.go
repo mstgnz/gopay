@@ -689,6 +689,38 @@ func TestCompensationUsesCapturedValuesNotProviderFields(t *testing.T) {
 	}
 }
 
+// A deploy is exactly when compensations get scheduled, so shutdown has to wait for them.
+func TestCompensationIsCountedAsBackgroundWork(t *testing.T) {
+	stub := newPaycellStub()
+	stub.inquire = []PaycellInquireResponse{captured(responseCodeSuccess)}
+	recorder := newLogRecorder()
+	p := compensationProvider(t, stub, recorder)
+	p.timing = compensationTiming{firstDelay: 200 * time.Millisecond, retryDelay: time.Millisecond, attempts: 3, budget: 10 * time.Second}
+
+	done := p.scheduleProvisionCompensation(unknownProvision{
+		referenceNumber: "12345678901234567890",
+		amountKurus:     "10050",
+		msisdn:          "5551234567",
+		reason:          "send_error",
+	})
+
+	shortCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	if provider.WaitForBackgroundTasks(shortCtx) {
+		t.Error("a running compensation was not counted, so shutdown would not wait for it")
+	}
+
+	waitFor(t, done)
+
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelDrain()
+
+	if !provider.WaitForBackgroundTasks(drainCtx) {
+		t.Error("the compensation never released its background task count")
+	}
+}
+
 func TestCompensationSkipsIncompleteCapture(t *testing.T) {
 	stub := newPaycellStub()
 	p := compensationProvider(t, stub, nil)

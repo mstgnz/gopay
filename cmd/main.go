@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
+	"github.com/mstgnz/gopay/infra/server"
 	"github.com/mstgnz/gopay/infra/validate"
 	"github.com/mstgnz/gopay/provider"
 	v1 "github.com/mstgnz/gopay/router/v1"
@@ -231,25 +233,19 @@ func main() {
 		}
 	}()
 
-	// Create a context that listens for interrupt and terminate signals
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
+	// SIGKILL is deliberately not listed: it cannot be caught, and listing it only suggests
+	// that it can.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Run your HTTP server in a goroutine
-	go func() {
-		server := &http.Server{
-			Addr:              fmt.Sprintf(":%s", PORT),
-			Handler:           r,
-			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      60 * time.Second,
-			IdleTimeout:       60 * time.Second,
-			ReadHeaderTimeout: 60 * time.Second,
-		}
-		err := server.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server failed to start", err)
-		}
-	}()
+	srv := &http.Server{
+		Addr:              fmt.Sprintf(":%s", PORT),
+		Handler:           r,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 60 * time.Second,
+	}
 
 	logger.Info("API is running", logger.LogContext{
 		Fields: map[string]any{
@@ -257,14 +253,45 @@ func main() {
 		},
 	})
 
-	// Block until a signal is received
-	<-ctx.Done()
+	// Serves until the signal arrives, then drains the requests already in flight. Without the
+	// drain a deploy cuts them mid-provider-call, which on this service means a payment whose
+	// outcome nobody knows.
+	remaining, err := server.Run(ctx, srv, shutdownTimeout())
+	if err != nil {
+		logger.Error("Server stopped with an error", err, logger.LogContext{
+			Fields: map[string]any{
+				"port": PORT,
+			},
+		})
+	}
 
-	logger.Info("Shutting down gracefully", logger.LogContext{
-		Fields: map[string]any{
-			"port": PORT,
-		},
-	})
+	// Then the work that outlives a request, such as the Paycell provision compensation. It is
+	// scheduled precisely when a payment call was cut, so killing it during a deploy would drop
+	// the compensation for the payments the deploy itself broke. It gets what the request drain
+	// did not spend, because the platform's grace period covers both.
+	drainCtx, cancel := context.WithTimeout(context.Background(), remaining)
+	defer cancel()
+
+	if !provider.WaitForBackgroundTasks(drainCtx) {
+		logger.Warn("Background tasks were still running at shutdown", logger.LogContext{
+			Fields: map[string]any{
+				"remaining_budget": remaining.String(),
+			},
+		})
+	}
+
+	logger.Info("Shutdown complete")
+}
+
+// shutdownTimeout bounds both drains. It must stay under the platform's grace period, which is
+// 30s by default on Kubernetes: a longer value is not honoured, the process is killed instead.
+func shutdownTimeout() time.Duration {
+	seconds, err := strconv.Atoi(config.GetEnv("SHUTDOWN_TIMEOUT_SECONDS", "25"))
+	if err != nil || seconds <= 0 {
+		return 25 * time.Second
+	}
+
+	return time.Duration(seconds) * time.Second
 }
 
 func fileServer(r chi.Router, path string, root http.FileSystem) {
