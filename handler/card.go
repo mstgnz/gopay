@@ -68,14 +68,6 @@ type paySavedCardBody struct {
 	SessionID        string  `json:"sessionId,omitempty"`
 }
 
-func environmentFromRequest(r *http.Request) string {
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
-	}
-	return environment
-}
-
 // SendOTP handles POST /payments/{provider}/cards/otp/send
 func (h *CardHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -91,7 +83,13 @@ func (h *CardHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.cardService.SendCardOTP(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), provider.CardOTPSendRequest{
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	resp, err := h.cardService.SendCardOTP(ctx, environment, chi.URLParam(r, "provider"), provider.CardOTPSendRequest{
 		MSISDN:   body.MSISDN,
 		ClientIP: middle.GetClientIP(r),
 	})
@@ -117,7 +115,13 @@ func (h *CardHandler) ValidateOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.cardService.ValidateCardOTP(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), provider.CardOTPValidateRequest{
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	resp, err := h.cardService.ValidateCardOTP(ctx, environment, chi.URLParam(r, "provider"), provider.CardOTPValidateRequest{
 		MSISDN:          body.MSISDN,
 		ReferenceNumber: body.ReferenceNumber,
 		OTP:             body.OTP,
@@ -146,7 +150,13 @@ func (h *CardHandler) RegisterCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, card, err := h.cardService.RegisterCard(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), provider.RegisterCardRequest{
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	resp, card, err := h.cardService.RegisterCard(ctx, environment, chi.URLParam(r, "provider"), provider.RegisterCardRequest{
 		MSISDN:          body.MSISDN,
 		Card:            body.Card,
 		Alias:           body.Alias,
@@ -177,7 +187,13 @@ func (h *CardHandler) ListCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cards, err := h.cardService.ListSavedCards(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), msisdn)
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	cards, err := h.cardService.ListSavedCards(ctx, environment, chi.URLParam(r, "provider"), msisdn)
 	if err != nil {
 		h.writeServiceError(w, "Failed to list cards", err)
 		return
@@ -196,7 +212,13 @@ func (h *CardHandler) DeleteCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.cardService.DeleteSavedCard(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), cardID); err != nil {
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	if err := h.cardService.DeleteSavedCard(ctx, environment, chi.URLParam(r, "provider"), cardID); err != nil {
 		h.writeServiceError(w, "Failed to delete card", err)
 		return
 	}
@@ -224,7 +246,13 @@ func (h *CardHandler) PayWithCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.cardService.PaySavedCard(ctx, environmentFromRequest(r), chi.URLParam(r, "provider"), cardID, provider.SavedCardPaymentRequest{
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
+	}
+
+	resp, err := h.cardService.PaySavedCard(ctx, environment, chi.URLParam(r, "provider"), cardID, provider.SavedCardPaymentRequest{
 		MSISDN:           body.MSISDN,
 		Amount:           body.Amount,
 		Currency:         body.Currency,

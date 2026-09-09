@@ -1312,12 +1312,11 @@ paths:
           example: iyzico
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         required: true
@@ -1366,12 +1365,11 @@ paths:
           example: paycell
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Environment (defaults to sandbox)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         required: true
@@ -1415,11 +1413,10 @@ paths:
           example: paycell
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
           example: sandbox
       requestBody:
         required: true
@@ -1472,11 +1469,10 @@ paths:
           example: paycell
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
           example: sandbox
       requestBody:
         required: true
@@ -1551,11 +1547,10 @@ paths:
           example: "5551234567"
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
           example: sandbox
       responses:
         '200':
@@ -1594,11 +1589,10 @@ paths:
           example: 42
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
           example: sandbox
       responses:
         '200':
@@ -1639,11 +1633,10 @@ paths:
           example: 42
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
           example: sandbox
       requestBody:
         required: true
@@ -1725,12 +1718,11 @@ paths:
           description: Payment ID to check
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       responses:
         '200':
@@ -1776,12 +1768,11 @@ paths:
           description: Payment ID to cancel
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         content:
@@ -1828,12 +1819,11 @@ paths:
           example: iyzico
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         required: true
@@ -1902,8 +1892,7 @@ paths:
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         required: true
@@ -2256,6 +2245,14 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
           description: Payment provider name
           example: iyzico
+        - name: environment
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sandbox, production]
+          description: Payment environment. Required; the webhook URL registered at the provider must carry it.
+          example: production
       requestBody:
         required: true
         content:
@@ -3894,12 +3891,11 @@ paths:
           example: paycell
         - name: environment
           in: query
-          required: false
+          required: true
           schema:
             type: string
             enum: [sandbox, production]
-            default: sandbox
-          description: Payment environment (defaults to sandbox if not provided)
+          description: Payment environment. Required; an omitted or unknown value is rejected with 400.
           example: sandbox
       requestBody:
         required: true

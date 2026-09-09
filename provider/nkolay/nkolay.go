@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -178,14 +177,10 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 	hash := sha512.Sum512([]byte(input))
 	formData["hashDatav2"] = base64.StdEncoding.EncodeToString(hash[:])
 
-	log.Println("formData", formData)
-
 	responseBody, err := p.doNkolayFormRequest(ctx, endpointPaymentInstallments, formData)
 	if err != nil {
 		return provider.InstallmentInquireResponse{}, fmt.Errorf("nkolay: failed to get installment count: %w", err)
 	}
-
-	log.Println("responseBody", string(responseBody))
 
 	// Parse response as map first
 	var rawResponse map[string]any

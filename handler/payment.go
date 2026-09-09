@@ -67,9 +67,10 @@ func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) 
 	// Get provider name from URL path parameter (or empty for default)
 	providerName := chi.URLParam(r, "provider")
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Process the payment
@@ -97,9 +98,10 @@ func (h *PaymentHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Get payment status
@@ -129,9 +131,10 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Parse reason from request body
@@ -165,9 +168,10 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	// Get provider from URL path parameter
 	providerName := chi.URLParam(r, "provider")
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Parse refund request
@@ -205,9 +209,10 @@ func (h *PaymentHandler) GetInstallments(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Parse request body
@@ -244,9 +249,10 @@ func (h *PaymentHandler) GetCommission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Parse request body
@@ -403,9 +409,10 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	environment := r.URL.Query().Get("environment")
-	if environment != "production" {
-		environment = "sandbox"
+	environment, err := environmentFromRequest(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid environment", err)
+		return
 	}
 
 	// Parse webhook data based on content type
