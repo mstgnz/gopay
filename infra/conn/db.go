@@ -26,7 +26,8 @@ func (db *DB) ConnectDatabase() {
 
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable TimeZone=%s", dbHost, dbPort, dbUser, dbPass, dbName, dbZone)
 
-	log.Println("connStr", connStr)
+	// Never log connStr: it carries the password into the container logs.
+	log.Printf("Connecting to DB host=%s port=%s dbname=%s user=%s", dbHost, dbPort, dbName, dbUser)
 
 	var err error
 	var database *sql.DB

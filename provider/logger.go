@@ -186,7 +186,7 @@ func (l *DBPaymentLogger) logResponse(ctx context.Context, logID int64, response
 	//
 	// payment_id is deliberately NOT guarded the same way, even though it is wiped by the
 	// same mechanism. That column is the lookup key for GetProviderRequestFromLogWithPaymentID
-	// (logger.go:379), which recursively scans every matching row and takes LIMIT 1 with no
+	// (below), which recursively scans every matching row and takes LIMIT 1 with no
 	// ORDER BY. Populating it on error rows would enlarge that candidate set and can change
 	// which row wins: production currently holds 11 payments whose error rows carry a
 	// different "amount" than the row that wins today, and that value is sent to Paycell as
@@ -504,6 +504,22 @@ func GetProviderRequestFromLogWithLogID(providerName string, logID int64, key st
 	return result, nil
 }
 
+// ErrUnknownProvider is returned when a log query names a provider that is not registered.
+var ErrUnknownProvider = errors.New("unknown provider")
+
+// logTable admits a provider name as a table name only if it is a registered provider. The
+// name arrives from the URL and is interpolated into SQL, where a placeholder cannot stand in
+// for a table, so this allowlist is the only thing keeping it out of the query text. The name
+// is lowercased first: Postgres folded "/v1/logs/Paycell" to the paycell table before the
+// allowlist existed, and that request must keep working.
+func logTable(providerName string) (string, error) {
+	name := strings.ToLower(providerName)
+	if _, err := Get(name); err != nil {
+		return "", fmt.Errorf("%w: %q", ErrUnknownProvider, providerName)
+	}
+	return name, nil
+}
+
 // ProviderSpecificLogger implements LoggerInterface for provider-specific tables
 type ProviderSpecificLogger struct {
 	db *conn.DB
@@ -516,6 +532,10 @@ func NewProviderSpecificLogger(db *conn.DB) *ProviderSpecificLogger {
 
 // SearchLogs searches logs in provider-specific tables
 func (l *ProviderSpecificLogger) SearchLogs(ctx context.Context, tenantID, provider string, query map[string]any) ([]postgres.PaymentLog, error) {
+	provider, err := logTable(provider)
+	if err != nil {
+		return nil, err
+	}
 	tenantIDInt, err := strconv.Atoi(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tenant ID: %w", err)
@@ -571,6 +591,10 @@ func (l *ProviderSpecificLogger) SearchLogs(ctx context.Context, tenantID, provi
 
 // GetPaymentLogs retrieves logs for a specific payment ID
 func (l *ProviderSpecificLogger) GetPaymentLogs(ctx context.Context, tenantID, provider, paymentID string) ([]postgres.PaymentLog, error) {
+	provider, err := logTable(provider)
+	if err != nil {
+		return nil, err
+	}
 	tenantIDInt, err := strconv.Atoi(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tenant ID: %w", err)
@@ -596,6 +620,10 @@ func (l *ProviderSpecificLogger) GetPaymentLogs(ctx context.Context, tenantID, p
 
 // GetRecentErrorLogs retrieves recent error logs for a provider
 func (l *ProviderSpecificLogger) GetRecentErrorLogs(ctx context.Context, tenantID, provider string, hours int) ([]postgres.PaymentLog, error) {
+	provider, err := logTable(provider)
+	if err != nil {
+		return nil, err
+	}
 	tenantIDInt, err := strconv.Atoi(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tenant ID: %w", err)
@@ -623,6 +651,10 @@ func (l *ProviderSpecificLogger) GetRecentErrorLogs(ctx context.Context, tenantI
 
 // GetProviderStats retrieves provider statistics
 func (l *ProviderSpecificLogger) GetProviderStats(ctx context.Context, tenantID, provider string, hours int) (map[string]any, error) {
+	provider, err := logTable(provider)
+	if err != nil {
+		return nil, err
+	}
 	tenantIDInt, err := strconv.Atoi(tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tenant ID: %w", err)

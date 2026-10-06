@@ -20,7 +20,7 @@
 //
 // # Authentication System
 //
-// GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys:
+// GoPay uses JWT (JSON Web Token) based authentication, signed with JWT_SECRET:
 //
 //	authHandler := handler.NewAuthHandler(tenantService, jwtService, validator)
 //
@@ -58,11 +58,10 @@
 //
 // Enhanced security features:
 //
-//   - Auto-rotating JWT secret keys (regenerate on each service restart)
-//   - All tokens become invalid after service restart
-//   - Users must re-authenticate after restart
-//   - No persistent secret storage (UUID-generated keys)
-//   - 24-hour token expiry with refresh capability
+//   - The server refuses to start without JWT_SECRET; rotating it invalidates every token
+//   - A token is bound to the password it was issued under; a password change revokes it
+//   - Failed logins are throttled per username and client IP
+//   - 12-hour tokens; refresh never extends a session past 24 hours after login
 //
 // # Payment Handler
 //
@@ -290,13 +289,14 @@
 // Admin-only endpoints (require admin tenant):
 //   - /v1/auth/create-tenant - Create new tenant
 //   - /v1/auth/change-password (for other users)
+//   - POST and DELETE /v1/config/tenant - Provider credentials
 //
 // # JWT Middleware Integration
 //
 // JWT authentication is handled by middleware that extracts tenant information:
 //
-//	// JWT middleware validates token and extracts tenant info
-//	func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler
+//	// JWT middleware validates the token, then rejects it if the password changed since issue
+//	func JWTAuthMiddleware(jwtService *auth.JWTService, checker TokenChecker) func(http.Handler) http.Handler
 //
 //	// Usage in handlers
 //	func (h *PaymentHandler) ProcessPayment(w http.ResponseWriter, r *http.Request) {
@@ -309,7 +309,7 @@
 //
 // Handlers are protected by comprehensive security measures:
 //
-//   - JWT authentication with auto-rotating secret keys
+//   - JWT authentication with password-bound revocation
 //   - Tenant-based rate limiting with action-specific limits
 //   - SQL injection protection with input validation
 //   - Request size validation and limits

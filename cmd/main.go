@@ -17,7 +17,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-playground/validator/v10"
-	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/handler"
 	"github.com/mstgnz/gopay/infra/auth"
 	"github.com/mstgnz/gopay/infra/config"
@@ -41,9 +40,19 @@ var (
 
 func init() {
 	// Load Env
-	if err := godotenv.Load(".env"); err != nil {
-		logger.Warn(fmt.Sprintf("Load Env Error: %v", err))
+	loaded, err := config.LoadDotEnv(".env")
+	if err != nil {
 		log.Fatalf("Load Env Error: %v", err)
+	}
+	if !loaded {
+		log.Println(".env not found, using the process environment")
+	}
+	weak, err := config.CheckJWTSecret(os.Getenv("JWT_SECRET"))
+	if err != nil {
+		log.Fatalf("Config Error: %v", err)
+	}
+	if weak {
+		log.Println("JWT_SECRET is shorter than 32 characters; generate one with: openssl rand -base64 48")
 	}
 	// init conf
 	_ = config.App()
@@ -106,7 +115,6 @@ func main() {
 	// PostgreSQL Logging Middleware (add before authentication to log all requests)
 	if postgresLogger != nil {
 		r.Use(middle.PaymentLoggingMiddleware(postgresLogger))
-		r.Use(middle.LoggingStatsMiddleware(postgresLogger))
 	}
 
 	// CORS
@@ -190,7 +198,7 @@ func main() {
 
 		// Protected auth endpoints (require JWT)
 		r.Group(func(r chi.Router) {
-			r.Use(middle.JWTAuthMiddleware(jwtService))
+			r.Use(middle.JWTAuthMiddleware(jwtService, tenantService))
 			r.Post("/create-tenant", authHandler.CreateTenant) // Admin-only tenant creation
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/change-password", authHandler.ChangePassword)
@@ -201,7 +209,7 @@ func main() {
 	// Protected v1 routes with authentication
 	r.Route("/v1", func(r chi.Router) {
 		// Add JWT authentication middleware only to protected routes
-		r.Use(middle.JWTAuthMiddleware(jwtService))
+		r.Use(middle.JWTAuthMiddleware(jwtService, tenantService))
 
 		// Import v1 routes with required services (auth routes are handled above)
 		v1.Routes(r, postgresLogger, paymentService, providerConfig)

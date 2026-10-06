@@ -23,11 +23,11 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 
 ### JWT-Based Multi-Tenant System
 
-- **Authentication**: JWT tokens with auto-rotating secret keys
+- **Authentication**: JWT tokens signed with `JWT_SECRET`, revoked by a password change
 - **Multi-Tenant**: Each tenant has isolated provider configurations
 - **Database**: PostgreSQL for configurations, logging, and analytics
 - **Rate Limiting**: Tenant-specific rate limits with burst allowance
-- **Security**: Auto-rotating JWT secrets, input validation, audit logging
+- **Security**: Token revocation, login throttling, masked credentials, input validation, audit logging
 
 ### Payment Flows
 
@@ -113,7 +113,7 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 #### 🔧 **Setup Flow**
 
 1. **Authenticate** → Get JWT token (`POST /v1/auth/login`)
-2. **Configure** → Set provider credentials (`POST /v1/config/tenant`)
+2. **Configure** → Admin sets the tenant's provider credentials (`POST /v1/config/tenant`, admin only)
 3. **Process** → Create payments using standardized API
 4. **Handle** → Automatic callback/webhook management
 5. **Monitor** → Track transactions via dashboard & logs
@@ -142,7 +142,7 @@ cd gopay
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your database settings
+# Edit .env with your database settings and set JWT_SECRET (openssl rand -base64 48)
 
 # Run with Docker
 docker-compose up -d
@@ -174,13 +174,14 @@ curl -X POST http://localhost:9999/v1/auth/login \
 ### 3. Configure Provider
 
 ```bash
-# Configure payment provider (tenant-specific)
+# Configure payment provider for a tenant (admin token only; omit tenantId for the admin itself)
 curl -X POST http://localhost:9999/v1/config/tenant \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Authorization: Bearer ADMIN_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "tenantId": 2,
     "provider": "iyzico",
-    "environment": "test",
+    "environment": "sandbox",
     "configs": [
       {"key": "apiKey", "value": "your-api-key"},
       {"key": "secretKey", "value": "your-secret-key"}
@@ -307,8 +308,8 @@ if($_GET['success'] === 'true') {
 
 ### JWT Authentication
 
-- **Auto-Rotating Secret Keys**: JWT secret regenerates on service restart
-- **Token Expiry**: 24-hour token lifetime with refresh capability
+- **Signing Key**: `JWT_SECRET` (32+ random characters); the server refuses to start without it, and rotating it invalidates every token
+- **Token Expiry**: 12-hour tokens; refresh never extends a session past 24 hours after login
 - **Tenant Isolation**: Each tenant has separate configurations and data
 
 ### Rate Limiting
@@ -356,15 +357,19 @@ if($_GET['success'] === 'true') {
 POST /v1/auth/login          # User login
 POST /v1/auth/register       # First user registration
 POST /v1/auth/create-tenant  # Create new tenant (admin only)
-POST /v1/auth/refresh        # Refresh JWT token
+POST /v1/auth/refresh        # Refresh JWT token (the session ends 24h after the original login)
 ```
+
+A token is bound to the password it was issued under: changing the password revokes every
+earlier token. Repeated failed logins for a username from one client IP within 15 minutes
+return `429` for that IP only; logins from other IPs are unaffected.
 
 ### Configuration
 
 ```
-POST /v1/config/tenant       # Configure payment provider
-GET  /v1/config/tenant       # Get tenant configuration
-DELETE /v1/config/tenant     # Delete tenant configuration
+POST /v1/config/tenant       # Configure payment provider (admin only, optional tenantId)
+GET  /v1/config/tenant       # Get tenant configuration (values masked)
+DELETE /v1/config/tenant     # Delete tenant configuration (admin only, optional tenant_id)
 ```
 
 ### Payments

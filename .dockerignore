@@ -1,3 +1,10 @@
 .git
 .idea/
 .DS_Store
+# Secrets reach the container through compose env_file; never bake them into an image layer.
+.env*
+# Local provider response dumps (gitignored; a Nkolay 3D response carries card data).
+3d.html
+3d.json
+.github
+.vscode

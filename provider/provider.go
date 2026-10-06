@@ -2,16 +2,10 @@ package provider
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"time"
 
@@ -166,7 +160,8 @@ type RefundResponse struct {
 	RawResponse  any        `json:"rawResponse,omitempty"`
 }
 
-// CallbackState represents encrypted state data for secure callbacks across all providers
+// CallbackState is the server-side record of a 3D payment, stored in the callbacks table and
+// referenced from the provider callback URL by its numeric id.
 type CallbackState struct {
 	TenantID         int       `json:"tenantId"`
 	Installment      int       `json:"installment"`
@@ -219,116 +214,6 @@ type CommissionResponse struct {
 	GrossAmount      float64 `json:"grossAmount"`
 	CommissionRate   float64 `json:"commissionRate"`
 	CommissionAmount float64 `json:"commissionAmount"`
-}
-
-var callbackEncryptor *CallbackEncryptor
-
-// CallbackEncryptor provides secure encryption/decryption for callback state
-type CallbackEncryptor struct {
-	secretKey string
-}
-
-// NewCallbackEncryptor creates a new callback encryptor with the given secret key
-func NewCallbackEncryptor() *CallbackEncryptor {
-	if callbackEncryptor == nil {
-		callbackEncryptor = &CallbackEncryptor{secretKey: config.App().EncryptKey}
-	}
-	return callbackEncryptor
-}
-
-// EncryptCallbackState encrypts callback state data using AES-GCM
-func (e *CallbackEncryptor) EncryptCallbackState(state CallbackState) (string, error) {
-	// Derive encryption key from secret
-	key := e.deriveEncryptionKey()
-
-	// Marshal state to JSON
-	plaintext, err := json.Marshal(state)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal state: %w", err)
-	}
-
-	// Create cipher
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	// Create GCM
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("failed to create GCM: %w", err)
-	}
-
-	// Generate random nonce
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("failed to generate nonce: %w", err)
-	}
-
-	// Encrypt and authenticate
-	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-
-	// Combine nonce and ciphertext
-	combined := append(nonce, ciphertext...)
-	return base64.URLEncoding.EncodeToString(combined), nil
-}
-
-// DecryptCallbackState decrypts callback state data using AES-GCM
-func (e *CallbackEncryptor) DecryptCallbackState(encryptedState string) (*CallbackState, error) {
-	// Derive encryption key from secret
-	key := e.deriveEncryptionKey()
-
-	// Decode base64
-	combined, err := base64.URLEncoding.DecodeString(encryptedState)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64: %w", err)
-	}
-
-	// Create cipher
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	// Create GCM
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
-	}
-
-	// Check minimum length
-	if len(combined) < gcm.NonceSize() {
-		return nil, errors.New("encrypted state too short")
-	}
-
-	// Extract nonce and ciphertext
-	nonce := combined[:gcm.NonceSize()]
-	ciphertext := combined[gcm.NonceSize():]
-
-	// Decrypt and verify
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %w", err)
-	}
-
-	// Unmarshal state
-	var state CallbackState
-	if err := json.Unmarshal(plaintext, &state); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
-	}
-
-	// Validate timestamp (prevent replay attacks)
-	if time.Since(state.Timestamp) > 30*time.Minute {
-		return nil, errors.New("callback state expired")
-	}
-
-	return &state, nil
-}
-
-// deriveEncryptionKey derives a 32-byte encryption key from the secret
-func (e *CallbackEncryptor) deriveEncryptionKey() []byte {
-	hash := sha256.Sum256([]byte(e.secretKey + "-callback-encryption-v1"))
-	return hash[:]
 }
 
 // StoreCallbackState stores callback state in database and returns short ID
@@ -493,34 +378,22 @@ func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, 
 	return fmt.Sprintf("%s/v1/callback/%s?state=%s", gopayBaseURL, provider, stateID), nil
 }
 
-// HandleEncryptedCallbackState is a helper function for providers to handle encrypted callback state (DEPRECATED)
-func HandleEncryptedCallbackState(state string) (*CallbackState, error) {
-	// Try new short ID system first
-	if callbackState, err := RetrieveCallbackState(context.Background(), state); err == nil {
-		return callbackState, nil
-	}
+// ErrInvalidCallbackState is returned for a state that is not a stored callback id. The old
+// self-contained encrypted state was removed: it was not single-use, carried its own timestamp,
+// and fell back to a key that is public whenever ENCRYPT_SECRET was unset.
+var ErrInvalidCallbackState = errors.New("invalid callback state")
 
-	// Fallback to old encrypted system for backward compatibility
-	encryptor := NewCallbackEncryptor()
-	return encryptor.DecryptCallbackState(state)
-}
-
-// HandleCallbackState handles both new integer ID and old encrypted callback states
+// HandleCallbackState resolves the callback id issued by CreateShortCallbackURL.
 func HandleCallbackState(ctx context.Context, state string) (*CallbackState, error) {
-	// Try new integer ID system first (primary method)
-	if _, err := strconv.Atoi(state); err == nil {
-		// It's a valid integer, try database lookup
-		callbackState, dbErr := RetrieveCallbackState(ctx, state)
-		if dbErr == nil {
-			return callbackState, nil
-		}
-		// If it's clearly an integer ID but not found in DB, return more specific error
-		return nil, fmt.Errorf("callback state not found or expired (ID: %s): %w", state, dbErr)
+	if _, err := strconv.Atoi(state); err != nil {
+		return nil, ErrInvalidCallbackState
 	}
 
-	// Fallback to old encrypted system for backward compatibility
-	encryptor := NewCallbackEncryptor()
-	return encryptor.DecryptCallbackState(state)
+	callbackState, err := RetrieveCallbackState(ctx, state)
+	if err != nil {
+		return nil, fmt.Errorf("callback state not found or expired (ID: %s): %w", state, err)
+	}
+	return callbackState, nil
 }
 
 // UpdateCallbackState updates callback state in database

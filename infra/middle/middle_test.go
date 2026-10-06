@@ -11,7 +11,7 @@ import (
 
 func TestAuthMiddleware(t *testing.T) {
 	// Test with nil JWT service - should fail validation
-	middleware := JWTAuthMiddleware(nil)
+	middleware := JWTAuthMiddleware(nil, stubChecker{})
 
 	// Test handler
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

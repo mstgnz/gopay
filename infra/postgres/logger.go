@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -459,9 +460,32 @@ func sanitizeRecursive(data any) any {
 			result[i] = sanitizeRecursive(item)
 		}
 		return result
+	case string:
+		return redactCardInputs(v)
 	default:
 		return v
 	}
+}
+
+// cardInputNames are form fields that carry a PAN or CVV. Providers such as Nkolay answer a 3D
+// request with an auto-submitting HTML form that echoes the card, and that HTML is logged as a
+// plain string where the key-based masking above never looks.
+const cardInputNames = `pan|cv2|cvv|cvc|cvv2|cvc2|cardcvv2|cardcvc2|cardnumber|card_number|cardno|creditcardno`
+
+// Quotes may arrive JSON-escaped (\") when the HTML sits inside a raw provider response body.
+var (
+	cardInputNameFirst  = regexp.MustCompile(`(?i)(<input\b[^>]*?\bname\s*=\s*\\?["']?(?:` + cardInputNames + `)\\?["']?[\s/][^>]*?\bvalue\s*=\s*)(\\?"[^"]*?\\?"|\\?'[^']*?\\?'|[^\s>]+)`)
+	cardInputValueFirst = regexp.MustCompile(`(?i)(<input\b[^>]*?\bvalue\s*=\s*)(\\?"[^"]*?\\?"|\\?'[^']*?\\?'|[^\s>]+)([^>]*?\bname\s*=\s*\\?["']?(?:` + cardInputNames + `)\\?["']?[\s/>])`)
+)
+
+// redactCardInputs blanks the value of card-bearing <input> fields inside an HTML string. Only
+// the logged copy is rewritten; the response returned to the client keeps the original form.
+func redactCardInputs(s string) string {
+	if !strings.Contains(s, "nput") && !strings.Contains(s, "NPUT") {
+		return s
+	}
+	s = cardInputNameFirst.ReplaceAllString(s, `${1}"***"`)
+	return cardInputValueFirst.ReplaceAllString(s, `${1}"***"${3}`)
 }
 
 // sanitizeMap sanitizes a map of string to any
@@ -475,15 +499,16 @@ func sanitizeMap(data map[string]any) map[string]any {
 	//
 	// Do NOT add "token" here. cardToken is read back out of the log to complete 3D payments
 	// (provider/paycell/paycell.go:275 and :396); masking it would break payment completion.
+	// "sx" is Nkolay's merchant token (sx, sxList, sxCancel); nothing reads it back from the log.
 	sensitiveFields := []string{
 		"cardnumber", "card_number", "credit", "pan",
 		"cvv", "cvc",
-		"applicationpwd", "password", "passwd", "pwd", "secret", "securecode",
+		"applicationpwd", "password", "passwd", "pwd", "secret", "securecode", "sx",
 	}
 
 	// Credentials are redacted whole. maskGenericSensitive keeps the first and last two
 	// characters, which is fine for a PAN fragment but still leaks a short shared secret.
-	credentialFields := []string{"applicationpwd", "password", "passwd", "pwd", "secret", "securecode"}
+	credentialFields := []string{"applicationpwd", "password", "passwd", "pwd", "secret", "securecode", "sx"}
 
 	for key, value := range data {
 		keyLower := strings.ToLower(key)
@@ -1061,6 +1086,11 @@ func (l *Logger) GetAllRecentActivity(ctx context.Context, limit int) ([]map[str
 			}
 
 			allActivities = append(allActivities, activity)
+		}
+		// A failed scan of one provider table keeps the other providers' rows, as a failed
+		// query already does, but the failure is logged instead of passing for an empty table.
+		if err := rows.Err(); err != nil {
+			log.Printf("recent activity: reading %s rows failed: %v", tableName, err)
 		}
 		rows.Close()
 	}

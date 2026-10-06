@@ -1152,7 +1152,7 @@ func (p *PaycellProvider) provision3D(ctx context.Context, request provider.Paym
 		return nil, fmt.Errorf("failed to get 3D session: %w", err)
 	}
 
-	// Create encrypted state with all necessary callback information
+	// Callback state stored server-side; the callback URL carries only its id
 	state := provider.CallbackState{
 		TenantID:         int(request.TenantID),
 		PaymentID:        threeDSession.ThreeDSessionId,

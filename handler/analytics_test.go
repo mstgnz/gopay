@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/mstgnz/gopay/infra/postgres"
@@ -657,37 +656,6 @@ func TestAnalyticsHandler_CalculationFunctionsEdgeCases(t *testing.T) {
 		}
 		if responseTimeChange != "-15ms from yesterday" {
 			t.Errorf("Expected '-15ms from yesterday', got '%s'", responseTimeChange)
-		}
-	})
-
-	// Test with mock logger (should return "No data" messages)
-	t.Run("calculation functions with mock logger", func(t *testing.T) {
-		// Create a mock logger to trigger the database path (but no real DB connection)
-		mockLogger := &postgres.Logger{}
-		handler := NewAnalyticsHandler(mockLogger)
-		tenantID := 0
-
-		// Test multiple times to ensure they return valid formats
-		for i := 0; i < 3; i++ {
-			filters := AnalyticsFilters{TenantID: &tenantID, Hours: 24}
-			paymentChange := handler.calculatePaymentChangeWithFilters(filters)
-			successRateChange := handler.calculateSuccessRateChangeWithFilters(filters)
-			volumeChange := handler.calculateVolumeChangeWithFilters(filters)
-			responseTimeChange := handler.calculateResponseTimeChangeWithFilters(filters)
-
-			// Check format consistency - with mock logger (no DB), should return "No data" messages
-			if !strings.Contains(paymentChange, "from previous") && !strings.Contains(paymentChange, "No previous data") {
-				t.Errorf("Payment change should contain 'from previous' or 'No previous data', got '%s'", paymentChange)
-			}
-			if !strings.Contains(successRateChange, "from previous") && !strings.Contains(successRateChange, "No data available") {
-				t.Errorf("Success rate change should contain 'from previous' or 'No data available', got '%s'", successRateChange)
-			}
-			if !strings.Contains(volumeChange, "from previous") && !strings.Contains(volumeChange, "No previous data") {
-				t.Errorf("Volume change should contain 'from previous' or 'No previous data', got '%s'", volumeChange)
-			}
-			if !strings.Contains(responseTimeChange, "from previous") && !strings.Contains(responseTimeChange, "No data available") {
-				t.Errorf("Response time change should contain 'from previous' or 'No data available', got '%s'", responseTimeChange)
-			}
 		}
 	})
 

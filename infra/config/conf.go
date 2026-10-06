@@ -1,22 +1,24 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"math/rand"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/joho/godotenv"
 	"github.com/mstgnz/gopay/infra/conn"
 )
 
 type CKey string
 
 type Config struct {
-	DB         *conn.DB
-	Validator  *validator.Validate
-	SecretKey  string
-	EncryptKey string
+	DB        *conn.DB
+	Validator *validator.Validate
+	SecretKey string
 }
 
 // AppConfig represents the application configuration
@@ -37,10 +39,8 @@ func App() *Config {
 		instance = &Config{
 			DB:        &conn.DB{},
 			Validator: validator.New(),
-			// the secret key will change every time the application is restarted.
-			SecretKey: GetEnv("JWT_SECRET", "default-secret-key"),
-			//SecretKey: uuid.New().String(), // every time the application is restarted, the secret key will change.
-			EncryptKey: GetEnv("ENCRYPT_SECRET", "default-encrypt-key"),
+			// The fallback is public in this repo; cmd/main.go refuses to start with it.
+			SecretKey: GetEnv("JWT_SECRET", fallbackJWTSecret),
 		}
 		instance.DB.ConnectDatabase()
 	}
@@ -58,6 +58,34 @@ func GetAppConfig() *AppConfig {
 		}
 	}
 	return appConfigInstance
+}
+
+const (
+	// fallbackJWTSecret is public in this repository: tokens signed with it can be minted by anyone.
+	fallbackJWTSecret = "default-secret-key"
+	// minJWTSecretLen is the HS256 key size in bytes.
+	minJWTSecretLen = 32
+)
+
+// CheckJWTSecret refuses an unset or public JWT secret and reports a short one.
+func CheckJWTSecret(secret string) (weak bool, err error) {
+	if secret == "" || secret == fallbackJWTSecret {
+		return false, errors.New("JWT_SECRET is unset or the public fallback, so anyone could mint tokens")
+	}
+	return len(secret) < minJWTSecretLen, nil
+}
+
+// LoadDotEnv loads a .env file when one is present. A missing file is not an error: the
+// container gets its variables from compose env_file and the image no longer ships a .env.
+// Variables already set in the process environment win over the file.
+func LoadDotEnv(path string) (loaded bool, err error) {
+	if err := godotenv.Load(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // getEnv returns the value of an environment variable or a default value

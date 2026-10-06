@@ -480,7 +480,7 @@ func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentReque
 
 	// Add 3D specific fields
 	if is3D {
-		// Create encrypted state with all necessary callback information
+		// Callback state stored server-side; the callback URL carries only its id
 		state := provider.CallbackState{
 			TenantID:         int(request.TenantID),
 			PaymentID:        conversationID, // Use conversationID as payment identifier

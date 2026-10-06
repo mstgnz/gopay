@@ -1,6 +1,7 @@
 package middle
 
 import (
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,6 +106,20 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// ProxyClientIP returns the client address that the TLS-terminating host nginx wrote into
+// X-Real-IP; the docker nginx passes it through. It is the real client only while the host
+// nginx resolves CF-Connecting-IP from Cloudflare ranges and port 9999 is unreachable from
+// outside. Not r.RemoteAddr: chi RealIP fills that from True-Client-IP, which no proxy strips.
+func ProxyClientIP(r *http.Request) string {
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		return xri
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 // GetClientIP extracts the real client IP

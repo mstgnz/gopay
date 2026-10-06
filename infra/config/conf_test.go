@@ -10,6 +10,11 @@ import (
 )
 
 func TestApp(t *testing.T) {
+	// App() connects to Postgres and log.Fatal's when it cannot, which would end the whole
+	// package run and silently skip every test after this one.
+	if os.Getenv("DB_HOST") == "" {
+		t.Skip("DB_HOST is not set; App() needs a database")
+	}
 	tests := []struct {
 		name string
 		test func(t *testing.T)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +12,8 @@ import (
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
+	// Aliased: the handlers in this file use "provider" as a local variable name.
+	gopayprovider "github.com/mstgnz/gopay/provider"
 )
 
 // LoggerInterface defines the interface for logging operations
@@ -25,6 +28,16 @@ type LoggerInterface interface {
 type LogsHandler struct {
 	logger         LoggerInterface
 	postgresLogger *postgres.Logger
+}
+
+// writeLogQueryError answers 400 for a provider name outside the allowlist; anything else is
+// a server-side failure.
+func writeLogQueryError(w http.ResponseWriter, message string, err error) {
+	if errors.Is(err, gopayprovider.ErrUnknownProvider) {
+		response.Error(w, http.StatusBadRequest, "Unknown provider", nil)
+		return
+	}
+	response.Error(w, http.StatusInternalServerError, message, err)
 }
 
 // NewLogsHandler creates a new logs handler
@@ -151,7 +164,7 @@ func (h *LogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	// Search logs
 	logs, err := h.logger.SearchLogs(ctx, tenantID, provider, query)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to search logs", err)
+		writeLogQueryError(w, "Failed to search logs", err)
 		return
 	}
 
@@ -205,7 +218,7 @@ func (h *LogsHandler) GetPaymentLogs(w http.ResponseWriter, r *http.Request) {
 	// Get logs for specific payment
 	logs, err := h.logger.GetPaymentLogs(ctx, tenantID, provider, paymentID)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to retrieve logs", err)
+		writeLogQueryError(w, "Failed to retrieve logs", err)
 		return
 	}
 
@@ -251,7 +264,7 @@ func (h *LogsHandler) GetErrorLogs(w http.ResponseWriter, r *http.Request) {
 	// Get error logs
 	logs, err := h.logger.GetRecentErrorLogs(ctx, tenantID, provider, hours)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to get error logs", err)
+		writeLogQueryError(w, "Failed to get error logs", err)
 		return
 	}
 
@@ -374,7 +387,7 @@ func (h *LogsHandler) GetLogStats(w http.ResponseWriter, r *http.Request) {
 	// Get stats from provider-specific logger
 	stats, err := h.logger.GetProviderStats(ctx, tenantID, provider, hoursInt)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to retrieve log statistics", err)
+		writeLogQueryError(w, "Failed to retrieve log statistics", err)
 		return
 	}
 

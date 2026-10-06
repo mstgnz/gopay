@@ -2,7 +2,7 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/auth"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -19,6 +20,7 @@ type AuthHandler struct {
 	tenantService *auth.TenantService
 	jwtService    *auth.JWTService
 	validate      *validator.Validate
+	throttle      *loginThrottle
 }
 
 // NewAuthHandler creates a new authentication handler
@@ -27,6 +29,7 @@ func NewAuthHandler(tenantService *auth.TenantService, jwtService *auth.JWTServi
 		tenantService: tenantService,
 		jwtService:    jwtService,
 		validate:      validate,
+		throttle:      newLoginThrottle(),
 	}
 }
 
@@ -83,6 +86,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reserved before bcrypt so a guessing run costs no CPU once it is throttled, and so parallel
+	// requests cannot all pass the check before the first failure is counted.
+	attempt, retryAfter := h.throttle.begin(req.Username, middle.ProxyClientIP(r))
+	if attempt == nil {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		response.Error(w, http.StatusTooManyRequests, "Too many failed login attempts, try again later", nil)
+		return
+	}
+	defer attempt.finish()
+
 	// Create auth login request
 	loginReq := auth.LoginRequest{
 		Username: req.Username,
@@ -93,15 +106,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	loginResp, err := h.tenantService.Login(loginReq)
 	if err != nil {
 		switch err {
-		case auth.ErrInvalidCredentials:
-			response.Error(w, http.StatusUnauthorized, "Invalid username or password", nil)
-		case auth.ErrTenantNotFound:
+		case auth.ErrInvalidCredentials, auth.ErrTenantNotFound:
+			attempt.failed()
 			response.Error(w, http.StatusUnauthorized, "Invalid username or password", nil)
 		default:
 			response.Error(w, http.StatusInternalServerError, "Login failed", err)
 		}
 		return
 	}
+	attempt.succeeded()
 
 	// Return login response
 	response.Success(w, http.StatusOK, "Login successful", loginResp)
@@ -140,23 +153,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token for the new user
-	tenantID := fmt.Sprintf("%d", tenant.ID)
-	token, err := h.jwtService.GenerateToken(tenantID, tenant.Username)
+	registerResp, err := h.tenantService.IssueToken(tenant)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to generate authentication token", err)
 		return
-	}
-
-	// Expiry comes from the signing service so the reported value can never
-	// outlive the token itself.
-	expiresAt := time.Now().Add(h.jwtService.Expiry())
-
-	registerResp := LoginResponse{
-		Token:     token,
-		TenantID:  tenantID,
-		Username:  tenant.Username,
-		ExpiresAt: expiresAt,
 	}
 
 	response.Success(w, http.StatusCreated, "Registration successful", registerResp)
@@ -339,26 +339,27 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh token
-	newToken, err := h.jwtService.RefreshToken(req.Token)
+	refreshed, err := h.tenantService.RefreshToken(req.Token)
 	if err != nil {
-		switch err {
-		case auth.ErrExpiredToken:
+		switch {
+		case errors.Is(err, auth.ErrExpiredToken):
 			response.Error(w, http.StatusUnauthorized, "Token has expired", nil)
-		case auth.ErrInvalidToken:
+		case errors.Is(err, auth.ErrInvalidToken), errors.Is(err, auth.ErrInvalidClaims), errors.Is(err, auth.ErrMissingTenant):
 			response.Error(w, http.StatusUnauthorized, "Invalid token", nil)
+		case errors.Is(err, auth.ErrTokenRevoked), errors.Is(err, auth.ErrRefreshDenied):
+			response.Error(w, http.StatusUnauthorized, "Token cannot be refreshed, log in again", nil)
 		default:
-			response.Error(w, http.StatusInternalServerError, "Failed to refresh token", err)
+			// Same answer as the JWT middleware gives when the revocation lookup fails.
+			logger.Error("Token refresh failed", err, logger.LogContext{})
+			response.Error(w, http.StatusServiceUnavailable, "Authentication temporarily unavailable", nil)
 		}
 		return
 	}
 
-	// RefreshToken signs with the service's own expiry, so report that.
-	expiresAt := time.Now().Add(h.jwtService.Expiry())
-
 	// Return new token
 	tokenResponse := map[string]any{
-		"token":      newToken,
-		"expires_at": expiresAt,
+		"token":      refreshed.Token,
+		"expires_at": refreshed.ExpiresAt,
 	}
 
 	response.Success(w, http.StatusOK, "Token refreshed successfully", tokenResponse)
@@ -424,6 +425,16 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusUnauthorized, "Missing tenant information in token", nil)
 		default:
 			response.Error(w, http.StatusUnauthorized, "Token validation failed", nil)
+		}
+		return
+	}
+
+	if err := h.tenantService.CheckTokenCurrent(claims); err != nil {
+		if errors.Is(err, auth.ErrTokenRevoked) || errors.Is(err, auth.ErrInvalidClaims) {
+			response.Error(w, http.StatusUnauthorized, "Token has been revoked", nil)
+		} else {
+			logger.Error("Token revocation check failed", err, logger.LogContext{TenantID: claims.TenantID})
+			response.Error(w, http.StatusServiceUnavailable, "Authentication temporarily unavailable", nil)
 		}
 		return
 	}

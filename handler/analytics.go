@@ -23,7 +23,7 @@ type AnalyticsHandler struct {
 // Returns tenantID from JWT token and whether user is admin (tenant_id=1)
 func (h *AnalyticsHandler) getTenantContext(r *http.Request) (tenantID string, isAdmin bool) {
 	tenantID = middle.GetTenantIDFromContext(r.Context())
-	isAdmin = tenantID == "1" // Only tenant_id=1 is considered admin
+	isAdmin = isAdminTenant(tenantID)
 	return
 }
 
@@ -1197,7 +1197,23 @@ func (h *AnalyticsHandler) GetActiveTenants(w http.ResponseWriter, r *http.Reque
 		tenants = []map[string]any{}
 	}
 
-	response.Success(w, http.StatusOK, "Active tenants retrieved successfully", tenants)
+	callerTenantID, isAdmin := h.getTenantContext(r)
+	response.Success(w, http.StatusOK, "Active tenants retrieved successfully", visibleTenants(tenants, callerTenantID, isAdmin))
+}
+
+// visibleTenants limits a non-admin caller to its own tenant row. The full list holds every
+// merchant's login username, which with an unthrottled login was a ready target list.
+func visibleTenants(tenants []map[string]any, callerTenantID string, isAdmin bool) []map[string]any {
+	if isAdmin {
+		return tenants
+	}
+	own := []map[string]any{}
+	for _, tenant := range tenants {
+		if fmt.Sprintf("%v", tenant["id"]) == callerTenantID {
+			own = append(own, tenant)
+		}
+	}
+	return own
 }
 
 // getRealActiveProviders fetches active providers from PostgreSQL

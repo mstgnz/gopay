@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -362,6 +364,29 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+var urlSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:`)
+
+// hasUnsafeScheme reports whether a browser would read the URL as a scheme other than http or
+// https. It normalizes as the URL standard does first (tab and newline removed anywhere, C0
+// controls and spaces trimmed), so "java\tscript:" is caught. A URL without a scheme passes, as
+// it always has.
+func hasUnsafeScheme(raw string) bool {
+	cleaned := strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, raw)
+	cleaned = strings.TrimFunc(cleaned, func(r rune) bool { return r <= ' ' })
+
+	scheme := urlSchemeRe.FindString(cleaned)
+	if scheme == "" {
+		return false
+	}
+	scheme = strings.ToLower(strings.TrimSuffix(scheme, ":"))
+	return scheme != "http" && scheme != "https"
+}
+
 // postRedirect creates an HTML form and auto-submits it to perform POST redirect
 func (h *PaymentHandler) postRedirect(w http.ResponseWriter, url string, data map[string]string) {
 	// Safety check for empty URL
@@ -369,32 +394,45 @@ func (h *PaymentHandler) postRedirect(w http.ResponseWriter, url string, data ma
 		response.Error(w, http.StatusInternalServerError, "Redirect URL is empty", nil)
 		return
 	}
+	// The URL is the tenant's callbackUrl. A javascript: target would run script on this origin,
+	// where the dashboard keeps its admin token.
+	if hasUnsafeScheme(url) {
+		logger.Warn("Callback redirect refused: URL scheme is not http or https", logger.LogContext{
+			Fields: map[string]any{"redirect_url": url},
+		})
+		response.Error(w, http.StatusInternalServerError, "Redirect URL is not allowed", nil)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	// Every interpolated value is HTML-escaped: messages come from providers and error text.
+	// The browser unescapes attribute values before submitting, so the consumer receives the
+	// same strings as before.
+	var page strings.Builder
+	fmt.Fprintf(&page, `<!DOCTYPE html>
 <html>
 <head>
     <title>Processing...</title>
 </head>
 <body>
-    <form id="redirectForm" method="POST" action="%s">`, url)
+    <form id="redirectForm" method="POST" action="%s">`, html.EscapeString(url))
 
 	for key, value := range data {
-		html += fmt.Sprintf(`
-        <input type="hidden" name="%s" value="%s">`, key, value)
+		fmt.Fprintf(&page, `
+        <input type="hidden" name="%s" value="%s">`, html.EscapeString(key), html.EscapeString(value))
 	}
 
-	html += `
+	page.WriteString(`
     </form>
     <script>
         document.getElementById('redirectForm').submit();
     </script>
 </body>
-</html>`
+</html>`)
 
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(html))
+	_, _ = w.Write([]byte(page.String()))
 }
 
 // Enhanced HandleWebhook with async processing and retry logic

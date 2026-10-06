@@ -33,7 +33,7 @@
 //
 // # Authentication System
 //
-// GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys:
+// GoPay uses JWT (JSON Web Token) based authentication, signed with JWT_SECRET:
 //
 //	// 1. Register or login to get JWT token
 //	POST /v1/auth/login
@@ -57,11 +57,11 @@
 //
 // # Enhanced Security Features
 //
-// Auto-Rotating JWT Secret Keys:
-//   - JWT secret key regenerates on every service restart
-//   - All existing tokens become invalid after restart
-//   - Users must re-authenticate after service restart
-//   - No persistent secret storage (UUID-generated keys)
+// JWT Tokens:
+//   - HS256, signed with the JWT_SECRET environment variable; the server refuses to start without it
+//   - 12-hour tokens; refresh never extends a session past 24 hours after login
+//   - A token is bound to the password it was issued under: a password change revokes it
+//   - Failed logins are throttled per username and client IP
 //
 // Tenant-Based Rate Limiting:
 //   - Individual rate limits per tenant extracted from JWT token
@@ -92,17 +92,8 @@
 //
 //	    token := authenticateAndGetToken(loginReq)
 //
-//	    // 2. Configure provider with JWT authentication
-//	    configReq := map[string]string{
-//	        "IYZICO_API_KEY":    "your-api-key",
-//	        "IYZICO_SECRET_KEY": "your-secret-key",
-//	        "IYZICO_ENVIRONMENT": "sandbox",
-//	    }
-//
-//	    err := configureProvider(token, configReq)
-//	    if err != nil {
-//	        panic(err)
-//	    }
+//	    // 2. The admin has stored this tenant's provider credentials
+//	    //    (POST /v1/config/tenant, admin token only)
 //
 //	    // 3. Create payment request with JWT authentication
 //	    paymentReq := map[string]any{
@@ -144,17 +135,18 @@
 //	// Each JWT token contains tenant information
 //	// No need for X-Tenant-ID headers - tenant is extracted from JWT
 //
-//	// 1. Configure tenant-specific provider settings
-//	POST /v1/set-env
-//	Authorization: Bearer <tenant_jwt_token>
+//	// 1. The admin stores the tenant's provider settings (tenants cannot write their own)
+//	POST /v1/config/tenant
+//	Authorization: Bearer <admin_jwt_token>
 //	{
-//	  "IYZICO_API_KEY": "tenant-specific-api-key",
-//	  "IYZICO_SECRET_KEY": "tenant-specific-secret-key",
-//	  "IYZICO_ENVIRONMENT": "sandbox"
+//	  "tenantId": 2,
+//	  "provider": "iyzico",
+//	  "environment": "sandbox",
+//	  "configs": [{"key": "apiKey", "value": "..."}, {"key": "secretKey", "value": "..."}]
 //	}
 //
 //	// 2. Process payments (tenant automatically detected from JWT)
-//	POST /v1/payments/iyzico
+//	POST /v1/payments/iyzico?environment=sandbox
 //	Authorization: Bearer <tenant_jwt_token>
 //	{
 //	  "amount": 100.50,
@@ -277,7 +269,7 @@
 //
 // GoPay includes comprehensive security features:
 //
-//   - JWT authentication with auto-rotating secret keys
+//   - JWT authentication with password-bound revocation
 //   - Tenant-based rate limiting with action-specific limits
 //   - SQL injection protection with input validation
 //   - IP whitelisting support

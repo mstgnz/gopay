@@ -32,7 +32,7 @@ info:
     - ✅ **Ziraat** (Turkey) - Production ready
 
     ## Authentication System
-    GoPay uses JWT (JSON Web Token) based authentication with auto-rotating secret keys for maximum security.
+    GoPay uses JWT (JSON Web Token) based authentication, signed with the `JWT_SECRET` environment variable.
 
     ### Getting Started
     1. **First Setup**: Register first admin user with `POST /v1/auth/register`
@@ -44,24 +44,15 @@ info:
     - ✅ **First User**: Automatic admin privileges, no restrictions
     - ❌ **Additional Users**: Only admin can create via create-tenant endpoint
 
-    ### 🔐 Enhanced Security Model
-    **Auto-Rotating JWT Secret Keys:**
-    - JWT secret key regenerates on every service restart
-    - All existing tokens become invalid after restart
-    - Users must re-authenticate after service restart
-    - No persistent secret storage (UUID-generated keys)
-    
+    ### 🔐 Security Model
     **Token Management:**
-    - **Expiry**: 24 hours default
-    - **Refresh**: Use `/v1/auth/refresh` to extend validity
+    - **Signing**: HS256 with the `JWT_SECRET` environment variable; rotating it invalidates every token
+    - **Expiry**: 12 hours
+    - **Revocation**: A token is bound to the password it was issued under. Changing the password (by the tenant or by an admin) revokes every earlier token on its next request.
+    - **Refresh**: `/v1/auth/refresh` extends a token, but never beyond 24 hours after the original login; after that, log in again
     - **Validation**: Use `/v1/auth/validate` to check token status
-    - **Security**: Each API request validates token against current secret
-    
-    **Benefits:**
-    - ✅ Maximum security through key rotation
-    - ✅ No risk of leaked persistent secrets
-    - ✅ Automatic token invalidation on restart
-    - ✅ Forces regular re-authentication
+    - **Login throttling**: repeated failed logins for a username from one client IP within 15 minutes return `429` with `Retry-After` for that IP only; logins from other IPs are unaffected
+    - **Availability**: when the token check itself cannot run, protected endpoints answer `503` instead of `401`; retry rather than log in again
 
     ## Database & Logging
     GoPay uses **PostgreSQL 17.5** for:
@@ -81,7 +72,7 @@ info:
 
     ### Setup Flow
     1. **Authenticate**: Get JWT token via login
-    2. **Configure**: `POST /v1/config/tenant` - Configure payment provider (tenant automatically detected from JWT token)
+    2. **Configure**: `POST /v1/config/tenant` - Configure payment provider (admin only; `tenantId` selects the tenant)
     3. **Process**: Use payment endpoints with JWT token - Automatically uses tenant-specific configuration
 
     ### JWT Token Authentication
@@ -805,8 +796,8 @@ components:
           additionalProperties:
             type: string
           example:
-            apiKey: "sand****key"
-            secretKey: "sand****ret"
+            apiKey: "********"
+            secretKey: "********"
             environment: "sandbox"
           description: Masked configuration values
 
@@ -1080,16 +1071,16 @@ paths:
   # Configuration Operations
   /v1/config/tenant:
     post:
-      summary: Configure payment provider for authenticated tenant
+      summary: Configure payment provider for a tenant (admin only)
       description: |
-        Sets up payment provider configurations for the authenticated tenant.
-        Tenant information is automatically extracted from the JWT token.
-        
-        **JWT Token Flow:**
-        1. Authenticate and get JWT token via `/v1/auth/login`
-        2. Call this endpoint with Bearer token and provider credentials
-        3. Use payment endpoints with the same Bearer token
-        4. GoPay automatically uses tenant-specific configuration from JWT context
+        Stores payment provider credentials for a tenant. **Admin only**: any other tenant gets
+        `403`, so a leaked tenant login cannot redirect payments to another merchant account.
+        `tenantId` selects the tenant; without it the admin's own configuration is written.
+
+        **Flow:**
+        1. The admin stores the tenant's provider credentials with this endpoint
+        2. The tenant logs in via `/v1/auth/login`
+        3. Payment endpoints use the tenant's configuration from the JWT context
         
         **Supported Providers:**
         - iyzico
@@ -1113,6 +1104,10 @@ paths:
               type: object
               required: [provider, environment, configs]
               properties:
+                tenantId:
+                  type: integer
+                  description: Tenant to configure (admin only); defaults to the caller
+                  example: 2
                 provider:
                   type: string
                   enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
@@ -1171,6 +1166,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is not the admin tenant
         '500':
           description: Internal server error
     get:
@@ -1178,7 +1175,8 @@ paths:
       description: |
         Retrieves the configuration for the authenticated tenant and specified provider.
         Tenant information is automatically extracted from the JWT token.
-        Sensitive information (API keys, passwords) are masked in the response.
+        Every value is masked as `********` except `environment`, `eulaId` and
+        `compensationEnabled`; credentials are never returned. An empty value stays empty.
       tags: [Configuration]
       security:
         - BearerAuth: []
@@ -1213,8 +1211,8 @@ paths:
     delete:
       summary: Delete tenant configuration for provider
       description: |
-        Deletes the configuration for the authenticated tenant and specified provider.
-        Tenant information is automatically extracted from the JWT token.
+        Deletes a tenant's configuration for the specified provider. **Admin only**:
+        any other tenant gets `403`. Without `tenant_id` the admin's own configuration is deleted.
         This removes both the in-memory and persistent storage configuration.
       tags: [Configuration]
       security:
@@ -1228,6 +1226,13 @@ paths:
             enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
           description: Payment provider name
           example: iyzico
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Tenant whose configuration is deleted (admin only); defaults to the caller
+          example: 2
       responses:
         '200':
           description: Configuration deleted successfully
@@ -1252,33 +1257,10 @@ paths:
                             example: "Configuration deleted successfully"
         '400':
           description: Missing required parameters
+        '403':
+          description: Caller is not the admin tenant
         '404':
           description: Configuration not found
-        '500':
-          description: Internal server error
-
-  /v1/stats:
-    get:
-      summary: Get system statistics
-      description: |
-        Returns system statistics including:
-        - Number of configurations in memory
-        - PostgreSQL database statistics
-        - Payment logging metrics
-        - Storage information
-      tags: [Configuration]
-      responses:
-        '200':
-          description: Statistics retrieved successfully
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/ApiResponse'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/StatsResponse'
         '500':
           description: Internal server error
 
@@ -3522,6 +3504,8 @@ paths:
                   value:
                     success: false
                     message: "Invalid username or password"
+        '429':
+          description: Too many failed logins for this username from this client IP; wait for `Retry-After` seconds
         '500':
           description: Internal server error
 
@@ -3765,11 +3749,12 @@ paths:
       summary: Refresh JWT token
       description: |
         Refreshes an existing JWT token to extend its validity.
-        
+
         **Token Refresh:**
-        - Validates current token
-        - Issues new token with extended expiry
-        - Original token becomes invalid
+        - Validates the current token and checks it was not revoked by a password change
+        - Issues a new token valid for 12 hours, or until 24 hours after the original login if that comes first (`expires_at` reports which)
+        - A session ends 24 hours after the original login; log in again
+        - Tokens issued before revocation support existed cannot be refreshed
       tags: [Authentication]
       security:
         - BearerAuth: []
@@ -3800,7 +3785,9 @@ paths:
         '400':
           description: Invalid token format
         '401':
-          description: Token expired or invalid
+          description: Token expired, invalid, revoked, or the session is past 24 hours
+        '503':
+          description: The token could not be checked; retry later
         '500':
           description: Internal server error
 

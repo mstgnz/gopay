@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -98,24 +99,70 @@ func (s *TenantService) Login(req LoginRequest) (*LoginResponse, error) {
 		})
 	}
 
-	// Generate JWT token
-	tenantID := fmt.Sprintf("%d", tenant.ID)
-	token, err := s.jwtService.GenerateToken(tenantID, tenant.Username)
+	return s.IssueToken(tenant)
+}
+
+// IssueToken signs a token bound to the tenant's current password hash, starting a new session.
+func (s *TenantService) IssueToken(tenant *Tenant) (*LoginResponse, error) {
+	if tenant.Password == "" {
+		return nil, errors.New("cannot issue a token without the tenant's password hash")
+	}
+	return s.signToken(strconv.Itoa(tenant.ID), tenant.Username, PasswordFingerprint(tenant.Password), time.Now())
+}
+
+func (s *TenantService) signToken(tenantID, username, fingerprint string, authTime time.Time) (*LoginResponse, error) {
+	// The reported expires_at is the one signed into the token: a client that trusts a longer
+	// expires_at than the token actually has caches a dead token and 401s until its own cache
+	// lapses. For a refresh it can be earlier than one full lifetime.
+	now := time.Now()
+	expiresAt := s.jwtService.sessionExpiry(authTime, now)
+	token, err := s.jwtService.generateToken(tenantID, username, fingerprint, authTime, now, expiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	// Expiry must come from the signing service, not a local constant: a client
-	// that trusts a longer expires_at than the token actually has caches a dead
-	// token and 401s until its own cache lapses.
-	expiresAt := time.Now().Add(s.jwtService.Expiry())
-
 	return &LoginResponse{
 		Token:     token,
 		TenantID:  tenantID,
-		Username:  tenant.Username,
+		Username:  username,
 		ExpiresAt: expiresAt,
 	}, nil
+}
+
+// CheckTokenCurrent rejects a validated token whose tenant is gone or whose password changed
+// after it was issued. Any other error is a lookup failure, not a verdict on the token.
+func (s *TenantService) CheckTokenCurrent(claims *JWTClaims) error {
+	tenantID, err := strconv.Atoi(claims.TenantID)
+	if err != nil {
+		return ErrInvalidClaims
+	}
+
+	tenant, err := s.GetTenantByID(tenantID)
+	if err != nil {
+		if errors.Is(err, ErrTenantNotFound) {
+			return ErrTokenRevoked
+		}
+		return err
+	}
+
+	return verifyFingerprint(claims, tenant.Password, time.Now(), s.jwtService.legacyTokensUntil)
+}
+
+// RefreshToken issues a fresh token for a still-valid, unrevoked session, keeping its
+// original login time so the session cannot outlive maxSessionAge.
+func (s *TenantService) RefreshToken(tokenString string) (*LoginResponse, error) {
+	claims, err := s.jwtService.ValidateToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	if err := refreshAllowed(claims, time.Now()); err != nil {
+		return nil, err
+	}
+	if err := s.CheckTokenCurrent(claims); err != nil {
+		return nil, err
+	}
+
+	return s.signToken(claims.TenantID, claims.Username, claims.PasswordFingerprint, time.Unix(claims.AuthTime, 0))
 }
 
 // CreateTenant creates a new tenant
@@ -153,6 +200,7 @@ func (s *TenantService) CreateTenant(req CreateTenantRequest) (*Tenant, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tenant: %w", err)
 	}
+	tenant.Password = string(hashedPassword)
 
 	return &tenant, nil
 }
@@ -293,28 +341,6 @@ func (s *TenantService) AdminChangePassword(tenantID int, newPassword string) er
 	return nil
 }
 
-// ValidateToken validates a JWT token and returns tenant information
-func (s *TenantService) ValidateToken(tokenString string) (*Tenant, error) {
-	// Validate JWT token
-	claims, err := s.jwtService.ValidateToken(tokenString)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get tenant by ID from token
-	tenantID := 0
-	if _, err := fmt.Sscanf(claims.TenantID, "%d", &tenantID); err != nil {
-		return nil, ErrInvalidClaims
-	}
-
-	tenant, err := s.GetTenantByID(tenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	return tenant, nil
-}
-
 // SetVerificationCode sets a verification code for a tenant (for password reset, etc.)
 func (s *TenantService) SetVerificationCode(tenantID int, code string) error {
 	query := `
@@ -404,6 +430,7 @@ func (s *TenantService) createFirstTenant(req RegisterRequest) (*Tenant, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create first tenant: %w", err)
 	}
+	tenant.Password = string(hashedPassword)
 
 	return &tenant, nil
 }

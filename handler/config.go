@@ -32,8 +32,56 @@ func NewConfigHandler(providerConfig *config.ProviderConfig, paymentService *pro
 	}
 }
 
+// adminTenantID is the tenant that administers the gateway.
+const adminTenantID = "1"
+
+func isAdminTenant(tenantID string) bool {
+	return tenantID == adminTenantID
+}
+
+// configMask replaces every stored config value on read. Provider credentials go out only to
+// the provider; a stolen tenant login must not be able to export them.
+const configMask = "********"
+
+// nonSecretConfigKeys are returned as stored because they carry no credential.
+var nonSecretConfigKeys = map[string]bool{
+	"environment":         true,
+	"eulaId":              true,
+	"compensationEnabled": true,
+}
+
+func maskTenantConfig(configs map[string]map[string]string) map[string]map[string]string {
+	masked := make(map[string]map[string]string, len(configs))
+	for environment, values := range configs {
+		out := make(map[string]string, len(values))
+		for key, value := range values {
+			if value == "" || nonSecretConfigKeys[key] {
+				out[key] = value
+				continue
+			}
+			out[key] = configMask
+		}
+		masked[environment] = out
+	}
+	return masked
+}
+
+// configTargetTenant resolves which tenant an admin config write applies to: the explicit
+// target when given, the admin itself otherwise.
+func configTargetTenant(callerTenantID string, requested *int) (string, error) {
+	if requested == nil {
+		return callerTenantID, nil
+	}
+	if *requested <= 0 {
+		return "", errors.New("tenantId must be a positive integer")
+	}
+	return strconv.Itoa(*requested), nil
+}
+
 // SetEnvRequest represents the request structure for setting environment variables
 type SetEnvRequest struct {
+	// TenantID lets the admin configure another tenant; omitted means the admin's own tenant.
+	TenantID    *int   `json:"tenantId,omitempty"`
 	Provider    string `json:"provider"`
 	Environment string `json:"environment"`
 	Configs     []struct {
@@ -42,12 +90,17 @@ type SetEnvRequest struct {
 	} `json:"configs"`
 }
 
-// SetEnv handles setting environment variables for a tenant
+// PostTenantConfig stores provider credentials. Admin only: a tenant able to rewrite its own
+// merchant credentials could route its payments to another merchant account.
 func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request) {
 	// Get tenant ID from JWT context
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID == "" {
+	callerTenantID := middle.GetTenantIDFromContext(r.Context())
+	if callerTenantID == "" {
 		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+	if !isAdminTenant(callerTenantID) {
+		response.Error(w, http.StatusForbidden, "Only administrators can change provider configuration", nil)
 		return
 	}
 
@@ -55,6 +108,12 @@ func (h *ConfigHandler) PostTenantConfig(w http.ResponseWriter, r *http.Request)
 	var req SetEnvRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request format", err)
+		return
+	}
+
+	tenantID, err := configTargetTenant(callerTenantID, req.TenantID)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -146,18 +205,38 @@ func (h *ConfigHandler) GetTenantConfig(w http.ResponseWriter, r *http.Request) 
 	responseData := map[string]any{
 		"tenantId": tenantID,
 		"provider": providerName,
-		"config":   config,
+		"config":   maskTenantConfig(config),
 	}
 
 	response.Success(w, http.StatusOK, "Configuration retrieved", responseData)
 }
 
-// DeleteTenantConfig deletes a tenant configuration
+// DeleteTenantConfig deletes a tenant configuration. Admin only, like PostTenantConfig: deleting
+// a tenant's provider config stops its payments.
 func (h *ConfigHandler) DeleteTenantConfig(w http.ResponseWriter, r *http.Request) {
 	// Get tenant ID from JWT context
-	tenantID := middle.GetTenantIDFromContext(r.Context())
-	if tenantID == "" {
+	callerTenantID := middle.GetTenantIDFromContext(r.Context())
+	if callerTenantID == "" {
 		response.Error(w, http.StatusUnauthorized, "Authentication required", nil)
+		return
+	}
+	if !isAdminTenant(callerTenantID) {
+		response.Error(w, http.StatusForbidden, "Only administrators can change provider configuration", nil)
+		return
+	}
+
+	var requested *int
+	if raw := r.URL.Query().Get("tenant_id"); raw != "" {
+		id, convErr := strconv.Atoi(raw)
+		if convErr != nil {
+			response.Error(w, http.StatusBadRequest, "tenant_id must be a positive integer", nil)
+			return
+		}
+		requested = &id
+	}
+	tenantID, err := configTargetTenant(callerTenantID, requested)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 

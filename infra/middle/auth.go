@@ -2,10 +2,12 @@ package middle
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/mstgnz/gopay/infra/auth"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/infra/response"
 )
 
@@ -18,8 +20,16 @@ const (
 	TenantClaimsKey TenantContextKey = "tenant_claims"
 )
 
+// TokenChecker confirms that a signature-valid token has not been revoked since it was issued.
+type TokenChecker interface {
+	CheckTokenCurrent(claims *auth.JWTClaims) error
+}
+
 // JWTAuthMiddleware validates JWT token authentication
-func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler {
+func JWTAuthMiddleware(jwtService *auth.JWTService, checker TokenChecker) func(http.Handler) http.Handler {
+	if checker == nil {
+		panic("JWTAuthMiddleware: nil TokenChecker would skip revocation")
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get Authorization header
@@ -60,6 +70,10 @@ func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Hand
 				return
 			}
 
+			if !authorizeCurrentToken(w, checker, claims) {
+				return
+			}
+
 			// Add tenant information to request context
 			ctx := context.WithValue(r.Context(), TenantIDKey, claims.TenantID)
 			ctx = context.WithValue(ctx, TenantUserKey, claims.Username)
@@ -69,6 +83,23 @@ func JWTAuthMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Hand
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// authorizeCurrentToken writes the error response and returns false when the token is revoked
+// or revocation cannot be checked. A lookup failure is a 503, not a 401: answering 401 would
+// tell clients their credentials are wrong when the database is what failed.
+func authorizeCurrentToken(w http.ResponseWriter, checker TokenChecker, claims *auth.JWTClaims) bool {
+	err := checker.CheckTokenCurrent(claims)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, auth.ErrTokenRevoked), errors.Is(err, auth.ErrInvalidClaims):
+		response.Error(w, http.StatusUnauthorized, "Token has been revoked", nil)
+	default:
+		logger.Error("Token revocation check failed", err, logger.LogContext{TenantID: claims.TenantID})
+		response.Error(w, http.StatusServiceUnavailable, "Authentication temporarily unavailable", nil)
+	}
+	return false
 }
 
 // GetTenantIDFromContext extracts tenant ID from request context
