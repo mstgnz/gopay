@@ -127,9 +127,20 @@ curl -X POST http://localhost:9999/v1/payments/nkolay \
 ### 3. Payment Status Inquiry
 
 ```bash
-curl -X GET http://localhost:9999/v1/payments/nkolay/{paymentID} \
+curl -X GET "http://localhost:9999/v1/payments/nkolay/{paymentID}?environment=production" \
   -H "Authorization: Bearer your_jwt_token"
 ```
+
+`paymentID` is the Nkolay `REFERENCE_CODE` GoPay returned when the payment started (or GoPay's own
+`gopay_...` clientRefCode). The status comes from Nkolay's PaymentList ("İşlem Doğrulama Servisi"):
+
+| PaymentList | GoPay `status` |
+| --- | --- |
+| sale `SUCCESS` | `successful` (`cancelled` / `refunded` when a successful CANCEL / REFUND row follows) |
+| sale `ERROR` | `failed` |
+| sale `NEW`, callback URL still live (30 min) | `pending` |
+| sale `NEW`, callback URL expired | `failed` |
+| no record, or Nkolay error | HTTP 500, never a guessed status |
 
 ### 4. Refund Payment
 
@@ -254,17 +265,19 @@ https://your-gopay-domain.com/v1/webhooks/nkolay
 
 ## Security
 
-### Authentication
+### Request hashes
 
-- API requests are authenticated using API Key and Secret Key
-- HMAC-SHA256 signature verification for all requests
-- Timestamp validation to prevent replay attacks
+- Payment, cancel and refund requests carry Nkolay's SHA-1 `hashData`.
+- PaymentList requests carry `hashDatav2`: Base64(SHA-512(`sx|startDate|endDate|clientRefCode|secretKey`)).
 
-### Webhook Validation
+### 3D callback verification
 
-- All webhooks are signed with HMAC-SHA256
-- Signature validation prevents unauthorized notifications
-- Timestamp validation prevents replay attacks
+- The 3D result is taken from the `hashDataV2` Nkolay posts with it (SHA-512 over `MERCHANT_NO`,
+  `REFERENCE_CODE`, `AUTH_CODE`, `RESPONSE_CODE`, `USE_3D`, `RND`, `INSTALLMENT`,
+  `AUTHORIZATION_AMOUNT`, `CURRENCY_CODE` and the secret key), and its `REFERENCE_CODE` must be the
+  payment the callback URL was issued for. The `status` query parameter on the callback URL is not trusted.
+- A callback that is not signed for its payment is settled through PaymentList; if that cannot
+  answer, the result is `pending` with `errorCode: VERIFICATION_UNAVAILABLE`, never `successful`.
 
 ## Integration Testing
 

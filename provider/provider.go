@@ -216,6 +216,10 @@ type CommissionResponse struct {
 	CommissionAmount float64 `json:"commissionAmount"`
 }
 
+// CallbackStateTTL is how long a 3D callback URL stays usable; after it the payment cannot complete
+// through GoPay.
+const CallbackStateTTL = 30 * time.Minute
+
 // StoreCallbackState stores callback state in database and returns short ID
 func StoreCallbackState(ctx context.Context, state CallbackState) (string, error) {
 	db := config.App().DB
@@ -234,8 +238,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		return "", fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	// Set expiration (30 minutes from now)
-	expiresAt := time.Now().Add(30 * time.Minute)
+	expiresAt := time.Now().Add(CallbackStateTTL)
 
 	// Prepare nullable fields
 	var originalCallback sql.NullString

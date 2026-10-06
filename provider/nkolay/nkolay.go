@@ -2,6 +2,7 @@ package nkolay
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha512"
 	"encoding/base64"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/logger"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -35,13 +37,42 @@ const (
 	testSxCancel  = "118591467|bScbGDYCtPf7SS1N6PQ6/+58rFhW1WpsWINqvkJFaJlu6bMH2tgPKDQtjeA5vClpzJP24uA0vx7OX53cP3SgUspa4EvYix+1C3aXe++8glUvu9Oyyj3v300p5NP7ro/9K57Zcw==|yDUZaCk6rsoHZJWI3d471A/+TJA7C81X"
 	testSecretKey = "_YckdxUbv4vrnMUZ6VQsr"
 
-	// Response Status Values from postman
+	// Labels GoPay appends to its own successUrl/failUrl
 	statusSuccess = "SUCCESS"
 	statusFailed  = "FAILED"
 
 	// Default Values
 	defaultCurrency = "TRY"
+
+	// responseCodeOK is Nkolay's RESPONSE_CODE for a call that worked; for PaymentList the
+	// payment's own verdict is in LIST[].STATUS.
+	responseCodeOK = "2"
+
+	// PaymentList LIST[].STATUS values. NEW is a payment that was started but never completed.
+	listStatusSuccess = "SUCCESS"
+	listStatusError   = "ERROR"
+	listStatusNew     = "NEW"
+
+	// clientRefPrefix starts every clientRefCode processPayment generates; the rest is UnixNano.
+	clientRefPrefix = "gopay_"
+
+	// paymentListMaxDays is the widest PaymentList window Nkolay serves ("en fazla bir aylık").
+	paymentListMaxDays = 30
 )
+
+// nkolayLocation is the zone of PaymentList's DD.MM.YYYY dates. Turkey has been UTC+3 with no DST
+// since 2016; a fixed zone avoids depending on tzdata in the container.
+var nkolayLocation = time.FixedZone("TRT", 3*60*60)
+
+// callbackHashFields is the field order of the hashDataV2 Nkolay posts to successUrl/failUrl,
+// per paynkolay.com.tr/entegrasyon/05-hash-response.php; the merchant secret key comes last.
+var callbackHashFields = []string{
+	"MERCHANT_NO", "REFERENCE_CODE", "AUTH_CODE", "RESPONSE_CODE", "USE_3D",
+	"RND", "INSTALLMENT", "AUTHORIZATION_AMOUNT", "CURRENCY_CODE",
+}
+
+// errPaymentNotListed means PaymentList holds no sales row for the clientRefCode.
+var errPaymentNotListed = errors.New("nkolay: payment not found in payment list")
 
 // NkolayProvider implements the provider.PaymentProvider interface for Nkolay
 type NkolayProvider struct {
@@ -54,11 +85,20 @@ type NkolayProvider struct {
 	isProduction bool
 	httpClient   *provider.ProviderHTTPClient
 	logID        int64
+
+	// clientRefLookup maps a Nkolay REFERENCE_CODE to the clientRefCode GoPay sent with it.
+	clientRefLookup func(referenceCode string) (string, error)
 }
 
 // NewProvider creates a new Nkolay payment provider
 func NewProvider() provider.PaymentProvider {
-	return &NkolayProvider{}
+	return &NkolayProvider{clientRefLookup: lookupClientRefCode}
+}
+
+// lookupClientRefCode reads the clientRefCode from the /payment/3d log row whose payment_id is the
+// REFERENCE_CODE. Consumers only ever see the REFERENCE_CODE, but PaymentList filters by clientRefCode.
+func lookupClientRefCode(referenceCode string) (string, error) {
+	return provider.GetProviderNestedRequestValueFromLog("nkolay", referenceCode, "providerRequest", "clientRefCode")
 }
 
 // Clone returns a per-request copy. See provider.PaymentProvider.Clone.
@@ -290,13 +330,9 @@ func (p *NkolayProvider) Create3DPayment(ctx context.Context, request provider.P
 func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
 	p.logID = callbackState.LogID
 
-	status := data["status"]
-
 	response := &provider.PaymentResponse{
 		PaymentID:        callbackState.PaymentID,
 		TransactionID:    callbackState.PaymentID,
-		Success:          status == statusSuccess,
-		Message:          "3D payment completed successfully",
 		SystemTime:       timePtr(time.Now()),
 		ProviderResponse: data,
 		Amount:           callbackState.Amount,
@@ -304,17 +340,40 @@ func (p *NkolayProvider) Complete3DPayment(ctx context.Context, callbackState *p
 		RedirectURL:      callbackState.OriginalCallback,
 	}
 
-	// Map status
-	switch status {
-	case statusSuccess:
-		response.Status = provider.StatusSuccessful
+	// The "status" query parameter is ours (successUrl/failUrl) and anyone holding the callback URL
+	// can set it, so the result comes from Nkolay's signed fields or, failing that, from PaymentList.
+	if ref := data["REFERENCE_CODE"]; ref != "" && ref == callbackState.PaymentID && p.validCallbackHash(data) {
+		if data["RESPONSE_CODE"] == responseCodeOK {
+			response.Status = provider.StatusSuccessful
+		} else {
+			response.Status = provider.StatusFailed
+			response.ErrorCode = data["ERROR_CODE"]
+		}
+	} else {
+		logger.Warn("Nkolay 3D callback not signed for this payment, verifying with PaymentList", logger.LogContext{
+			Provider: "nkolay",
+			Fields: map[string]any{
+				"payment_id":     callbackState.PaymentID,
+				"reference_code": data["REFERENCE_CODE"],
+				"has_hash":       data["hashDataV2"] != "",
+			},
+		})
+		response.Status = p.verify3DResultWithList(ctx, callbackState.PaymentID)
+		if response.Status == provider.StatusPending {
+			response.ErrorCode = "VERIFICATION_UNAVAILABLE"
+		}
+	}
+
+	response.Success = response.Status == provider.StatusSuccessful
+	switch response.Status {
+	case provider.StatusSuccessful:
 		response.Message = "3D payment completed successfully"
-	case statusFailed:
-		response.Status = provider.StatusFailed
+	case provider.StatusFailed:
 		response.Message = "3D payment failed"
+	case provider.StatusPending:
+		response.Message = "3D payment result could not be verified"
 	default:
-		response.Status = provider.StatusPending
-		response.Message = "3D payment pending"
+		response.Message = "3D payment " + string(response.Status)
 	}
 
 	// Parse amount if available
@@ -333,36 +392,278 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 		return nil, errors.New("nkolay: paymentID is required")
 	}
 
-	// Use list API to get payment status
-	today := time.Now()
-	formData := map[string]string{
-		"sx":            p.sxList,
-		"startDate":     today.AddDate(0, 0, -1).Format("02.01.2006"), // Yesterday
-		"endDate":       today.Format("02.01.2006"),                   // Today
-		"clientRefCode": request.PaymentID,
-	}
-
-	// Generate hash: sx+startDate+endDate+clientRefCode+secretkey
-	input := formData["sx"] + formData["startDate"] + formData["endDate"] + formData["clientRefCode"] + p.secretKey
-	formData["hashData"] = p.generateSHA1Hash(input)
-
-	responseBody, err := p.doNkolayFormRequest(ctx, endpointPaymentList, formData)
+	status, items, err := p.paymentStatusFromList(ctx, request.PaymentID, false)
 	if err != nil {
 		return nil, fmt.Errorf("nkolay: failed to get payment status: %w", err)
 	}
 
-	// Parse response (Nkolay returns XML/HTML format)
-	// For now, return a basic response - would need XML parsing for full implementation
+	var transactionID string
+	for _, it := range items {
+		if strings.EqualFold(it.transactionType, "sales") {
+			transactionID = it.referenceCode
+			break
+		}
+	}
+
 	return &provider.PaymentResponse{
-		PaymentID:  request.PaymentID,
-		Success:    strings.Contains(string(responseBody), "SUCCESS"),
-		Status:     provider.StatusPending,
-		Message:    "Status check completed",
-		SystemTime: timePtr(time.Now()),
+		PaymentID:     request.PaymentID,
+		TransactionID: transactionID,
+		Success:       status == provider.StatusSuccessful,
+		Status:        status,
+		Message:       "Payment status: " + string(status),
+		SystemTime:    timePtr(time.Now()),
 		ProviderResponse: map[string]any{
-			"raw_response": string(responseBody),
+			"transactions": listItemsForResponse(items),
 		},
 	}, nil
+}
+
+// verify3DResultWithList settles an unsigned 3D callback from PaymentList. By the time the bank
+// redirects back the 3D flow is over, so NEW (never completed) is a failure here. When PaymentList
+// cannot answer the result stays pending: an unverified callback is never reported as paid.
+func (p *NkolayProvider) verify3DResultWithList(ctx context.Context, paymentID string) provider.PaymentStatus {
+	status, _, err := p.paymentStatusFromList(ctx, paymentID, true)
+	if err != nil {
+		logger.Warn("Nkolay 3D result could not be verified with PaymentList", logger.LogContext{
+			Provider: "nkolay",
+			Fields:   map[string]any{"payment_id": paymentID, "error": err.Error()},
+		})
+		return provider.StatusPending
+	}
+	return status
+}
+
+// paymentStatusFromList asks PaymentList for paymentID, which is the Nkolay REFERENCE_CODE consumers
+// hold or, when the 3D start returned none, GoPay's own clientRefCode. It returns the matching rows.
+// flowOver says the 3D flow has ended, so a NEW sale is a failure rather than in progress; it also
+// holds once the callback URL has expired, after which the payment can no longer complete.
+func (p *NkolayProvider) paymentStatusFromList(ctx context.Context, paymentID string, flowOver bool) (provider.PaymentStatus, []paymentListItem, error) {
+	clientRefCode, referenceCode := paymentID, ""
+	if !strings.HasPrefix(paymentID, clientRefPrefix) {
+		referenceCode = paymentID
+		ref, err := p.clientRefLookup(paymentID)
+		if err != nil {
+			return "", nil, fmt.Errorf("no clientRefCode recorded for %s: %w", paymentID, err)
+		}
+		clientRefCode = ref
+	}
+
+	now := time.Now()
+	if created, ok := clientRefCreatedAt(clientRefCode); ok && now.Sub(created) > provider.CallbackStateTTL {
+		flowOver = true
+	}
+
+	items, err := p.queryPaymentList(ctx, clientRefCode, now)
+	if err != nil {
+		return "", nil, err
+	}
+	return statusFromListItems(items, clientRefCode, referenceCode, flowOver)
+}
+
+// clientRefCreatedAt reads the UnixNano that processPayment puts after clientRefPrefix.
+func clientRefCreatedAt(clientRefCode string) (time.Time, bool) {
+	if !strings.HasPrefix(clientRefCode, clientRefPrefix) {
+		return time.Time{}, false
+	}
+	nanos, err := strconv.ParseInt(strings.TrimPrefix(clientRefCode, clientRefPrefix), 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, nanos), true
+}
+
+// queryPaymentList calls PaymentList ("İşlem Doğrulama Servisi") for one clientRefCode.
+func (p *NkolayProvider) queryPaymentList(ctx context.Context, clientRefCode string, now time.Time) ([]paymentListItem, error) {
+	start, end := paymentListWindow(clientRefCode, now)
+	formData := map[string]string{
+		"sx":            p.sxList,
+		"startDate":     start.Format("02.01.2006"),
+		"endDate":       end.Format("02.01.2006"),
+		"clientRefCode": clientRefCode,
+	}
+	formData["hashDatav2"] = hashV2(formData["sx"], formData["startDate"], formData["endDate"], formData["clientRefCode"], p.secretKey)
+
+	body, err := p.doNkolayFormRequest(ctx, endpointPaymentList, formData)
+	if err != nil {
+		return nil, err
+	}
+	return parsePaymentList(body)
+}
+
+// paymentListWindow covers the day the payment started (encoded in the clientRefCode) up to today,
+// capped at Nkolay's one-month limit. One day of slack absorbs clock skew around midnight. A code
+// that carries no timestamp gets the last month.
+func paymentListWindow(clientRefCode string, now time.Time) (start, end time.Time) {
+	end = now.In(nkolayLocation)
+	start = end.AddDate(0, 0, -paymentListMaxDays)
+
+	created, ok := clientRefCreatedAt(clientRefCode)
+	if !ok || created.After(end) {
+		return start, end
+	}
+	start = created.In(nkolayLocation).AddDate(0, 0, -1)
+	if limit := start.AddDate(0, 0, paymentListMaxDays); end.After(limit) {
+		end = limit
+	}
+	return start, end
+}
+
+// paymentListItem holds the LIST fields GoPay reads. Items are decoded through a map so a field
+// whose JSON type differs from the documented one does not fail the whole answer.
+type paymentListItem struct {
+	referenceCode   string
+	clientRefCode   string
+	transactionType string
+	status          string
+	trxDate         string
+}
+
+// parsePaymentList reads a PaymentList answer. Nkolay wraps it as {"id":"","result":{...}}, and on
+// a hash error the result is a JSON string instead of an object; the documentation shows it bare.
+// A RESPONSE_CODE other than "2" is an error, including "Listelenecek kayıt bulunamadı.", so a
+// missing payment is never reported as a status.
+func parsePaymentList(body []byte) ([]paymentListItem, error) {
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("unreadable payment list response: %w", err)
+	}
+	switch result := raw["result"].(type) {
+	case map[string]any:
+		raw = result
+	case string:
+		var inner map[string]any
+		if err := json.Unmarshal([]byte(result), &inner); err != nil {
+			return nil, fmt.Errorf("unreadable payment list result: %w", err)
+		}
+		raw = inner
+	}
+
+	if code := listField(raw, "RESPONSE_CODE"); code != responseCodeOK {
+		message := listField(raw, "ERROR_MESSAGE")
+		if message == "" {
+			message = listField(raw, "RESPONSE_DATA")
+		}
+		return nil, fmt.Errorf("payment list returned %s %s: %s", code, listField(raw, "ERROR_CODE"), message)
+	}
+
+	list, _ := raw["LIST"].([]any)
+	items := make([]paymentListItem, 0, len(list))
+	for _, entry := range list {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		items = append(items, paymentListItem{
+			referenceCode:   listField(m, "REFERENCE_CODE"),
+			clientRefCode:   listField(m, "CLIENT_REFERENCE_CODE"),
+			transactionType: listField(m, "TRANSACTION_TYPE"),
+			status:          listField(m, "STATUS"),
+			trxDate:         listField(m, "TRX_DATE"),
+		})
+	}
+	return items, nil
+}
+
+// statusFromListItems derives one status from the rows of a clientRefCode. When the REFERENCE_CODE
+// is known only that sale counts. A successful cancel or refund on the same code outranks the sale.
+// CANCELP and REFUNDP rows are ignored: their meaning is not documented.
+func statusFromListItems(items []paymentListItem, clientRefCode, referenceCode string, flowOver bool) (provider.PaymentStatus, []paymentListItem, error) {
+	var matched []paymentListItem
+	var sale, cancelled, refunded bool
+	status := provider.StatusFailed
+
+	for _, it := range items {
+		if it.clientRefCode != clientRefCode {
+			continue
+		}
+		success := strings.EqualFold(it.status, listStatusSuccess)
+		switch strings.ToLower(it.transactionType) {
+		case "sales":
+			if referenceCode != "" && it.referenceCode != referenceCode {
+				continue
+			}
+			sale = true
+			switch {
+			case success:
+				status = provider.StatusSuccessful
+			case strings.EqualFold(it.status, listStatusNew):
+				if !flowOver && status != provider.StatusSuccessful {
+					status = provider.StatusPending
+				}
+			case !strings.EqualFold(it.status, listStatusError) && status == provider.StatusFailed:
+				// An undocumented STATUS is not a verdict.
+				status = provider.StatusPending
+			}
+		case "cancel":
+			cancelled = cancelled || success
+		case "refund":
+			refunded = refunded || success
+		default:
+			continue
+		}
+		matched = append(matched, it)
+	}
+
+	if !sale {
+		return "", nil, errPaymentNotListed
+	}
+	if status == provider.StatusSuccessful {
+		if cancelled {
+			status = provider.StatusCancelled
+		} else if refunded {
+			status = provider.StatusRefunded
+		}
+	}
+	return status, matched, nil
+}
+
+// listItemsForResponse returns the matched rows without card data, which the full LIST carries.
+func listItemsForResponse(items []paymentListItem) []map[string]string {
+	out := make([]map[string]string, 0, len(items))
+	for _, it := range items {
+		out = append(out, map[string]string{
+			"referenceCode":   it.referenceCode,
+			"clientRefCode":   it.clientRefCode,
+			"transactionType": it.transactionType,
+			"status":          it.status,
+			"trxDate":         it.trxDate,
+		})
+	}
+	return out
+}
+
+// listField renders a JSON value as Nkolay's string form; RESPONSE_CODE arrives as "2" or 2.
+func listField(m map[string]any, key string) string {
+	switch v := m[key].(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+// validCallbackHash checks the hashDataV2 Nkolay posts with a 3D result.
+func (p *NkolayProvider) validCallbackHash(data map[string]string) bool {
+	received := data["hashDataV2"]
+	if received == "" || p.secretKey == "" {
+		return false
+	}
+	parts := make([]string, 0, len(callbackHashFields)+1)
+	for _, field := range callbackHashFields {
+		parts = append(parts, data[field])
+	}
+	parts = append(parts, p.secretKey)
+	return hmac.Equal([]byte(hashV2(parts...)), []byte(received))
+}
+
+// hashV2 is Nkolay's hashDataV2: Base64(SHA-512(parts joined with "|")).
+func hashV2(parts ...string) string {
+	sum := sha512.Sum512([]byte(strings.Join(parts, "|")))
+	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 // CancelPayment cancels a payment (same day cancellation)
@@ -584,8 +885,9 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 			stateId = parsedURL.Query().Get("state")
 		}
 
-		formData["successUrl"] = gopayCallbackURL + "&status=SUCCESS"
-		formData["failUrl"] = gopayCallbackURL + "&status=FAILED"
+		// The status parameter only labels the log row; Complete3DPayment does not trust it.
+		formData["successUrl"] = gopayCallbackURL + "&status=" + statusSuccess
+		formData["failUrl"] = gopayCallbackURL + "&status=" + statusFailed
 
 	}
 

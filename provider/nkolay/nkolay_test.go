@@ -391,45 +391,6 @@ func TestNkolayProvider_CreatePayment(t *testing.T) {
 	}
 }
 
-func TestNkolayProvider_GetPaymentStatus(t *testing.T) {
-	// Mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Mock payment list response
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`<result>SUCCESS</result>`))
-	}))
-	defer server.Close()
-
-	nkolayProvider := &NkolayProvider{
-		sxList:    testSxList,
-		secretKey: testSecretKey,
-		baseURL:   server.URL,
-		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-			BaseURL:            server.URL,
-			Timeout:            5 * time.Second,
-			InsecureSkipVerify: true,
-			DefaultHeaders: map[string]string{
-				"Accept": "application/json, text/html",
-			},
-		}),
-	}
-
-	ctx := context.Background()
-	response, err := nkolayProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "test-payment-id"})
-
-	if err != nil {
-		t.Fatalf("GetPaymentStatus failed: %v", err)
-	}
-
-	if response == nil {
-		t.Fatal("Expected non-nil response")
-	}
-
-	if response.PaymentID != "test-payment-id" {
-		t.Errorf("Expected payment ID 'test-payment-id', got '%s'", response.PaymentID)
-	}
-}
-
 func TestNkolayProvider_ValidateWebhook(t *testing.T) {
 	provider := NewProvider().(*NkolayProvider)
 

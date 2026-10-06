@@ -229,9 +229,7 @@ func TestIntegration_GetPaymentStatus(t *testing.T) {
 		t.Fatalf("GetPaymentStatus failed: %v", err)
 	}
 
-	if resp, ok := statusResponse.ProviderResponse.(map[string]any); ok {
-		t.Logf("Payment status response: %s", resp["raw_response"])
-	}
+	t.Logf("Payment status: %s, transactions: %v", statusResponse.Status, statusResponse.ProviderResponse)
 
 	// Basic validation
 	if statusResponse.PaymentID != paymentResponse.PaymentID {
@@ -361,7 +359,8 @@ func TestIntegration_ValidateWebhook(t *testing.T) {
 func TestIntegration_Complete3DPayment(t *testing.T) {
 	nkolayProvider := getTestProvider(t)
 
-	// Sample 3D callback data (would come from Nkolay)
+	// An unsigned callback claiming success, as anyone holding the callback URL could send it. It is
+	// settled by the sandbox PaymentList, which has no such payment.
 	callbackData := map[string]string{
 		"referenceCode": "gopay_12345",
 		"status":        "SUCCESS",
@@ -377,7 +376,7 @@ func TestIntegration_Complete3DPayment(t *testing.T) {
 		Currency:  "TRY",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	response, err := nkolayProvider.Complete3DPayment(ctx, callbackState, callbackData)
@@ -386,21 +385,15 @@ func TestIntegration_Complete3DPayment(t *testing.T) {
 		t.Fatalf("Complete3DPayment failed: %v", err)
 	}
 
-	// Verify response
-	if !response.Success {
-		t.Errorf("Expected successful 3D completion, got: %s", response.Message)
-	}
-
-	if response.Status != provider.StatusSuccessful {
-		t.Errorf("Expected status successful, got: %v", response.Status)
+	if response.Success || response.Status == provider.StatusSuccessful {
+		t.Errorf("an unsigned callback must not complete a payment, got status %s", response.Status)
 	}
 
 	if response.PaymentID != "gopay_12345" {
 		t.Errorf("Expected payment ID gopay_12345, got %s", response.PaymentID)
 	}
 
-	t.Logf("3D Payment completion successful - ID: %s, Amount: %.2f",
-		response.PaymentID, response.Amount)
+	t.Logf("Unsigned 3D callback settled as %s (%s)", response.Status, response.Message)
 }
 
 func TestIntegration_PaymentEndpoints(t *testing.T) {
