@@ -56,7 +56,7 @@ const (
 	// clientRefPrefix starts every clientRefCode processPayment generates; the rest is UnixNano.
 	clientRefPrefix = "gopay_"
 
-	// paymentListMaxDays is the widest PaymentList window Nkolay serves ("en fazla bir aylık").
+	// paymentListMaxDays is the widest PaymentList window Nkolay serves (one month).
 	paymentListMaxDays = 30
 )
 
@@ -274,7 +274,7 @@ func (p *NkolayProvider) GetInstallmentCount(ctx context.Context, request provid
 				continue
 			}
 
-			// Extract merchant surcharge (vade farkı) rate. Nkolay renamed this
+			// Extract merchant installment surcharge rate. Nkolay renamed this
 			// field MERCHANT_COMMISSION -> MERCHANT_COMMISSION_RATE in the
 			// GetMerchandInformation response; read the new name first, fall back
 			// to the legacy name for backward compatibility during their rollout.
@@ -844,8 +844,7 @@ func (p *NkolayProvider) processPayment(ctx context.Context, request provider.Pa
 		if err != nil {
 			return nil, fmt.Errorf("failed to get installment count: %w", err)
 		}
-		// ana tutarı + ( ana tutar * komisyon oranı /100)
-		// find installment count in installmentCount.Installments["OTHERS"]
+		// amount + amount * commission rate / 100, using the OTHERS bucket rate for this installment count
 		for _, installment := range installmentCount.Installments["OTHERS"] {
 			if installment.Installment == request.InstallmentCount {
 				request.Amount = request.Amount + (request.Amount * installment.Commission / 100)
@@ -987,8 +986,8 @@ func (p *NkolayProvider) parsePaymentResponse(responseBody []byte, paymentID str
 		// Update payment ID to use reference code if available
 		if refCode, ok := referenceCode.(string); ok && refCode != "" {
 			response.PaymentID = refCode
-			// nkolay işlemlerinde referans kodu sonradan geldiği için 3d complete işlemlerine akarılamıyor.
-			// bunu çözmek için burada atmamız gerek onun içinde callbacks state güncellememiz gerekiyor.
+			// Nkolay issues the reference code only in this response, after the callback state was
+			// stored; write it into the state so the 3D completion can match the payment.
 			if stateId != "" {
 				_ = provider.UpdateCallbackState(context.Background(), stateId, refCode)
 			}
