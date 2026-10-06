@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha512"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +62,25 @@ func signedCallback(secretKey, referenceCode, responseCode string) map[string]st
 		data["CURRENCY_CODE"], secretKey,
 	}, "|"))
 	return data
+}
+
+func TestValidCallbackHash_SandboxCallback(t *testing.T) {
+	// Posted by the Nkolay sandbox to successUrl on 2026-10-06 for a 3D sale of the public test merchant.
+	data := map[string]string{
+		"MERCHANT_NO":          "400000273",
+		"REFERENCE_CODE":       "IKSIRPF1874018",
+		"AUTH_CODE":            "S62888",
+		"RESPONSE_CODE":        "2",
+		"USE_3D":               "true",
+		"RND":                  "1791312160942",
+		"INSTALLMENT":          "1",
+		"AUTHORIZATION_AMOUNT": "10.00",
+		"CURRENCY_CODE":        "TRY",
+		"hashDataV2":           "pZ+mAwfj5b/sfd4acbGjR7mhqbGuRYEnQbqbN4JxUGESaDn4JF3NdtshvGh9EhB2qpZIwcf1M9XF03ClAdMX+Q==",
+	}
+	if !(&NkolayProvider{secretKey: docSecretKey}).validCallbackHash(data) {
+		t.Fatal("a callback signed by the Nkolay sandbox must validate")
+	}
 }
 
 func TestValidCallbackHash(t *testing.T) {
@@ -238,6 +259,8 @@ func TestGetPaymentStatus_MapsListStatus(t *testing.T) {
 			listRow("IKSIRPF9", clientRef, "CANCEL", "ERROR"),
 		), provider.StatusSuccessful, true},
 		{"bare documentation shape with numeric code", `{"RESPONSE_CODE":2,"LIST":[` + listRow("IKSIRPF1", clientRef, "SALES", "SUCCESS") + `]}`, provider.StatusSuccessful, true},
+		// The sandbox and production answer a clientRefCode query with the whole body as a JSON string.
+		{"body JSON-encoded as a string", jsonString(listAnswer(listRow("IKSIRPF1", clientRef, "SALES", "SUCCESS"))), provider.StatusSuccessful, true},
 	}
 
 	for _, tt := range tests {
@@ -461,6 +484,35 @@ func TestComplete3DPayment(t *testing.T) {
 				t.Errorf("redirect %q paymentId %q", resp.RedirectURL, resp.PaymentID)
 			}
 		})
+	}
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// TestIntegration_PaymentListSandbox runs GetPaymentStatus against the Nkolay sandbox with the public
+// test merchant. It needs a 3D sale completed there first:
+//
+//	NKOLAY_SANDBOX_CLIENT_REF=gopay_... NKOLAY_SANDBOX_REFERENCE_CODE=IKSIRPF... go test -run PaymentListSandbox ./provider/nkolay/
+func TestIntegration_PaymentListSandbox(t *testing.T) {
+	clientRef, referenceCode := os.Getenv("NKOLAY_SANDBOX_CLIENT_REF"), os.Getenv("NKOLAY_SANDBOX_REFERENCE_CODE")
+	if clientRef == "" || referenceCode == "" {
+		t.Skip("set NKOLAY_SANDBOX_CLIENT_REF and NKOLAY_SANDBOX_REFERENCE_CODE for a completed sandbox sale")
+	}
+	p := NewProvider().(*NkolayProvider)
+	if err := p.Initialize(map[string]string{"sxList": docSxList, "secretKey": docSecretKey, "environment": "sandbox"}); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	p.clientRefLookup = lookupReturning(clientRef)
+
+	resp, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: referenceCode})
+	if err != nil {
+		t.Fatalf("GetPaymentStatus: %v", err)
+	}
+	if resp.Status != provider.StatusSuccessful || resp.TransactionID != referenceCode {
+		t.Errorf("status %s transactionId %q, want successful/%s", resp.Status, resp.TransactionID, referenceCode)
 	}
 }
 

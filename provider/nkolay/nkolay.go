@@ -518,24 +518,22 @@ type paymentListItem struct {
 	trxDate         string
 }
 
-// parsePaymentList reads a PaymentList answer. Nkolay wraps it as {"id":"","result":{...}}, and on
-// a hash error the result is a JSON string instead of an object; the documentation shows it bare.
-// A RESPONSE_CODE other than "2" is an error, including "Listelenecek kayıt bulunamadı.", so a
-// missing payment is never reported as a status.
+// parsePaymentList reads a PaymentList answer. Nkolay wraps it as {"id":"","result":{...}}. Queried
+// by clientRefCode the whole body arrives JSON-encoded as a string, and on a hash error "result" is
+// such a string; the documentation shows it bare. A RESPONSE_CODE other than "2" is an error,
+// including "Listelenecek kayıt bulunamadı.", so a missing payment is never reported as a status.
 func parsePaymentList(body []byte) ([]paymentListItem, error) {
-	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	raw, err := decodeJSONObject(body)
+	if err != nil {
 		return nil, fmt.Errorf("unreadable payment list response: %w", err)
 	}
 	switch result := raw["result"].(type) {
 	case map[string]any:
 		raw = result
 	case string:
-		var inner map[string]any
-		if err := json.Unmarshal([]byte(result), &inner); err != nil {
+		if raw, err = decodeJSONObject([]byte(result)); err != nil {
 			return nil, fmt.Errorf("unreadable payment list result: %w", err)
 		}
-		raw = inner
 	}
 
 	if code := listField(raw, "RESPONSE_CODE"); code != responseCodeOK {
@@ -630,6 +628,24 @@ func listItemsForResponse(items []paymentListItem) []map[string]string {
 		})
 	}
 	return out
+}
+
+// decodeJSONObject decodes a JSON object, unwrapping it first when it arrives JSON-encoded as a string.
+func decodeJSONObject(data []byte) (map[string]any, error) {
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, err
+	}
+	if s, ok := v.(string); ok {
+		if err := json.Unmarshal([]byte(s), &v); err != nil {
+			return nil, err
+		}
+	}
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected a JSON object, got %T", v)
+	}
+	return obj, nil
 }
 
 // listField renders a JSON value as Nkolay's string form; RESPONSE_CODE arrives as "2" or 2.
