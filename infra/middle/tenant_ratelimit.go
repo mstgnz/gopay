@@ -463,16 +463,17 @@ func determineActionType(path, method string) ActionType {
 		return ActionConfig
 	}
 
-	// Payment-related endpoints
+	// Payment-related endpoints. Refund is checked first: POST /v1/payments/{provider}/refund
+	// would otherwise count against the payment limit.
 	if strings.Contains(path, "/payments") {
+		if strings.Contains(path, "/refund") {
+			return ActionRefund
+		}
 		if method == "POST" {
 			return ActionPayment
 		}
 		if method == "GET" {
 			return ActionStatus
-		}
-		if strings.Contains(path, "/refund") {
-			return ActionRefund
 		}
 	}
 

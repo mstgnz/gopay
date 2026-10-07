@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -445,46 +446,48 @@ func TestPaymentHandler_RefundPayment(t *testing.T) {
 }
 
 func TestPaymentHandler_HandleCallback(t *testing.T) {
+	// The result reaches the tenant as a form the browser auto-posts to its callback URL.
 	tests := []struct {
 		name           string
 		queryParams    map[string]string
 		formData       map[string]string
 		expectedStatus int
-		expectRedirect bool
+		expectPost     map[string]string // fields the relay form must carry to the callback URL
 		mockFunc       func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error)
 	}{
 		{
-			name: "successful callback with redirect",
-			queryParams: map[string]string{
-				"state":               "test-encrypted-state",
-				"originalCallbackUrl": "https://example.com/callback",
-			},
-			expectedStatus: 302,
-			expectRedirect: true,
-		},
-		{
-			name: "successful callback without redirect",
-			queryParams: map[string]string{
-				"state": "test-encrypted-state",
-			},
+			name:           "successful callback posts the result to the tenant",
+			queryParams:    map[string]string{"state": "42"},
 			expectedStatus: 200,
-			expectRedirect: false,
+			expectPost:     map[string]string{"success": "true", "status": "successful", "paymentId": "test-payment-123"},
+			mockFunc: func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error) {
+				return &provider.PaymentResponse{Success: true, Status: provider.StatusSuccessful, PaymentID: "test-payment-123",
+					RedirectURL: "https://example.com/callback"}, nil
+			},
 		},
 		{
-			name: "missing state",
-			queryParams: map[string]string{
-				"originalCallbackUrl": "https://example.com/callback",
+			name:           "completion error still reaches the tenant as a failure",
+			queryParams:    map[string]string{"state": "42"},
+			expectedStatus: 200,
+			expectPost:     map[string]string{"success": "false", "status": "failed"},
+			mockFunc: func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error) {
+				return &provider.PaymentResponse{RedirectURL: "https://example.com/callback"}, errors.New("3D completion failed")
 			},
-			expectedStatus: 400,
-			expectRedirect: false,
 		},
 		{
-			name: "3D payment completion error",
-			queryParams: map[string]string{
-				"state": "test-encrypted-state",
-			},
+			name:           "result without a callback URL",
+			queryParams:    map[string]string{"state": "42"},
 			expectedStatus: 500,
-			expectRedirect: false,
+		},
+		{
+			name:           "missing state",
+			queryParams:    map[string]string{},
+			expectedStatus: 400,
+		},
+		{
+			name:           "completion error without a callback URL",
+			queryParams:    map[string]string{"state": "42"},
+			expectedStatus: 500,
 			mockFunc: func(ctx context.Context, providerName, state string, data map[string]string) (*provider.PaymentResponse, error) {
 				return nil, errors.New("3D completion failed")
 			},
@@ -530,8 +533,16 @@ func TestPaymentHandler_HandleCallback(t *testing.T) {
 				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
 			}
 
-			if tt.expectRedirect && w.Header().Get("Location") == "" {
-				t.Error("Expected redirect but Location header is empty")
+			if tt.expectPost != nil {
+				page := w.Body.String()
+				if !strings.Contains(page, `action="https://example.com/callback"`) {
+					t.Errorf("relay form does not post to the callback URL: %s", page)
+				}
+				for k, v := range tt.expectPost {
+					if !strings.Contains(page, fmt.Sprintf(`name="%s" value="%s"`, k, v)) {
+						t.Errorf("relay form lacks %s=%s", k, v)
+					}
+				}
 			}
 		})
 	}
@@ -650,9 +661,12 @@ func TestPaymentHandler_HandleWebhook(t *testing.T) {
 func TestPaymentHandler_TenantSpecificProvider(t *testing.T) {
 	mockService := &MockPaymentService{
 		CreatePaymentFunc: func(ctx context.Context, environment, providerName string, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
-			// Check if tenant-specific provider name is constructed correctly
-			if providerName != "TENANT123_iyzico" {
-				t.Errorf("Expected provider name 'TENANT123_iyzico', got '%s'", providerName)
+			// The provider name stays plain; the service resolves the tenant's config from the context.
+			if providerName != "iyzico" {
+				t.Errorf("Expected provider name 'iyzico', got '%s'", providerName)
+			}
+			if got := middle.GetTenantIDFromContext(ctx); got != "tenant123" {
+				t.Errorf("Expected tenant 'tenant123' in the service context, got '%s'", got)
 			}
 			return &provider.PaymentResponse{Success: true}, nil
 		},

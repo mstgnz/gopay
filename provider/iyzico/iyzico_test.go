@@ -18,17 +18,9 @@ func TestNewProvider(t *testing.T) {
 		t.Error("NewProvider() should not return nil")
 	}
 
-	iyzicoProvider, ok := provider.(*IyzicoProvider)
-	if !ok {
+	if _, ok := provider.(*IyzicoProvider); !ok {
 		t.Error("NewProvider() should return *IyzicoProvider")
 	}
-
-	if iyzicoProvider.httpClient == nil {
-		t.Error("HTTP client should be initialized")
-	}
-
-	// Note: We can't directly access config.Timeout as it's unexported
-	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestIyzicoProvider_Initialize(t *testing.T) {
@@ -137,6 +129,11 @@ func TestIyzicoProvider_Initialize(t *testing.T) {
 			if provider.baseURL != tt.expectURL {
 				t.Errorf("Expected baseURL %s, got %s", tt.expectURL, provider.baseURL)
 			}
+
+			// The HTTP client is built here, not in NewProvider.
+			if provider.httpClient == nil {
+				t.Error("HTTP client should be initialized")
+			}
 		})
 	}
 }
@@ -145,6 +142,7 @@ func TestIyzicoProvider_ValidatePaymentRequest(t *testing.T) {
 	iyzicoProvider := &IyzicoProvider{}
 
 	validRequest := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.0,
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -173,6 +171,16 @@ func TestIyzicoProvider_ValidatePaymentRequest(t *testing.T) {
 			request:     validRequest,
 			is3D:        false,
 			expectError: false,
+		},
+		{
+			name: "Missing tenant",
+			request: func() provider.PaymentRequest {
+				req := validRequest
+				req.TenantID = 0
+				return req
+			}(),
+			expectError: true,
+			errorMsg:    "tenantID is required",
 		},
 		{
 			name:        "Valid 3D request",
@@ -535,6 +543,7 @@ func TestIyzicoProvider_CreatePayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.50,
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -589,6 +598,7 @@ func TestIyzicoProvider_Create3DPayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.50,
 		Currency: "TRY",
 		Customer: provider.Customer{

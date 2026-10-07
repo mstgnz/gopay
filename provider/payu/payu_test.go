@@ -18,17 +18,9 @@ func TestNewProvider(t *testing.T) {
 		t.Error("NewProvider() should not return nil")
 	}
 
-	payuProvider, ok := provider.(*PayUProvider)
-	if !ok {
+	if _, ok := provider.(*PayUProvider); !ok {
 		t.Error("NewProvider() should return *PayUProvider")
 	}
-
-	if payuProvider.httpClient == nil {
-		t.Error("PayU provider should have HTTP client initialized")
-	}
-
-	// Note: We can't directly access timeout as it's in the config
-	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestPayUProvider_Initialize(t *testing.T) {
@@ -107,6 +99,11 @@ func TestPayUProvider_Initialize(t *testing.T) {
 				} else if !expectedProduction && p.baseURL != apiSandboxURL {
 					t.Errorf("Expected sandbox URL %s, got %s", apiSandboxURL, p.baseURL)
 				}
+
+				// The HTTP client is built here, not in NewProvider.
+				if p.httpClient == nil {
+					t.Error("PayU provider should have HTTP client initialized")
+				}
 			}
 		})
 	}
@@ -116,6 +113,7 @@ func TestPayUProvider_validatePaymentRequest(t *testing.T) {
 	p := &PayUProvider{}
 
 	validRequest := provider.PaymentRequest{
+		TenantID:    1,
 		Amount:      100.0,
 		Currency:    "TRY",
 		ReferenceID: "order-123",
@@ -148,6 +146,16 @@ func TestPayUProvider_validatePaymentRequest(t *testing.T) {
 			request: validRequest,
 			is3D:    true,
 			wantErr: false,
+		},
+		{
+			name: "Missing tenant",
+			request: func() provider.PaymentRequest {
+				req := validRequest
+				req.TenantID = 0
+				return req
+			}(),
+			is3D:    false,
+			wantErr: true,
 		},
 		{
 			name: "Zero amount",
@@ -373,8 +381,11 @@ func TestPayUProvider_mapToPayURequest(t *testing.T) {
 
 			// Check 3D-specific fields
 			if tt.is3D {
-				if result["successUrl"] != tt.request.CallbackURL {
-					t.Errorf("Expected successUrl %s, got %v", tt.request.CallbackURL, result["successUrl"])
+				// The return goes through GoPay's callback, carrying the tenant's URL along.
+				successURL, _ := result["successUrl"].(string)
+				if !strings.HasPrefix(successURL, "https://test.gopay.com/v1/callback/payu?") ||
+					!strings.Contains(successURL, "originalCallbackUrl="+tt.request.CallbackURL) {
+					t.Errorf("Expected successUrl through the GoPay callback, got %v", successURL)
 				}
 				if result["notificationUrl"] == nil {
 					t.Error("Expected notificationUrl for 3D payment")
@@ -642,7 +653,7 @@ func TestPayUProvider_Integration_CreatePayment(t *testing.T) {
 		response := map[string]any{
 			"status":    statusSuccess,
 			"paymentId": "payment123",
-			"amount":    "100.50",
+			"amount":    100.50,
 			"currency":  "TRY",
 		}
 		_ = json.NewEncoder(w).Encode(response)
@@ -660,8 +671,10 @@ func TestPayUProvider_Integration_CreatePayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
-		Amount:   100.50,
-		Currency: "TRY",
+		TenantID:    1,
+		ReferenceID: "order-123",
+		Amount:      100.50,
+		Currency:    "TRY",
 		Customer: provider.Customer{
 			Name:    "John",
 			Surname: "Doe",
@@ -697,7 +710,7 @@ func TestPayUProvider_Integration_GetPaymentStatus(t *testing.T) {
 		response := map[string]any{
 			"status":    statusSuccess,
 			"paymentId": "payment123",
-			"amount":    "100.50",
+			"amount":    100.50,
 		}
 		_ = json.NewEncoder(w).Encode(response)
 	}))

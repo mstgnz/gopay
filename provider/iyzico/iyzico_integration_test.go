@@ -1,3 +1,5 @@
+//go:build integration
+
 package iyzico
 
 import (
@@ -512,11 +514,11 @@ func maskCardNumber(cardNumber string) string {
 // 1. Get your sandbox credentials from https://sandbox-merchant.iyzipay.com/
 // 2. Replace the placeholder credentials in getTestProvider() function
 // 3. Run individual tests:
-//    go test -v ./provider/iyzico/ -run TestIntegration_CreatePayment_Success
-//    go test -v ./provider/iyzico/ -run TestIntegration_Create3DPayment
-//    go test -v ./provider/iyzico/ -run TestIntegration_FullWorkflow
+//    go test -tags integration -v ./provider/iyzico/ -run TestIntegration_CreatePayment_Success
+//    go test -tags integration -v ./provider/iyzico/ -run TestIntegration_Create3DPayment
+//    go test -tags integration -v ./provider/iyzico/ -run TestIntegration_FullWorkflow
 // 4. Run all integration tests:
-//    go test -v ./provider/iyzico/ -run TestIntegration
+//    go test -tags integration -v ./provider/iyzico/ -run TestIntegration
 //
 // Important Notes:
 // - These tests make real API calls to İyzico's sandbox environment

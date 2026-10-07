@@ -20,17 +20,9 @@ func TestNewProvider(t *testing.T) {
 		t.Error("NewProvider() should not return nil")
 	}
 
-	ozanPayProvider, ok := provider.(*OzanPayProvider)
-	if !ok {
+	if _, ok := provider.(*OzanPayProvider); !ok {
 		t.Error("NewProvider() should return *OzanPayProvider")
 	}
-
-	if ozanPayProvider.httpClient == nil {
-		t.Error("HTTP client should be initialized")
-	}
-
-	// Note: We can't directly access timeout as it's in the config
-	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestOzanPayProvider_Initialize(t *testing.T) {
@@ -139,6 +131,11 @@ func TestOzanPayProvider_Initialize(t *testing.T) {
 			if provider.baseURL != tt.expectURL {
 				t.Errorf("Expected baseURL %s, got %s", tt.expectURL, provider.baseURL)
 			}
+
+			// The HTTP client is built here, not in NewProvider.
+			if provider.httpClient == nil {
+				t.Error("HTTP client should be initialized")
+			}
 		})
 	}
 }
@@ -147,6 +144,7 @@ func TestOzanPayProvider_ValidatePaymentRequest(t *testing.T) {
 	ozanPayProvider := &OzanPayProvider{}
 
 	validRequest := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.0,
 		Currency: "USD",
 		Customer: provider.Customer{
@@ -175,6 +173,16 @@ func TestOzanPayProvider_ValidatePaymentRequest(t *testing.T) {
 			request:     validRequest,
 			is3D:        false,
 			expectError: false,
+		},
+		{
+			name: "Missing tenant",
+			request: func() provider.PaymentRequest {
+				req := validRequest
+				req.TenantID = 0
+				return req
+			}(),
+			expectError: true,
+			errorMsg:    "tenantID is required",
 		},
 		{
 			name:        "Valid 3D request",
@@ -555,6 +563,7 @@ func TestOzanPayProvider_CreatePayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.50,
 		Currency: "USD",
 		Customer: provider.Customer{
@@ -611,6 +620,7 @@ func TestOzanPayProvider_Create3DPayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.50,
 		Currency: "USD",
 		Customer: provider.Customer{

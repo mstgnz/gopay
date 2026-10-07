@@ -303,7 +303,7 @@ go run ./cmd/main.go
 go test ./provider/papara/
 
 # Run integration tests (API key required)
-PAPARA_API_KEY=your_test_api_key go test ./provider/papara/ -v -run Integration
+PAPARA_API_KEY=your_test_api_key go test -tags integration ./provider/papara/ -v -run Integration
 ```
 
 ## Limitations

@@ -212,7 +212,6 @@
 //   - Refund requests: 20/minute per tenant (default)
 //   - Status requests: 200/minute per tenant (default)
 //   - Unauthenticated requests: 10/minute per IP
-//   - Premium tenants: 2x rate multiplier
 //   - Burst allowance: Additional 10 requests above limits
 //   - Automatic cleanup: Old entries cleaned every 5 minutes
 //
@@ -223,7 +222,6 @@
 //	TENANT_REFUND_RATE_LIMIT=20       # Refund requests per minute
 //	TENANT_STATUS_RATE_LIMIT=200      # Status requests per minute
 //	UNAUTHENTICATED_RATE_LIMIT=10     # Unauthenticated requests per minute
-//	PREMIUM_TENANTS=tenant1,tenant2   # Premium tenant list
 //
 // # Callbacks and Webhooks
 //

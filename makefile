@@ -42,7 +42,7 @@ test-integration: ## Run integration tests (requires credentials)
 		echo "  export IYZICO_TEST_SECRET_KEY=your_sandbox_secret_key"; \
 		exit 1; \
 	fi
-	@go test -v ./provider/iyzico/ -run TestIntegration
+	@go test -tags integration -v ./provider/iyzico/ -run TestIntegration
 
 test-coverage: ## Run tests with coverage report
 	@echo " Running tests with coverage..."
@@ -56,11 +56,11 @@ test-benchmark: ## Run benchmark tests
 
 test-iyzico: ## Run all İyzico tests (unit + integration)
 	@echo " Running İyzico tests..."
-	@go test -v ./provider/iyzico/
+	@go test -tags integration -v ./provider/iyzico/
 
 test-iyzico-integration: ## Run İyzico integration tests only
 	@echo " Running İyzico integration tests..."
-	@go test -v ./provider/iyzico/ -run TestIntegration
+	@go test -tags integration -v ./provider/iyzico/ -run TestIntegration
 
 # Build commands
 build: ## Build the application

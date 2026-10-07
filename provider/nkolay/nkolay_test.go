@@ -19,15 +19,12 @@ func TestNewProvider(t *testing.T) {
 
 	nkolayProvider, ok := provider.(*NkolayProvider)
 	if !ok {
-		t.Error("NewProvider() should return *NkolayProvider")
+		t.Fatal("NewProvider() should return *NkolayProvider")
 	}
 
-	if nkolayProvider.httpClient == nil {
-		t.Error("HTTP client should be initialized")
+	if nkolayProvider.clientRefLookup == nil {
+		t.Error("clientRefLookup should be wired")
 	}
-
-	// Note: We can't directly access timeout as it's in the config
-	// The timeout is set during Initialize, so we'll test it there
 }
 
 func TestNkolayProvider_Initialize(t *testing.T) {
@@ -117,6 +114,11 @@ func TestNkolayProvider_Initialize(t *testing.T) {
 			if secretKey := tt.config["secretKey"]; secretKey != "" && provider.secretKey != secretKey {
 				t.Errorf("Expected secretKey %s, got %s", secretKey, provider.secretKey)
 			}
+
+			// The HTTP client is built here, not in NewProvider.
+			if provider.httpClient == nil {
+				t.Error("HTTP client should be initialized")
+			}
 		})
 	}
 }
@@ -125,6 +127,7 @@ func TestNkolayProvider_ValidatePaymentRequest(t *testing.T) {
 	nkolayProvider := &NkolayProvider{}
 
 	validRequest := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   100.0,
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -154,6 +157,16 @@ func TestNkolayProvider_ValidatePaymentRequest(t *testing.T) {
 			request:     validRequest,
 			is3D:        false,
 			expectError: false,
+		},
+		{
+			name: "Missing tenant",
+			request: func() provider.PaymentRequest {
+				req := validRequest
+				req.TenantID = 0
+				return req
+			}(),
+			expectError: true,
+			errorMsg:    "tenantID is required",
 		},
 		{
 			name:        "Valid 3D request",
@@ -328,10 +341,10 @@ func TestNkolayProvider_CreatePayment(t *testing.T) {
 			t.Errorf("Expected POST request, got %s", r.Method)
 		}
 
-		// Check content type
+		// Nkolay accepts the url-encoded form GoPay sends in production.
 		contentType := r.Header.Get("Content-Type")
-		if !strings.Contains(contentType, "multipart/form-data") {
-			t.Errorf("Expected multipart/form-data content type, got %s", contentType)
+		if !strings.Contains(contentType, "application/x-www-form-urlencoded") {
+			t.Errorf("Expected application/x-www-form-urlencoded content type, got %s", contentType)
 		}
 
 		// Mock successful payment response
@@ -355,6 +368,7 @@ func TestNkolayProvider_CreatePayment(t *testing.T) {
 	}
 
 	request := provider.PaymentRequest{
+		TenantID: 1,
 		Amount:   10.04,
 		Currency: "TRY",
 		Customer: provider.Customer{
@@ -467,25 +481,15 @@ func TestNkolayProvider_ValidateWebhook(t *testing.T) {
 func TestNkolayProvider_GetRequiredConfig(t *testing.T) {
 	provider := NewProvider().(*NkolayProvider)
 
-	tests := []struct {
-		name        string
-		environment string
-		expected    int
-	}{
-		{"sandbox environment", "sandbox", 4},
-		{"production environment", "production", 4},
-		{"test environment", "test", 4},
-	}
+	expectedFields := []string{"sx", "sxList", "sxCancel", "secretKey", "environment"}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := provider.GetRequiredConfig(tt.environment)
-			if len(result) != tt.expected {
-				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
+	for _, environment := range []string{"sandbox", "production"} {
+		t.Run(environment, func(t *testing.T) {
+			result := provider.GetRequiredConfig(environment)
+			if len(result) != len(expectedFields) {
+				t.Fatalf("GetRequiredConfig() returned %d fields, want %d", len(result), len(expectedFields))
 			}
 
-			// Check required fields
-			expectedFields := []string{"apiKey", "secretKey", "merchantId", "environment"}
 			for i, field := range result {
 				if field.Key != expectedFields[i] {
 					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
@@ -504,106 +508,42 @@ func TestNkolayProvider_GetRequiredConfig(t *testing.T) {
 func TestNkolayProvider_ValidateConfig(t *testing.T) {
 	provider := NewProvider().(*NkolayProvider)
 
+	valid := func(env string) map[string]string {
+		return map[string]string{
+			"sx":          "118591467|SX_TOKEN_VALUE",
+			"sxList":      "118591467|SX_TOKEN_VALUE|LIST",
+			"sxCancel":    "118591467|SX_TOKEN_VALUE|CANCEL",
+			"secretKey":   "SECRET_KEY_123",
+			"environment": env,
+		}
+	}
+	with := func(key, value string) map[string]string {
+		c := valid("sandbox")
+		c[key] = value
+		return c
+	}
+	without := func(key string) map[string]string {
+		c := valid("sandbox")
+		delete(c, key)
+		return c
+	}
+
 	tests := []struct {
 		name        string
 		config      map[string]string
 		expectError bool
 		errorMsg    string
 	}{
-		{
-			name: "valid sandbox config",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_123456789",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "sandbox",
-			},
-			expectError: false,
-		},
-		{
-			name: "valid production config",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_PROD123456789",
-				"secretKey":   "NKOLAY_SECRET_KEY_PROD123456789",
-				"merchantId":  "PRODMERCHANT123456",
-				"environment": "production",
-			},
-			expectError: false,
-		},
-		{
-			name: "missing apiKey",
-			config: map[string]string{
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'apiKey' is missing",
-		},
-		{
-			name: "missing secretKey",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'secretKey' is missing",
-		},
-		{
-			name: "missing merchantId",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_123456789",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'merchantId' is missing",
-		},
-		{
-			name: "empty apiKey",
-			config: map[string]string{
-				"apiKey":      "",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'apiKey' cannot be empty",
-		},
-		{
-			name: "invalid environment",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_123456789",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "invalid_env",
-			},
-			expectError: true,
-			errorMsg:    "environment must be one of",
-		},
-		{
-			name: "apiKey too short",
-			config: map[string]string{
-				"apiKey":      "short",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "MERCHANT123456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "must be at least 10 characters",
-		},
-		{
-			name: "merchantId too short",
-			config: map[string]string{
-				"apiKey":      "NKOLAY_API_KEY_123456789",
-				"secretKey":   "NKOLAY_SECRET_KEY_123456789",
-				"merchantId":  "ABC",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "must be at least 5 characters",
-		},
+		{name: "valid sandbox config", config: valid("sandbox")},
+		{name: "valid production config", config: valid("production")},
+		{name: "missing sx", config: without("sx"), expectError: true, errorMsg: "required field 'sx' is missing"},
+		{name: "missing sxList", config: without("sxList"), expectError: true, errorMsg: "required field 'sxList' is missing"},
+		{name: "missing sxCancel", config: without("sxCancel"), expectError: true, errorMsg: "required field 'sxCancel' is missing"},
+		{name: "missing secretKey", config: without("secretKey"), expectError: true, errorMsg: "required field 'secretKey' is missing"},
+		{name: "empty sx", config: with("sx", "  "), expectError: true, errorMsg: "required field 'sx' cannot be empty"},
+		{name: "invalid environment", config: with("environment", "invalid_env"), expectError: true, errorMsg: "environment must be one of"},
+		{name: "sx too short", config: with("sx", "short"), expectError: true, errorMsg: "must be at least 10 characters"},
+		{name: "secretKey too short", config: with("secretKey", "abc"), expectError: true, errorMsg: "must be at least 5 characters"},
 	}
 
 	for _, tt := range tests {

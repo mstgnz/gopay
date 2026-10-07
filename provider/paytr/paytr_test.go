@@ -101,7 +101,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "Valid request without 3D",
 			request: provider.PaymentRequest{
-				Amount: 100.50,
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Name:    "John",
@@ -113,9 +114,24 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Valid request with 3D",
+			name: "Missing tenant",
 			request: provider.PaymentRequest{
 				Amount: 100.50,
+				Customer: provider.Customer{
+					Email:   "test@example.com",
+					Name:    "John",
+					Surname: "Doe",
+				},
+				ClientIP: "192.168.1.1",
+			},
+			is3D:    false,
+			wantErr: true,
+		},
+		{
+			name: "Valid request with 3D",
+			request: provider.PaymentRequest{
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Name:    "John",
@@ -130,7 +146,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "Invalid amount",
 			request: provider.PaymentRequest{
-				Amount: 0,
+				TenantID: 1,
+				Amount:   0,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Name:    "John",
@@ -144,7 +161,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "Missing customer email",
 			request: provider.PaymentRequest{
-				Amount: 100.50,
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Name:    "John",
 					Surname: "Doe",
@@ -157,7 +175,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "Missing customer name",
 			request: provider.PaymentRequest{
-				Amount: 100.50,
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Surname: "Doe",
@@ -170,7 +189,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "Missing client IP",
 			request: provider.PaymentRequest{
-				Amount: 100.50,
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Name:    "John",
@@ -183,7 +203,8 @@ func TestPayTRProvider_ValidatePaymentRequest(t *testing.T) {
 		{
 			name: "3D request missing callback URL",
 			request: provider.PaymentRequest{
-				Amount: 100.50,
+				TenantID: 1,
+				Amount:   100.50,
 				Customer: provider.Customer{
 					Email:   "test@example.com",
 					Name:    "John",

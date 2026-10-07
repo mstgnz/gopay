@@ -345,14 +345,14 @@ export IYZICO_TEST_ENABLED=true
 export IYZICO_TEST_API_KEY=your_sandbox_api_key
 export IYZICO_TEST_SECRET_KEY=your_sandbox_secret_key
 
-# Run integration tests
-go test ./gateway/iyzico/ -run TestIntegration
+# Run integration tests (they sit behind the "integration" build tag)
+go test -tags integration ./provider/iyzico/ -run TestIntegration
 
 # Run specific integration test
-go test ./gateway/iyzico/ -run TestIntegration_CreatePayment_Success
+go test -tags integration ./provider/iyzico/ -run TestIntegration_CreatePayment_Success
 
 # Run full workflow test
-go test ./gateway/iyzico/ -run TestIntegration_FullWorkflow -v
+go test -tags integration ./provider/iyzico/ -run TestIntegration_FullWorkflow -v
 ```
 
 ### Test Scenarios
@@ -403,7 +403,7 @@ jobs:
           go-version: "1.21"
 
       - name: Run Unit Tests
-        run: go test ./gateway/iyzico/ -v
+        run: go test ./provider/iyzico/ -v
 
       - name: Run Integration Tests
         if: ${{ secrets.IYZICO_TEST_API_KEY }}
@@ -411,7 +411,7 @@ jobs:
           IYZICO_TEST_ENABLED: true
           IYZICO_TEST_API_KEY: ${{ secrets.IYZICO_TEST_API_KEY }}
           IYZICO_TEST_SECRET_KEY: ${{ secrets.IYZICO_TEST_SECRET_KEY }}
-        run: go test ./gateway/iyzico/ -run TestIntegration -v
+        run: go test -tags integration ./provider/iyzico/ -run TestIntegration -v
 ```
 
 ## Security

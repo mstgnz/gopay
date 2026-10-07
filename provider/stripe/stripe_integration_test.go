@@ -1,7 +1,9 @@
+//go:build integration
+
 // Stripe Integration Tests
 // These tests make real API calls to Stripe's test environment.
 // Uses Stripe's public test credentials for testing.
-// Run: go test -v ./provider/stripe/ -run Integration
+// Run: go test -tags integration -v ./provider/stripe/ -run Integration
 
 package stripe
 

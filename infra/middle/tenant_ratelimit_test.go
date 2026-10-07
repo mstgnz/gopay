@@ -4,21 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 )
 
 func TestNewTenantRateLimiter(t *testing.T) {
-	// Set test environment variables
-	os.Setenv("TENANT_GLOBAL_RATE_LIMIT", "10")
-	os.Setenv("TENANT_PAYMENT_RATE_LIMIT", "5")
-	os.Setenv("PREMIUM_TENANTS", "premium1,premium2")
-	defer func() {
-		os.Unsetenv("TENANT_GLOBAL_RATE_LIMIT")
-		os.Unsetenv("TENANT_PAYMENT_RATE_LIMIT")
-		os.Unsetenv("PREMIUM_TENANTS")
-	}()
+	t.Setenv("TENANT_GLOBAL_RATE_LIMIT", "10")
+	t.Setenv("TENANT_PAYMENT_RATE_LIMIT", "5")
 
 	rl := NewTenantRateLimiter()
 
@@ -32,14 +24,6 @@ func TestNewTenantRateLimiter(t *testing.T) {
 
 	if rl.config.DefaultPaymentRate != 5 {
 		t.Errorf("Expected payment rate 5, got %d", rl.config.DefaultPaymentRate)
-	}
-
-	if !rl.config.PremiumTenants["premium1"] {
-		t.Error("premium1 should be in premium tenants")
-	}
-
-	if !rl.config.PremiumTenants["premium2"] {
-		t.Error("premium2 should be in premium tenants")
 	}
 }
 
@@ -286,8 +270,8 @@ func TestTenantRateLimitMiddleware_UnauthenticatedRequests(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
-	// Test unauthenticated request (no tenant context)
-	req1 := httptest.NewRequest("GET", "/health", nil)
+	// Test unauthenticated request (no tenant context). /health is exempt, so use an API path.
+	req1 := httptest.NewRequest("GET", "/v1/payments/nkolay/IKSIRPF1", nil)
 	req1.RemoteAddr = "192.168.1.1:12345"
 
 	rr1 := httptest.NewRecorder()
@@ -302,8 +286,19 @@ func TestTenantRateLimitMiddleware_UnauthenticatedRequests(t *testing.T) {
 	}
 
 	// Test second unauthenticated request from same IP - should be rate limited
-	req2 := httptest.NewRequest("GET", "/health", nil)
+	req2 := httptest.NewRequest("GET", "/v1/payments/nkolay/IKSIRPF1", nil)
 	req2.RemoteAddr = "192.168.1.1:12346"
+
+	// /health stays exempt even after the limit is reached.
+	defer func() {
+		req3 := httptest.NewRequest("GET", "/health", nil)
+		req3.RemoteAddr = "192.168.1.1:12347"
+		rr3 := httptest.NewRecorder()
+		handler.ServeHTTP(rr3, req3)
+		if rr3.Code != http.StatusOK {
+			t.Errorf("/health must not be rate limited, got status %d", rr3.Code)
+		}
+	}()
 
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/auth"
+	"github.com/mstgnz/gopay/infra/middle"
 )
 
 func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
@@ -44,19 +46,38 @@ func TestAuthHandler_Register_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestAuthHandler_CreateTenant_InvalidJSON(t *testing.T) {
-	tenantService := &auth.TenantService{}
-	jwtService := &auth.JWTService{}
-	handler := NewAuthHandler(tenantService, jwtService, validator.New())
+func TestAuthHandler_CreateTenant(t *testing.T) {
+	handler := NewAuthHandler(&auth.TenantService{}, &auth.JWTService{}, validator.New())
 
-	req := httptest.NewRequest("POST", "/auth/tenants", bytes.NewBufferString("invalid-json"))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
+	tests := []struct {
+		name     string
+		tenantID string
+		username string
+		want     int
+	}{
+		// The caller is checked before the body is read.
+		{name: "no authenticated tenant", want: http.StatusUnauthorized},
+		{name: "non-admin tenant", tenantID: "2", username: "tenant2", want: http.StatusForbidden},
+		{name: "admin with invalid JSON", tenantID: "1", username: "admin", want: http.StatusBadRequest},
+	}
 
-	handler.CreateTenant(w, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/auth/tenants", bytes.NewBufferString("invalid-json"))
+			req.Header.Set("Content-Type", "application/json")
+			if tt.tenantID != "" {
+				ctx := context.WithValue(req.Context(), middle.TenantIDKey, tt.tenantID)
+				ctx = context.WithValue(ctx, middle.TenantUserKey, tt.username)
+				req = req.WithContext(ctx)
+			}
+			w := httptest.NewRecorder()
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", w.Code)
+			handler.CreateTenant(w, req)
+
+			if w.Code != tt.want {
+				t.Errorf("Expected status %d, got %d", tt.want, w.Code)
+			}
+		})
 	}
 }
 

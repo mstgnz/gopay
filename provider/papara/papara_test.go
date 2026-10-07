@@ -80,6 +80,7 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 		{
 			name: "valid request",
 			request: provider.PaymentRequest{
+				TenantID: 1,
 				Amount:   100.0,
 				Currency: "TRY",
 				Customer: provider.Customer{
@@ -90,8 +91,21 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "missing tenant",
+			request: provider.PaymentRequest{
+				Amount:   100.0,
+				Currency: "TRY",
+				Customer: provider.Customer{
+					Email: "test@example.com",
+				},
+			},
+			is3D:    false,
+			wantErr: true,
+		},
+		{
 			name: "valid 3D request",
 			request: provider.PaymentRequest{
+				TenantID:    1,
 				Amount:      100.0,
 				Currency:    "TRY",
 				CallbackURL: "https://example.com/callback",
@@ -105,6 +119,7 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 		{
 			name: "invalid amount",
 			request: provider.PaymentRequest{
+				TenantID: 1,
 				Amount:   0,
 				Currency: "TRY",
 				Customer: provider.Customer{
@@ -117,7 +132,8 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 		{
 			name: "missing currency",
 			request: provider.PaymentRequest{
-				Amount: 100.0,
+				TenantID: 1,
+				Amount:   100.0,
 				Customer: provider.Customer{
 					Email: "test@example.com",
 				},
@@ -128,6 +144,7 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 		{
 			name: "missing email",
 			request: provider.PaymentRequest{
+				TenantID: 1,
 				Amount:   100.0,
 				Currency: "TRY",
 				Customer: provider.Customer{},
@@ -138,6 +155,7 @@ func TestPaparaProvider_validatePaymentRequest(t *testing.T) {
 		{
 			name: "3D missing callback URL",
 			request: provider.PaymentRequest{
+				TenantID: 1,
 				Amount:   100.0,
 				Currency: "TRY",
 				Customer: provider.Customer{
@@ -200,8 +218,11 @@ func TestPaparaProvider_mapToPaparaRequest(t *testing.T) {
 		t.Errorf("Expected notificationUrl %v, got %v", expectedNotificationURL, result["notificationUrl"])
 	}
 
-	if result["redirectUrl"] != request.CallbackURL {
-		t.Errorf("Expected redirectUrl %v, got %v", request.CallbackURL, result["redirectUrl"])
+	// The redirect goes through GoPay's callback, carrying the tenant's URL along.
+	redirectURL, _ := result["redirectUrl"].(string)
+	if !strings.HasPrefix(redirectURL, "http://localhost:9999/v1/callback/papara?") ||
+		!strings.Contains(redirectURL, "originalCallbackUrl="+request.CallbackURL) {
+		t.Errorf("Expected redirectUrl through the GoPay callback, got %v", redirectURL)
 	}
 }
 

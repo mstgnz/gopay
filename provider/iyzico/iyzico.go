@@ -521,12 +521,15 @@ func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string
 		_ = provider.AddProviderRequestToClientRequest("iyzico", "providerRequest", reqMap, p.logID)
 	}
 
+	// Only 3D requests carry a callbackUrl; a non-3D payment leaves RedirectURL empty.
+	callbackURL, _ := requestData["callbackUrl"].(string)
+
 	// Map Iyzico response to our common PaymentResponse
 	paymentResp := &provider.PaymentResponse{
 		Success:          resp["status"] == statusSuccess,
 		SystemTime:       &now,
 		ProviderResponse: resp,
-		RedirectURL:      requestData["callbackUrl"].(string),
+		RedirectURL:      callbackURL,
 	}
 
 	// Extract payment info based on response

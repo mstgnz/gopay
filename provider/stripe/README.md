@@ -363,13 +363,13 @@ The integration tests are configured to use **real Stripe test API keys** direct
 ### Running Integration Tests
 
 ```bash
-# Run all integration tests
-go test -v ./provider/stripe/ -run Integration
+# Run all integration tests (they sit behind the "integration" build tag)
+go test -tags integration -v ./provider/stripe/ -run Integration
 
 # Run specific tests
-go test -v ./provider/stripe/ -run TestStripeIntegration_DirectPayment
-go test -v ./provider/stripe/ -run TestStripeIntegration_3DSecure
-go test -v ./provider/stripe/ -run TestStripeIntegration_DeclinedPayment
+go test -tags integration -v ./provider/stripe/ -run TestStripeIntegration_DirectPayment
+go test -tags integration -v ./provider/stripe/ -run TestStripeIntegration_3DSecure
+go test -tags integration -v ./provider/stripe/ -run TestStripeIntegration_DeclinedPayment
 
 # Run all tests with coverage
 go test -v -cover ./provider/stripe/

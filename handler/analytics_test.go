@@ -165,12 +165,8 @@ func TestAnalyticsHandler_GetProviderStats(t *testing.T) {
 				t.Errorf("Failed to unmarshal response: %v", err)
 			}
 
-			// Check if response has provider stats array
+			// Without a logger there is no data source, so the list is empty rather than invented.
 			if data, ok := response["data"].([]any); ok {
-				if len(data) == 0 {
-					t.Error("Response should contain provider stats")
-				}
-
 				// Check first provider structure
 				if len(data) > 0 {
 					if provider, ok := data[0].(map[string]any); ok {
@@ -250,12 +246,8 @@ func TestAnalyticsHandler_GetRecentActivity(t *testing.T) {
 				t.Errorf("Failed to unmarshal response: %v", err)
 			}
 
-			// Check if response has recent activity data
+			// Without a logger there is no data source, so the list is empty rather than invented.
 			if data, ok := response["data"].([]any); ok {
-				if len(data) == 0 {
-					t.Error("Response should contain recent activity data")
-				}
-
 				// Check first activity structure
 				if len(data) > 0 {
 					if activity, ok := data[0].(map[string]any); ok {

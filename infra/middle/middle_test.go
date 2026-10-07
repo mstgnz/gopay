@@ -142,17 +142,26 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	expectedHeaders := map[string]string{
-		"X-Content-Type-Options":  "nosniff",
-		"X-Frame-Options":         "DENY",
-		"X-XSS-Protection":        "1; mode=block",
-		"Content-Security-Policy": "default-src 'self'",
-		"Referrer-Policy":         "strict-origin-when-cross-origin",
+		"X-Content-Type-Options":    "nosniff",
+		"X-Frame-Options":           "DENY",
+		"X-XSS-Protection":          "1; mode=block",
+		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
 	}
 
 	for header, expectedValue := range expectedHeaders {
 		if rr.Header().Get(header) != expectedValue {
 			t.Errorf("Expected %s: %s, got: %s", header, expectedValue, rr.Header().Get(header))
 		}
+	}
+
+	// The dashboard needs a CDN and inline scripts, so only the baseline is pinned here.
+	csp := rr.Header().Get("Content-Security-Policy")
+	if !strings.HasPrefix(csp, "default-src 'self'") {
+		t.Errorf("CSP should start with default-src 'self', got: %s", csp)
+	}
+	if strings.Contains(csp, "*") {
+		t.Errorf("CSP must not allow wildcard sources, got: %s", csp)
 	}
 }
 
@@ -211,9 +220,11 @@ func TestRequestValidationMiddleware(t *testing.T) {
 		_, _ = w.Write([]byte("success"))
 	}))
 
+	// API endpoints take JSON only; bank callbacks and webhooks also take form posts.
 	tests := []struct {
 		name           string
 		method         string
+		path           string
 		contentType    string
 		contentLength  int64
 		expectedStatus int
@@ -221,27 +232,60 @@ func TestRequestValidationMiddleware(t *testing.T) {
 		{
 			name:           "Valid JSON POST",
 			method:         "POST",
+			path:           "/v1/payments/nkolay",
 			contentType:    "application/json",
 			contentLength:  100,
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "Valid form POST",
+			name:           "Form POST to an API endpoint",
 			method:         "POST",
+			path:           "/v1/payments/nkolay",
 			contentType:    "application/x-www-form-urlencoded",
+			contentLength:  100,
+			expectedStatus: http.StatusUnsupportedMediaType,
+		},
+		{
+			name:           "Form POST to a bank callback",
+			method:         "POST",
+			path:           "/v1/callback/nkolay",
+			contentType:    "application/x-www-form-urlencoded",
+			contentLength:  100,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Callback with unsupported content type",
+			method:         "POST",
+			path:           "/v1/callback/nkolay",
+			contentType:    "text/plain",
+			contentLength:  100,
+			expectedStatus: http.StatusUnsupportedMediaType,
+		},
+		{
+			name:           "API POST without content type",
+			method:         "POST",
+			path:           "/v1/payments/nkolay",
+			contentLength:  100,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "Callback POST without content type",
+			method:         "POST",
+			path:           "/v1/callback/nkolay",
 			contentLength:  100,
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "GET request without content type",
 			method:         "GET",
-			contentType:    "",
+			path:           "/v1/payments/nkolay/IKSIRPF1",
 			contentLength:  0,
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "POST with unsupported content type",
 			method:         "POST",
+			path:           "/v1/payments/nkolay",
 			contentType:    "text/plain",
 			contentLength:  100,
 			expectedStatus: http.StatusUnsupportedMediaType,
@@ -249,6 +293,7 @@ func TestRequestValidationMiddleware(t *testing.T) {
 		{
 			name:           "Request too large",
 			method:         "POST",
+			path:           "/v1/payments/nkolay",
 			contentType:    "application/json",
 			contentLength:  11 * 1024 * 1024, // 11MB
 			expectedStatus: http.StatusRequestEntityTooLarge,
@@ -257,7 +302,7 @@ func TestRequestValidationMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, "/test", strings.NewReader("test body"))
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader("test body"))
 			if tt.contentType != "" {
 				req.Header.Set("Content-Type", tt.contentType)
 			}
