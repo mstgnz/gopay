@@ -22,10 +22,15 @@ func requireTestDB(t *testing.T) {
 
 func insertPaycellLogRow(t *testing.T, paymentID, requestJSON string) {
 	t.Helper()
+	insertPaycellLogRowAt(t, "/test", paymentID, requestJSON)
+}
+
+func insertPaycellLogRowAt(t *testing.T, endpoint, paymentID, requestJSON string) {
+	t.Helper()
 	var id int64
 	err := config.App().DB.QueryRow(
-		`INSERT INTO paycell (tenant_id, request, payment_id, endpoint) VALUES (1, $1::jsonb, $2, '/test') RETURNING id`,
-		requestJSON, paymentID,
+		`INSERT INTO paycell (tenant_id, request, payment_id, endpoint) VALUES (1, $1::jsonb, $2, $3) RETURNING id`,
+		requestJSON, paymentID, endpoint,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert log row: %v", err)
@@ -59,6 +64,32 @@ func TestGetProviderRequestObjectFromLog(t *testing.T) {
 	}
 	if _, err := GetProviderRequestObjectFromLog("paycell", paymentID+"-none", "result"); !errors.Is(err, ErrLogValueNotFound) {
 		t.Errorf("unknown payment: err = %v, want ErrLogValueNotFound", err)
+	}
+}
+
+func TestGetThreeDCallbackRequest(t *testing.T) {
+	requireTestDB(t)
+	session := fmt.Sprintf("logcb-%d", time.Now().UnixNano())
+	body := func(paymentID, marker string) string {
+		return fmt.Sprintf(`{"paymentId":%q,"marker":%q}`, paymentID, marker)
+	}
+
+	// LogError leaves callback rows with payment_id = ''; they must still be found.
+	insertPaycellLogRowAt(t, Complete3DEndpoint, "", body(session, "older"))
+	insertPaycellLogRowAt(t, Complete3DEndpoint, "", body(session, "newer"))
+	insertPaycellLogRowAt(t, "/payment/status", session, body(session, "status"))
+	insertPaycellLogRowAt(t, Complete3DEndpoint, "", body(session+"-other", "other"))
+
+	got, err := GetThreeDCallbackRequest("paycell", session)
+	if err != nil {
+		t.Fatalf("GetThreeDCallbackRequest: %v", err)
+	}
+	if !strings.Contains(got, `"newer"`) {
+		t.Errorf("got %s, want the newest callback row of this session", got)
+	}
+
+	if _, err := GetThreeDCallbackRequest("paycell", session+"-none"); !errors.Is(err, ErrLogValueNotFound) {
+		t.Errorf("no callback: err = %v, want ErrLogValueNotFound", err)
 	}
 }
 

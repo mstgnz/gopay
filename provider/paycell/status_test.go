@@ -21,6 +21,7 @@ type fakeLogReader struct {
 	values   map[string]string // recursive lookup, by key
 	paths    map[string]string // "parent.child"
 	objects  map[string]string // top-level key, JSON text
+	callback string            // newest 3D callback row's request JSON, "" = none; fails via failKeys["callback"]
 	failWith error
 	failKeys map[string]error
 }
@@ -45,6 +46,14 @@ func (f *fakeLogReader) nested(_, parentKey, childKey string) (string, error) {
 }
 
 func (f *fakeLogReader) object(_, key string) (string, error) { return f.lookup(f.objects, key) }
+
+func (f *fakeLogReader) callbackRequest(string) (string, error) {
+	m := map[string]string{}
+	if f.callback != "" {
+		m["callback"] = f.callback
+	}
+	return f.lookup(m, "callback")
+}
 
 // threeDStartLogs is what /payment/3d leaves behind: a 3D session request, no result, no provision.
 func threeDStartLogs() *fakeLogReader {
@@ -247,9 +256,9 @@ func TestGetPaymentStatus_LogQueryFailureIsError(t *testing.T) {
 	}
 }
 
-// After the provision lookup, a failing 3D result or 3D session lookup is just as unknown.
+// After the provision lookup, a failing 3D result, callback or 3D session lookup is just as unknown.
 func TestGetPaymentStatus_LaterLookupFailureIsError(t *testing.T) {
-	for _, key := range []string{"getThreeDSessionResultResponse", "getThreeDSessionRequest.merchantCode"} {
+	for _, key := range []string{"getThreeDSessionResultResponse", "callback", "getThreeDSessionRequest.merchantCode"} {
 		t.Run(key, func(t *testing.T) {
 			logs := threeDStartLogs()
 			logs.failKeys = map[string]error{key: errors.New("connection refused")}
@@ -257,6 +266,66 @@ func TestGetPaymentStatus_LaterLookupFailureIsError(t *testing.T) {
 
 			if resp, err := getStatus(t, p); err == nil {
 				t.Fatalf("want an error, got status %q", resp.Status)
+			}
+		})
+	}
+}
+
+// LogError blanks payment_id on a failed callback, so its row is found only through its request.
+// Once that callback got a successful 3D result or sent a provision, money may have moved.
+func TestGetPaymentStatus_FailedCallbackRow(t *testing.T) {
+	tests := []struct {
+		name     string
+		callback string
+		wantErr  bool
+	}{
+		{
+			name:     "provision sent",
+			callback: `{"getThreeDSessionResultResponse":{"threeDOperationResult":{"threeDResult":"0"}},"providerProvisionRequest":{"referenceNumber":"1"}}`,
+			wantErr:  true,
+		},
+		{
+			name:     "3D result successful",
+			callback: `{"getThreeDSessionResultResponse":{"threeDOperationResult":{"threeDResult":"0"}}}`,
+			wantErr:  true,
+		},
+		{
+			name:     "unreadable row",
+			callback: `{"providerProvisionRequest":`,
+			wantErr:  true,
+		},
+		{
+			// Production row 82878: getThreeDSessionResult failed with EOF, so nothing was provisioned.
+			name:     "failed before the 3D result",
+			callback: `{"getThreeDSessionResultRequest":{"merchantCode":"9998"}}`,
+		},
+		{
+			name:     "provision logged as null",
+			callback: `{"providerProvisionRequest":null}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := threeDStartLogs()
+			logs.callback = tt.callback
+			p, srv := newStatusTestProvider(t, logs, nil)
+
+			resp, err := getStatus(t, p)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("want an error, got status %q", resp.Status)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("GetPaymentStatus: %v", err)
+				}
+				if resp.Status != provider.StatusPending {
+					t.Errorf("status = %q, want pending", resp.Status)
+				}
+			}
+			if n := srv.callCount(); n != 0 {
+				t.Errorf("Paycell called %d times", n)
 			}
 		})
 	}

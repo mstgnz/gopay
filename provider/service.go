@@ -144,7 +144,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 	data["amount"] = fmt.Sprintf("%.2f", callbackState.Amount)
 
 	startTime := time.Now()
-	logID, err := s.logger.LogRequest(ctx, callbackState.TenantID, providerName, "POST", "/payment/3d/complete", data, "", "")
+	logID, err := s.logger.LogRequest(ctx, callbackState.TenantID, providerName, "POST", Complete3DEndpoint, data, "", "")
 	if err != nil {
 		logger.Warn("Failed to log 3D completion request", logger.LogContext{
 			Provider: providerName,

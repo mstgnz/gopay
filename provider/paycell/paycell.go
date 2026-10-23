@@ -156,6 +156,9 @@ type paymentLogReader interface {
 	value(paymentID, key string) (string, error)
 	nested(paymentID, parentKey, childKey string) (string, error)
 	object(paymentID, key string) (string, error)
+	// callbackRequest is the request JSON of the newest 3D callback row, found even when its
+	// payment_id was blanked.
+	callbackRequest(paymentID string) (string, error)
 }
 
 type dbLogReader struct{}
@@ -170,6 +173,10 @@ func (dbLogReader) nested(paymentID, parentKey, childKey string) (string, error)
 
 func (dbLogReader) object(paymentID, key string) (string, error) {
 	return provider.GetProviderRequestObjectFromLog("paycell", paymentID, key)
+}
+
+func (dbLogReader) callbackRequest(paymentID string) (string, error) {
+	return provider.GetThreeDCallbackRequest("paycell", paymentID)
 }
 
 func (p *PaycellProvider) logs() paymentLogReader {
@@ -599,10 +606,10 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 
 // statusWithoutProvision answers for a payment whose log holds no provision. Complete3DPayment
 // provisions only after threeDResult "0", so a logged rejection is final and no money moved. A
-// 3D session without a result is pending: the payer may still be on the bank page. A successful
-// result without a provision stays an error, because logRequest drops write failures and the
-// provision may have been sent unlogged. notFound is the provision lookup's error, returned
-// unchanged when nothing at all is logged.
+// 3D session without a result is pending: the payer may still be on the bank page, unless a failed
+// callback for it reached provisioning. A successful result without a provision stays an error,
+// because logRequest drops write failures and the provision may have been sent unlogged. notFound
+// is the provision lookup's error, returned unchanged when nothing at all is logged.
 func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound error) (*provider.PaymentResponse, error) {
 	now := time.Now()
 
@@ -629,6 +636,27 @@ func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound erro
 		}, nil
 	case !errors.Is(err, provider.ErrLogValueNotFound):
 		return nil, fmt.Errorf("failed to get 3D result: %s %w", paymentID, err)
+	}
+
+	// A failed callback's row has a blanked payment_id, so the lookups above cannot see its result
+	// or provision. Once it got a successful 3D result or sent a provision, money may have moved.
+	callbackJSON, err := p.logs().callbackRequest(paymentID)
+	switch {
+	case err == nil:
+		var callback struct {
+			Provision json.RawMessage                        `json:"providerProvisionRequest"`
+			Result    *PaycellGetThreeDSessionResultResponse `json:"getThreeDSessionResultResponse"`
+		}
+		if err := json.Unmarshal([]byte(callbackJSON), &callback); err != nil {
+			return nil, fmt.Errorf("failed to parse logged 3D callback: %s %w", paymentID, err)
+		}
+		provisioned := len(callback.Provision) > 0 && string(callback.Provision) != "null"
+		authenticated := callback.Result != nil && callback.Result.ThreeDOperationResult.ThreeDResult == responseCodeSuccess
+		if provisioned || authenticated {
+			return nil, fmt.Errorf("3D callback reached provisioning but its outcome is not logged, outcome unknown: %s", paymentID)
+		}
+	case !errors.Is(err, provider.ErrLogValueNotFound):
+		return nil, fmt.Errorf("failed to get 3D callback: %s %w", paymentID, err)
 	}
 
 	// merchantCode is in both getThreeDSession bodies (card token and saved card) and is not masked.

@@ -470,6 +470,33 @@ func GetProviderRequestObjectFromLog(providerName, paymentID, key string) (strin
 	return result.String, nil
 }
 
+// Complete3DEndpoint is the endpoint recorded on a 3D callback's log row.
+const Complete3DEndpoint = "/payment/3d/complete"
+
+// GetThreeDCallbackRequest returns the request JSON of the newest 3D callback row for paymentID.
+// It matches request->>'paymentId', not the payment_id column, because LogError blanks that column
+// when the callback fails.
+func GetThreeDCallbackRequest(providerName, paymentID string) (string, error) {
+	query := fmt.Sprintf(`
+		SELECT request::text
+		FROM %s
+		WHERE endpoint = $1 AND request ->> 'paymentId' = $2
+		ORDER BY id DESC
+		LIMIT 1;
+	`, providerName)
+
+	var result string
+	err := config.App().DB.QueryRow(query, Complete3DEndpoint, paymentID).Scan(&result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("3D callback %w", ErrLogValueNotFound)
+		}
+		return "", fmt.Errorf("failed to find 3D callback log: %w", err)
+	}
+
+	return result, nil
+}
+
 // GetProviderNestedRequestValueFromLog retrieves a value from a specific nested object
 // (parentKey -> childKey) of the request log for a given paymentID. Unlike the recursive
 // GetProviderRequestFromLogWithPaymentID, this targets one exact JSON path, so a key name
