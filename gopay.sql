@@ -377,6 +377,12 @@ ALTER TABLE "public"."papara" ADD FOREIGN KEY ("tenant_id") REFERENCES "public".
 -- Indices
 CREATE INDEX papara_tenant_id ON public.papara USING btree (tenant_id);
 ALTER TABLE "public"."paycell" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+
+-- Indices
+-- Serves the payment_id lookups in provider/logger.go (WHERE payment_id = $1 ORDER BY id DESC LIMIT 1).
+CREATE INDEX paycell_payment_id ON public.paycell USING btree (payment_id, id);
+-- Serves GetThreeDCallbackRequest, which matches request->>'paymentId' because LogError blanks payment_id.
+CREATE INDEX paycell_request_payment_id ON public.paycell USING btree ((request ->> 'paymentId'), id);
 ALTER TABLE "public"."paytr" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 

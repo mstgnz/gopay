@@ -49,6 +49,8 @@ func TestGetProviderRequestObjectFromLog(t *testing.T) {
 	insertPaycellLogRow(t, paymentID, `{"result":{"code":"10009","message":"older"}}`)
 	insertPaycellLogRow(t, paymentID, `{"result":{"code":"0","message":"newer"}}`)
 	insertPaycellLogRow(t, paymentID, `{"other":{"code":"x"}}`)
+	// A JSON null is not a value; it must not shadow the older object.
+	insertPaycellLogRow(t, paymentID, `{"result":null}`)
 
 	got, err := GetProviderRequestObjectFromLog("paycell", paymentID, "result")
 	if err != nil {

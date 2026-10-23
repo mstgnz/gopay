@@ -450,7 +450,7 @@ func GetProviderRequestObjectFromLog(providerName, paymentID, key string) (strin
 	query := fmt.Sprintf(`
 		SELECT request ->> $2
 		FROM %s
-		WHERE payment_id = $1 AND request -> $2 IS NOT NULL
+		WHERE payment_id = $1 AND request ->> $2 IS NOT NULL
 		ORDER BY id DESC
 		LIMIT 1;
 	`, providerName)
