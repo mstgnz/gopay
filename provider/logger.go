@@ -440,6 +440,36 @@ func GetProviderRequestFromLogWithPaymentID(providerName string, paymentID strin
 	return result, nil
 }
 
+// ErrLogValueNotFound means no log row for the payment holds the value; any other error means
+// the lookup itself failed and says nothing about the payment.
+var ErrLogValueNotFound = errors.New("not found")
+
+// GetProviderRequestObjectFromLog returns the JSON text of request->key from the most recent log
+// row for paymentID that has it. Reading the object whole keeps its fields from one row.
+func GetProviderRequestObjectFromLog(providerName, paymentID, key string) (string, error) {
+	query := fmt.Sprintf(`
+		SELECT request ->> $2
+		FROM %s
+		WHERE payment_id = $1 AND request -> $2 IS NOT NULL
+		ORDER BY id DESC
+		LIMIT 1;
+	`, providerName)
+
+	var result sql.NullString
+	err := config.App().DB.QueryRow(query, paymentID, key).Scan(&result)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("key %s %w", key, ErrLogValueNotFound)
+		}
+		return "", fmt.Errorf("failed to find key in JSON: %w", err)
+	}
+	if !result.Valid {
+		return "", fmt.Errorf("key %s %w", key, ErrLogValueNotFound)
+	}
+
+	return result.String, nil
+}
+
 // GetProviderNestedRequestValueFromLog retrieves a value from a specific nested object
 // (parentKey -> childKey) of the request log for a given paymentID. Unlike the recursive
 // GetProviderRequestFromLogWithPaymentID, this targets one exact JSON path, so a key name
@@ -459,12 +489,12 @@ func GetProviderNestedRequestValueFromLog(providerName, paymentID, parentKey, ch
 	err := config.App().DB.QueryRow(query, paymentID, parentKey, childKey).Scan(&result)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("nested key %s.%s not found", parentKey, childKey)
+			return "", fmt.Errorf("nested key %s.%s %w", parentKey, childKey, ErrLogValueNotFound)
 		}
 		return "", fmt.Errorf("failed to find nested key in JSON: %w", err)
 	}
 	if !result.Valid {
-		return "", fmt.Errorf("nested key %s.%s not found", parentKey, childKey)
+		return "", fmt.Errorf("nested key %s.%s %w", parentKey, childKey, ErrLogValueNotFound)
 	}
 
 	return result.String, nil

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -142,6 +143,40 @@ type PaycellProvider struct {
 	// the real writer reaches the database through config.App(), which aborts the process when
 	// Postgres is unreachable.
 	logWriter func(kind string, payload map[string]any, logID int64)
+
+	// logReader is nil in production, for the same reason as logWriter. Only GetPaymentStatus
+	// reads through it so far.
+	logReader paymentLogReader
+}
+
+// paymentLogReader reads values back out of a payment's log rows. A value no row holds is an
+// error wrapping provider.ErrLogValueNotFound.
+type paymentLogReader interface {
+	// value is the recursive any-depth lookup; nested and object read one exact path.
+	value(paymentID, key string) (string, error)
+	nested(paymentID, parentKey, childKey string) (string, error)
+	object(paymentID, key string) (string, error)
+}
+
+type dbLogReader struct{}
+
+func (dbLogReader) value(paymentID, key string) (string, error) {
+	return provider.GetProviderRequestFromLogWithPaymentID("paycell", paymentID, key)
+}
+
+func (dbLogReader) nested(paymentID, parentKey, childKey string) (string, error) {
+	return provider.GetProviderNestedRequestValueFromLog("paycell", paymentID, parentKey, childKey)
+}
+
+func (dbLogReader) object(paymentID, key string) (string, error) {
+	return provider.GetProviderRequestObjectFromLog("paycell", paymentID, key)
+}
+
+func (p *PaycellProvider) logs() paymentLogReader {
+	if p.logReader != nil {
+		return p.logReader
+	}
+	return dbLogReader{}
 }
 
 // logRequest appends one provider request or response to the payment's log row.
@@ -354,10 +389,7 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 		response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
 	} else {
 		response.Status = provider.StatusFailed
-		response.Message = threeDSessionResp.MdErrorMessage
-		if response.Message == "" {
-			response.Message = threeDSessionResp.ThreeDOperationResult.ThreeDResultDescription
-		}
+		response.Message = threeDFailureMessage(threeDSessionResp)
 		response.ErrorCode = threeDSessionResp.ThreeDOperationResult.ThreeDResult
 	}
 
@@ -419,7 +451,10 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	// recursive lookup returns an arbitrary "referenceNumber" among several stored in the log
 	// (both providerProvisionRequest and providerInquireRequest carry one), which makes the
 	// inquire query target the wrong order and Paycell returns "Order is not found" (2013).
-	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
+	originalReferenceNumber, err := p.logs().nested(request.PaymentID, "providerProvisionRequest", "referenceNumber")
+	if errors.Is(err, provider.ErrLogValueNotFound) {
+		return p.statusWithoutProvision(request.PaymentID, err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
@@ -434,7 +469,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	// key was missing, failing a status query over a value Paycell never read. And "amount"
 	// resolved through a recursive any-key search that finds four different representations
 	// of the same figure in one payment's log, picked with LIMIT 1 and no ORDER BY.
-	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "msisdn")
+	msisdn, err := p.logs().value(request.PaymentID, "msisdn")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get msisdn: %s %w", request.PaymentID, err)
 	}
@@ -560,6 +595,67 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	response.Success = response.Status == provider.StatusSuccessful
 
 	return response, nil
+}
+
+// statusWithoutProvision answers for a payment whose log holds no provision. Complete3DPayment
+// provisions only after threeDResult "0", so a logged rejection is final and no money moved. A
+// 3D session without a result is pending: the payer may still be on the bank page. A successful
+// result without a provision stays an error, because logRequest drops write failures and the
+// provision may have been sent unlogged. notFound is the provision lookup's error, returned
+// unchanged when nothing at all is logged.
+func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound error) (*provider.PaymentResponse, error) {
+	now := time.Now()
+
+	resultJSON, err := p.logs().object(paymentID, "getThreeDSessionResultResponse")
+	switch {
+	case err == nil:
+		var result PaycellGetThreeDSessionResultResponse
+		if err := json.Unmarshal([]byte(resultJSON), &result); err != nil {
+			return nil, fmt.Errorf("failed to parse logged 3D result: %s %w", paymentID, err)
+		}
+		if result.ThreeDOperationResult.ThreeDResult == responseCodeSuccess {
+			return nil, fmt.Errorf("3D result is successful but no provision is logged, outcome unknown: %s", paymentID)
+		}
+		return &provider.PaymentResponse{
+			Success:          false,
+			Status:           provider.StatusFailed,
+			PaymentID:        paymentID,
+			TransactionID:    result.ThreeDOperationResult.ResponseHeader.TransactionID,
+			Currency:         "TRY",
+			Message:          threeDFailureMessage(&result),
+			ErrorCode:        result.ThreeDOperationResult.ThreeDResult,
+			SystemTime:       &now,
+			ProviderResponse: result,
+		}, nil
+	case !errors.Is(err, provider.ErrLogValueNotFound):
+		return nil, fmt.Errorf("failed to get 3D result: %s %w", paymentID, err)
+	}
+
+	// merchantCode is in both getThreeDSession bodies (card token and saved card) and is not masked.
+	if _, err := p.logs().nested(paymentID, "getThreeDSessionRequest", "merchantCode"); err != nil {
+		if errors.Is(err, provider.ErrLogValueNotFound) {
+			return nil, fmt.Errorf("failed to get reference number: %s %w", paymentID, notFound)
+		}
+		return nil, fmt.Errorf("failed to get 3D session: %s %w", paymentID, err)
+	}
+
+	return &provider.PaymentResponse{
+		Success:    false,
+		Status:     provider.StatusPending,
+		PaymentID:  paymentID,
+		Currency:   "TRY",
+		Message:    "3D authentication not completed",
+		SystemTime: &now,
+	}, nil
+}
+
+// threeDFailureMessage is the message for a rejected 3D result: Paycell's mdErrorMessage (the
+// bank's reason, e.g. a wrong 3D password) when present, otherwise the result's description.
+func threeDFailureMessage(result *PaycellGetThreeDSessionResultResponse) string {
+	if result.MdErrorMessage != "" {
+		return result.MdErrorMessage
+	}
+	return result.ThreeDOperationResult.ThreeDResultDescription
 }
 
 // CancelPayment cancels a payment (reverse operation)
