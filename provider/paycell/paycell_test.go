@@ -479,6 +479,47 @@ func TestPaycellProvider_CreatePayment(t *testing.T) {
 	}
 }
 
+// The 3D result goes to the row Complete3DPayment bound from the stored state. The callback's
+// caller-controlled form and query no longer reach this method, so they cannot pick the row.
+func TestThreeDSessionResult_LogsToStateRow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != endpointGetThreeDSessionResult {
+			t.Errorf("Unexpected path %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rejectedThreeDResult("3D Şifresi Yanlış."))
+	}))
+	defer server.Close()
+
+	p := NewProvider().(*PaycellProvider)
+	if err := p.Initialize(map[string]string{
+		"username":    "test_user",
+		"password":    "test_pass",
+		"merchantId":  "9998",
+		"secureCode":  "test_secure",
+		"environment": "sandbox",
+	}); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	rec := newLogRecorder()
+	p.logWriter = rec.write
+	pointProviderAtTestServer(p, server.URL)
+
+	state := &provider.CallbackState{PaymentID: "session-1", LogID: 42}
+	p.logID = state.LogID
+	if _, err := p.threeDSessionResult(context.Background(), state); err != nil {
+		t.Fatalf("threeDSessionResult: %v", err)
+	}
+
+	for _, kind := range []string{"getThreeDSessionResultRequest", "getThreeDSessionResultResponse"} {
+		if got := rec.logID(kind); got != 42 {
+			t.Errorf("%s written to log row %d, want 42", kind, got)
+		}
+	}
+}
+
 func TestPaycellProvider_ValidateWebhook(t *testing.T) {
 	p := &PaycellProvider{
 		password: "test_secret",

@@ -358,7 +358,7 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 	p.phoneNumber = msisdn
 
 	// sadece 3D doğrulama sonucu
-	threeDSessionResp, err := p.threeDSessionResult(ctx, callbackState, data)
+	threeDSessionResp, err := p.threeDSessionResult(ctx, callbackState)
 	if err != nil {
 		return nil, err
 	}
@@ -936,7 +936,7 @@ func (p *PaycellProvider) GetCommission(ctx context.Context, request provider.Co
 	}, nil
 }
 
-func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*PaycellGetThreeDSessionResultResponse, error) {
+func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState *provider.CallbackState) (*PaycellGetThreeDSessionResultResponse, error) {
 	paymentID := callbackState.PaymentID
 	if paymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
@@ -961,10 +961,6 @@ func (p *PaycellProvider) threeDSessionResult(ctx context.Context, callbackState
 	}
 
 	// Add provider request to client request log
-	if logID, err := strconv.ParseInt(data["logID"], 10, 64); err == nil {
-		p.logID = logID
-	}
-
 	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
 		p.logRequest("getThreeDSessionResultRequest", reqMap, p.logID)
 	}
