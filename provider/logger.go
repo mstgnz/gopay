@@ -497,31 +497,6 @@ func GetThreeDCallbackRequest(providerName, paymentID string) (string, error) {
 	return result, nil
 }
 
-// GetThreeDSessionAge returns how long ago the row that started paymentID's 3D session got its
-// response. The age is computed in SQL: response_at is a zoneless timestamp written by the database's
-// own now(), and lib/pq would read it into Go as UTC. response_at is set by the same UPDATE that sets
-// payment_id, after the callback state was stored.
-func GetThreeDSessionAge(providerName, paymentID string) (time.Duration, error) {
-	query := fmt.Sprintf(`
-		SELECT EXTRACT(EPOCH FROM now() - response_at)::float8
-		FROM %s
-		WHERE payment_id = $1 AND request -> 'getThreeDSessionRequest' IS NOT NULL AND response_at IS NOT NULL
-		ORDER BY id DESC
-		LIMIT 1;
-	`, providerName)
-
-	var seconds float64
-	err := config.App().DB.QueryRow(query, paymentID).Scan(&seconds)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("3D session start %w", ErrLogValueNotFound)
-		}
-		return 0, fmt.Errorf("failed to find 3D session start: %w", err)
-	}
-
-	return time.Duration(seconds * float64(time.Second)), nil
-}
-
 // GetProviderNestedRequestValueFromLog retrieves a value from a specific nested object
 // (parentKey -> childKey) of the request log for a given paymentID. Unlike the recursive
 // GetProviderRequestFromLogWithPaymentID, this targets one exact JSON path, so a key name

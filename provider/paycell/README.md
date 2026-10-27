@@ -263,8 +263,9 @@ own log and Paycell is not called:
 | 3D result rejected | `failed`, `errorCode` = threeDResult |
 | 3D result successful, no provision | HTTP 500: a provision may have been sent unlogged |
 | callback reached provisioning, outcome not logged | HTTP 500 |
-| 3D session, no callback, callback still acceptable | `pending` |
-| 3D session, no callback, older than 30 min and its `callbacks` row deleted | `failed`, `errorCode: 3D_SESSION_EXPIRED` |
+| 3D session, no callback, callback URL still open (45 min) | `pending` |
+| 3D session, no callback, callback URL expired | `failed`, `errorCode: 3D_SESSION_EXPIRED` |
+| 3D session, callback accepted but not logged | HTTP 500 |
 | callback logged without a 3D result | `pending` |
 | nothing | HTTP 500 |
 

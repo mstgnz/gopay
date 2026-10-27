@@ -216,9 +216,12 @@ type CommissionResponse struct {
 	CommissionAmount float64 `json:"commissionAmount"`
 }
 
-// CallbackStateTTL is how long a 3D callback URL is meant to stay usable. It actually stays usable
-// until the cleanup deletes the callbacks row, see CallbackStateExists.
-const CallbackStateTTL = 30 * time.Minute
+// CallbackStateTTL is how long a 3D callback URL accepts its callback, on the database clock.
+const CallbackStateTTL = 45 * time.Minute
+
+// CallbackStateRetention is how long a callbacks row is kept after it expires. CallbackStateOf reads
+// the used flag from it, so it must outlast the consumers' status polling (assistants stops at 24 h).
+const CallbackStateRetention = 7 * 24 * time.Hour
 
 // StoreCallbackState stores callback state in database and returns short ID
 func StoreCallbackState(ctx context.Context, state CallbackState) (string, error) {
@@ -237,8 +240,6 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal state: %w", err)
 	}
-
-	expiresAt := time.Now().Add(CallbackStateTTL)
 
 	// Prepare nullable fields
 	var originalCallback sql.NullString
@@ -271,13 +272,14 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		sessionID = sql.NullString{String: state.SessionID, Valid: true}
 	}
 
-	// Insert into database and get auto-generated ID
+	// expires_at comes from the database clock: the column is zoneless and lib/pq reads it back as
+	// UTC, so every expiry comparison stays in SQL.
 	query := `
 		INSERT INTO callbacks (
-			tenant_id, provider, payment_id, original_callback, 
-			amount, currency, conversation_id, log_id, environment, 
+			tenant_id, provider, payment_id, original_callback,
+			amount, currency, conversation_id, log_id, environment,
 			client_ip, installment, session_id, state_data, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now() + make_interval(secs => $14))
 		RETURNING id
 	`
 
@@ -285,7 +287,7 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 	err = db.QueryRowContext(ctx, query,
 		state.TenantID, state.Provider, state.PaymentID, originalCallback,
 		state.Amount, currency, conversationID, logID, state.Environment,
-		state.ClientIP, installment, sessionID, string(stateData), expiresAt,
+		state.ClientIP, installment, sessionID, string(stateData), CallbackStateTTL.Seconds(),
 	).Scan(&stateID)
 
 	if err != nil {
@@ -309,39 +311,22 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	}
 
 	var stateData string
-	var used bool
-	var expiresAt time.Time
 	var sessionID sql.NullString
 
+	// One statement accepts the callback, so two callbacks for one state cannot both pass, and the
+	// expiry is compared on the database clock.
 	query := `
-		SELECT state_data, used, expires_at, session_id
-		FROM callbacks 
-		WHERE id = $1
+		UPDATE callbacks SET used = true
+		WHERE id = $1 AND used IS NOT TRUE AND expires_at > now()
+		RETURNING state_data, session_id
 	`
 
-	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &used, &expiresAt, &sessionID)
+	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, callbackStateRefusal(ctx, id)
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, errors.New("callback state not found")
-		}
 		return nil, fmt.Errorf("failed to retrieve callback state: %w", err)
-	}
-
-	// Check if expired
-	if time.Now().After(expiresAt) {
-		return nil, errors.New("callback state expired")
-	}
-
-	// Check if already used (optional security measure)
-	if used {
-		return nil, errors.New("callback state already used")
-	}
-
-	// Mark as used (optional - prevents replay attacks)
-	_, err = db.ExecContext(ctx, "UPDATE callbacks SET used = true WHERE id = $1", id)
-	if err != nil {
-		// Log error but don't fail the callback
-		fmt.Printf("Warning: failed to mark callback state as used: %v\n", err)
 	}
 
 	// Deserialize state data
@@ -355,15 +340,36 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	return &state, nil
 }
 
-// CleanupExpiredCallbackStates removes expired callback states from database
+// callbackStateRefusal words why RetrieveCallbackState accepted nothing; its UPDATE already decided.
+func callbackStateRefusal(ctx context.Context, id int) error {
+	var used, expired bool
+	err := config.App().DB.QueryRowContext(ctx,
+		"SELECT used IS TRUE, expires_at <= now() FROM callbacks WHERE id = $1", id,
+	).Scan(&used, &expired)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return errors.New("callback state not found")
+	case err != nil:
+		return fmt.Errorf("failed to retrieve callback state: %w", err)
+	case used:
+		return errors.New("callback state already used")
+	case expired:
+		return errors.New("callback state expired")
+	default:
+		return errors.New("callback state not accepted")
+	}
+}
+
+// CleanupExpiredCallbackStates deletes callback states that expired more than CallbackStateRetention
+// ago. Used rows are kept as long as unused ones, so CallbackStateOf can tell them apart.
 func CleanupExpiredCallbackStates(ctx context.Context) error {
 	db := config.App().DB
 	if db == nil {
 		return errors.New("database connection not available")
 	}
 
-	query := "DELETE FROM callbacks WHERE expires_at < NOW()"
-	_, err := db.ExecContext(ctx, query)
+	query := "DELETE FROM callbacks WHERE expires_at < now() - make_interval(secs => $1)"
+	_, err := db.ExecContext(ctx, query, CallbackStateRetention.Seconds())
 	if err != nil {
 		return fmt.Errorf("failed to cleanup expired callback states: %w", err)
 	}
@@ -371,23 +377,44 @@ func CleanupExpiredCallbackStates(ctx context.Context) error {
 	return nil
 }
 
-// CallbackStateExists reports whether a callbacks row is left for the payment. Once the cleanup has
-// deleted it the callback can never be accepted. The expiry check in RetrieveCallbackState cannot
-// prove that: lib/pq reads the zoneless expires_at as UTC, so with TZ=Europe/Istanbul it passes
-// three hours late.
-func CallbackStateExists(ctx context.Context, providerName, paymentID string) (bool, error) {
+// CallbackPhase is where a payment's 3D callback stands, read from its callbacks rows.
+type CallbackPhase int
+
+const (
+	// CallbackOpen: no callback was accepted yet and one still can be. The zero value, so an unset
+	// phase never reads as a verdict.
+	CallbackOpen CallbackPhase = iota
+	// CallbackAccepted: a callback was accepted; its outcome belongs in its own log row.
+	CallbackAccepted
+	// CallbackClosed: no callback was accepted and none can be any more, or the rows are past retention.
+	CallbackClosed
+)
+
+// CallbackStateOf reads the phase of the payment's callback on the database clock.
+func CallbackStateOf(ctx context.Context, providerName, paymentID string) (CallbackPhase, error) {
 	db := config.App().DB
 	if db == nil {
-		return false, errors.New("database connection not available")
+		return CallbackOpen, errors.New("database connection not available")
 	}
 
-	var exists bool
-	query := "SELECT EXISTS (SELECT 1 FROM callbacks WHERE provider = $1 AND payment_id = $2)"
-	if err := db.QueryRowContext(ctx, query, providerName, paymentID).Scan(&exists); err != nil {
-		return false, fmt.Errorf("failed to look up callback state: %w", err)
+	var accepted, open bool
+	query := `
+		SELECT COALESCE(bool_or(used IS TRUE), false), COALESCE(bool_or(expires_at > now()), false)
+		FROM callbacks
+		WHERE provider = $1 AND payment_id = $2
+	`
+	if err := db.QueryRowContext(ctx, query, providerName, paymentID).Scan(&accepted, &open); err != nil {
+		return CallbackOpen, fmt.Errorf("failed to look up callback state: %w", err)
 	}
 
-	return exists, nil
+	switch {
+	case accepted:
+		return CallbackAccepted, nil
+	case open:
+		return CallbackOpen, nil
+	default:
+		return CallbackClosed, nil
+	}
 }
 
 // CreateShortCallbackURL creates a callback URL with short database-stored state ID

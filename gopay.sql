@@ -324,6 +324,8 @@ CREATE TABLE "public"."callbacks" (
 
 -- Create index for cleanup queries
 CREATE INDEX callbacks_tenant_id ON public.callbacks USING btree (tenant_id);
+-- Serves CallbackStateOf: WHERE provider = $1 AND payment_id = $2.
+CREATE INDEX callbacks_provider_payment_id ON public.callbacks USING btree (provider, payment_id);
 ALTER TABLE "public"."callbacks" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 INSERT INTO "public"."providers" ("name", "active") VALUES

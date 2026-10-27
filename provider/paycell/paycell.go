@@ -153,8 +153,8 @@ type PaycellProvider struct {
 	logReader paymentLogReader
 }
 
-// paymentLogReader reads values back out of a payment's log rows, plus whether its callback state
-// still exists. A value no row holds is an error wrapping provider.ErrLogValueNotFound.
+// paymentLogReader reads values back out of a payment's log rows, plus the phase of its callback. A
+// value no row holds is an error wrapping provider.ErrLogValueNotFound.
 type paymentLogReader interface {
 	// value is the recursive any-depth lookup; nested and object read one exact path.
 	value(paymentID, key string) (string, error)
@@ -163,10 +163,8 @@ type paymentLogReader interface {
 	// callbackRequest is the request JSON of the newest 3D callback row, found even when its
 	// payment_id was blanked.
 	callbackRequest(paymentID string) (string, error)
-	// threeDSessionAge is the time since the 3D session's own row got its response.
-	threeDSessionAge(paymentID string) (time.Duration, error)
-	// callbackStateExists is false once the cleanup deleted the payment's callbacks row.
-	callbackStateExists(ctx context.Context, paymentID string) (bool, error)
+	// callbackPhase says whether the payment's callback was accepted, can still come, or cannot.
+	callbackPhase(ctx context.Context, paymentID string) (provider.CallbackPhase, error)
 }
 
 type dbLogReader struct{}
@@ -187,12 +185,8 @@ func (dbLogReader) callbackRequest(paymentID string) (string, error) {
 	return provider.GetThreeDCallbackRequest("paycell", paymentID)
 }
 
-func (dbLogReader) threeDSessionAge(paymentID string) (time.Duration, error) {
-	return provider.GetThreeDSessionAge("paycell", paymentID)
-}
-
-func (dbLogReader) callbackStateExists(ctx context.Context, paymentID string) (bool, error) {
-	return provider.CallbackStateExists(ctx, "paycell", paymentID)
+func (dbLogReader) callbackPhase(ctx context.Context, paymentID string) (provider.CallbackPhase, error) {
+	return provider.CallbackStateOf(ctx, "paycell", paymentID)
 }
 
 func (p *PaycellProvider) logs() paymentLogReader {
@@ -688,11 +682,15 @@ func (p *PaycellProvider) statusWithoutProvision(ctx context.Context, paymentID 
 	// A logged callback without a result may still be running, so only a session no callback reached
 	// can expire.
 	if !callbackLogged {
-		expired, err := p.threeDSessionExpired(ctx, paymentID)
+		phase, err := p.logs().callbackPhase(ctx, paymentID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get 3D callback state: %s %w", paymentID, err)
 		}
-		if expired {
+		switch phase {
+		case provider.CallbackAccepted:
+			// Its log row is missing (logRequest drops write failures), so it may have provisioned.
+			return nil, fmt.Errorf("3D callback was accepted but is not logged, outcome unknown: %s", paymentID)
+		case provider.CallbackClosed:
 			return &provider.PaymentResponse{
 				Success:    false,
 				Status:     provider.StatusFailed,
@@ -713,29 +711,6 @@ func (p *PaycellProvider) statusWithoutProvision(ctx context.Context, paymentID 
 		Message:    "3D authentication not completed",
 		SystemTime: &now,
 	}, nil
-}
-
-// threeDSessionExpired reports whether a 3D session can no longer get its callback: it is older than
-// CallbackStateTTL and the cleanup has deleted its callbacks row. The age alone is not enough, because
-// RetrieveCallbackState still accepts a callback until that row is gone (production row 52541 came
-// 33 minutes after its session). A session whose age is not logged stays open.
-func (p *PaycellProvider) threeDSessionExpired(ctx context.Context, paymentID string) (bool, error) {
-	age, err := p.logs().threeDSessionAge(paymentID)
-	if errors.Is(err, provider.ErrLogValueNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("failed to get 3D session age: %s %w", paymentID, err)
-	}
-	if age <= provider.CallbackStateTTL {
-		return false, nil
-	}
-
-	exists, err := p.logs().callbackStateExists(ctx, paymentID)
-	if err != nil {
-		return false, fmt.Errorf("failed to get 3D callback state: %s %w", paymentID, err)
-	}
-	return !exists, nil
 }
 
 // threeDFailureMessage is the message for a rejected 3D result: Paycell's mdErrorMessage (the

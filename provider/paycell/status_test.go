@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/mstgnz/gopay/provider"
 )
@@ -19,16 +18,13 @@ const statusTestPaymentID = "f521e32c-85d7-41fe-9f1a-edf94bb70b3f"
 // fakeLogReader answers log lookups from memory. A missing key returns ErrLogValueNotFound, the
 // way the database helpers do; failWith fails every lookup, failKeys only the keys it names.
 type fakeLogReader struct {
-	values   map[string]string // recursive lookup, by key
-	paths    map[string]string // "parent.child"
-	objects  map[string]string // top-level key, JSON text
-	callback string            // newest 3D callback row's request JSON, "" = none; fails via failKeys["callback"]
-	// sessionAge is the 3D session row's age, 0 = not logged; fails via failKeys["sessionAge"].
-	sessionAge time.Duration
-	// callbackGone means the cleanup deleted the callbacks row; fails via failKeys["callbackState"].
-	callbackGone bool
-	failWith     error
-	failKeys     map[string]error
+	values   map[string]string      // recursive lookup, by key
+	paths    map[string]string      // "parent.child"
+	objects  map[string]string      // top-level key, JSON text
+	callback string                 // newest 3D callback row's request JSON, "" = none; fails via failKeys["callback"]
+	phase    provider.CallbackPhase // the callbacks rows' answer; fails via failKeys["callbackPhase"]
+	failWith error
+	failKeys map[string]error
 }
 
 func (f *fakeLogReader) lookup(m map[string]string, key string) (string, error) {
@@ -60,40 +56,29 @@ func (f *fakeLogReader) callbackRequest(string) (string, error) {
 	return f.lookup(m, "callback")
 }
 
-func (f *fakeLogReader) threeDSessionAge(string) (time.Duration, error) {
-	m := map[string]string{}
-	if f.sessionAge > 0 {
-		m["sessionAge"] = f.sessionAge.String()
+func (f *fakeLogReader) callbackPhase(context.Context, string) (provider.CallbackPhase, error) {
+	if f.failWith != nil {
+		return provider.CallbackOpen, f.failWith
 	}
-	v, err := f.lookup(m, "sessionAge")
-	if err != nil {
-		return 0, err
+	if err, ok := f.failKeys["callbackPhase"]; ok {
+		return provider.CallbackOpen, err
 	}
-	return time.ParseDuration(v)
-}
-
-func (f *fakeLogReader) callbackStateExists(context.Context, string) (bool, error) {
-	if _, err := f.lookup(map[string]string{"callbackState": ""}, "callbackState"); err != nil {
-		return false, err
-	}
-	return !f.callbackGone, nil
+	return f.phase, nil
 }
 
 // threeDStartLogs is what /payment/3d leaves behind: a 3D session request, no result, no provision,
-// started a minute ago.
+// and a callback URL still open.
 func threeDStartLogs() *fakeLogReader {
 	return &fakeLogReader{
-		values:     map[string]string{"msisdn": "5551234567"},
-		paths:      map[string]string{"getThreeDSessionRequest.merchantCode": "9998"},
-		sessionAge: time.Minute,
+		values: map[string]string{"msisdn": "5551234567"},
+		paths:  map[string]string{"getThreeDSessionRequest.merchantCode": "9998"},
 	}
 }
 
-// expiredSessionLogs is a 3D session past CallbackStateTTL whose callbacks row the cleanup deleted.
+// expiredSessionLogs is a 3D session whose callback URL expired without accepting a callback.
 func expiredSessionLogs() *fakeLogReader {
 	logs := threeDStartLogs()
-	logs.sessionAge = provider.CallbackStateTTL + time.Minute
-	logs.callbackGone = true
+	logs.phase = provider.CallbackClosed
 	return logs
 }
 
@@ -251,35 +236,37 @@ func TestGetPaymentStatus_ThreeDOpenOrAbandonedIsPending(t *testing.T) {
 // may still provision, and a tenant that read "failed" would let the payer pay twice.
 func TestGetPaymentStatus_ThreeDSessionExpiry(t *testing.T) {
 	tests := []struct {
-		name         string
-		sessionAge   time.Duration
-		callbackGone bool
-		callback     string
-		wantExpired  bool
+		name        string
+		phase       provider.CallbackPhase
+		callback    string
+		wantExpired bool
+		wantErr     bool
 	}{
-		{name: "young session", sessionAge: time.Minute},
-		{name: "young session, callbacks row already gone", sessionAge: time.Minute, callbackGone: true},
-		{name: "exactly the TTL", sessionAge: provider.CallbackStateTTL, callbackGone: true},
-		// Production row 52541: a callback was accepted 33 minutes after its session.
-		{name: "older than the TTL, callbacks row still there", sessionAge: provider.CallbackStateTTL + time.Minute},
-		{name: "age not logged", callbackGone: true},
+		{name: "callback URL still open", phase: provider.CallbackOpen},
+		{name: "callback URL closed", phase: provider.CallbackClosed, wantExpired: true},
+		// The accepted callback left no log row, so it may have provisioned.
+		{name: "callback accepted but not logged", phase: provider.CallbackAccepted, wantErr: true},
 		{
-			name:       "callback logged without a result",
-			sessionAge: provider.CallbackStateTTL + time.Minute, callbackGone: true,
+			name:     "callback logged without a result",
+			phase:    provider.CallbackClosed,
 			callback: `{"getThreeDSessionResultRequest":{"merchantCode":"9998"}}`,
 		},
-		{name: "expired", sessionAge: provider.CallbackStateTTL + time.Minute, callbackGone: true, wantExpired: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := threeDStartLogs()
-			logs.sessionAge = tt.sessionAge
-			logs.callbackGone = tt.callbackGone
+			logs.phase = tt.phase
 			logs.callback = tt.callback
 			p, srv := newStatusTestProvider(t, logs, nil)
 
 			resp, err := getStatus(t, p)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("want an error, got status %q", resp.Status)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("GetPaymentStatus: %v", err)
 			}
@@ -344,8 +331,7 @@ func TestGetPaymentStatus_ExpiryLeavesOtherBranches(t *testing.T) {
 
 	t.Run("provisioned payment is still inquired", func(t *testing.T) {
 		logs := provisionedLogs()
-		logs.sessionAge = provider.CallbackStateTTL + time.Minute
-		logs.callbackGone = true
+		logs.phase = provider.CallbackClosed
 		p, srv := newStatusTestProvider(t, logs, inquireWithProvision(responseCodeSuccess, "Islem basarili", "10050"))
 
 		resp, err := getStatus(t, p)
@@ -401,10 +387,10 @@ func TestGetPaymentStatus_LogQueryFailureIsError(t *testing.T) {
 	}
 }
 
-// After the provision lookup, a failing 3D result, callback, 3D session, session age or callback
-// state lookup is just as unknown. An expired session makes every one of them reachable.
+// After the provision lookup, a failing 3D result, callback, 3D session or callback phase lookup is
+// just as unknown. An expired session makes every one of them reachable.
 func TestGetPaymentStatus_LaterLookupFailureIsError(t *testing.T) {
-	for _, key := range []string{"getThreeDSessionResultResponse", "callback", "getThreeDSessionRequest.merchantCode", "sessionAge", "callbackState"} {
+	for _, key := range []string{"getThreeDSessionResultResponse", "callback", "getThreeDSessionRequest.merchantCode", "callbackPhase"} {
 		t.Run(key, func(t *testing.T) {
 			logs := expiredSessionLogs()
 			logs.failKeys = map[string]error{key: errors.New("connection refused")}
