@@ -53,6 +53,9 @@ const (
 	listStatusError   = "ERROR"
 	listStatusNew     = "NEW"
 
+	// listErrorNoRecord is PaymentList's ERROR_CODE for "Listelenecek kayıt bulunamadı.".
+	listErrorNoRecord = "CORE0305"
+
 	// clientRefPrefix starts every clientRefCode processPayment generates; the rest is UnixNano.
 	clientRefPrefix = "gopay_"
 
@@ -74,6 +77,15 @@ var callbackHashFields = []string{
 // errPaymentNotListed means PaymentList holds no sales row for the clientRefCode.
 var errPaymentNotListed = errors.New("nkolay: payment not found in payment list")
 
+// listError is a PaymentList answer whose RESPONSE_CODE is not "2".
+type listError struct {
+	responseCode, errorCode, message string
+}
+
+func (e *listError) Error() string {
+	return fmt.Sprintf("payment list returned %s %s: %s", e.responseCode, e.errorCode, e.message)
+}
+
 // NkolayProvider implements the provider.PaymentProvider interface for Nkolay
 type NkolayProvider struct {
 	sx           string // Test token provided by Nkolay
@@ -88,11 +100,17 @@ type NkolayProvider struct {
 
 	// clientRefLookup maps a Nkolay REFERENCE_CODE to the clientRefCode GoPay sent with it.
 	clientRefLookup func(referenceCode string) (string, error)
+	// threeDStartLookup reads what GoPay answered to the 3D start of a payment id.
+	threeDStartLookup func(ctx context.Context, paymentID string) (provider.LoggedOutcome, error)
 }
 
 // NewProvider creates a new Nkolay payment provider
 func NewProvider() provider.PaymentProvider {
-	return &NkolayProvider{clientRefLookup: lookupClientRefCode}
+	return &NkolayProvider{clientRefLookup: lookupClientRefCode, threeDStartLookup: lookupThreeDStart}
+}
+
+func lookupThreeDStart(ctx context.Context, paymentID string) (provider.LoggedOutcome, error) {
+	return provider.GetThreeDStartOutcome(ctx, "nkolay", paymentID)
 }
 
 // lookupClientRefCode reads the clientRefCode from the /payment/3d log row whose payment_id is the
@@ -394,6 +412,13 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 
 	status, items, err := p.paymentStatusFromList(ctx, request.PaymentID, false)
 	if err != nil {
+		resp, rejected, startErr := p.rejectedStartStatus(ctx, request.PaymentID, err)
+		if startErr != nil {
+			return nil, fmt.Errorf("nkolay: failed to get payment status: %w; 3D start lookup: %v", err, startErr)
+		}
+		if rejected {
+			return resp, nil
+		}
 		return nil, fmt.Errorf("nkolay: failed to get payment status: %w", err)
 	}
 
@@ -416,6 +441,43 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 			"transactions": listItemsForResponse(items),
 		},
 	}, nil
+}
+
+// rejectedStartStatus answers failed for a clientRefCode that PaymentList has no record of and whose
+// 3D start GoPay logged as failed: Nkolay refused the start, issued no REFERENCE_CODE and showed no bank
+// page, so nothing can be charged. It needs both Nkolay answers; in every other case rejected is false.
+func (p *NkolayProvider) rejectedStartStatus(ctx context.Context, paymentID string, listErr error) (resp *provider.PaymentResponse, rejected bool, err error) {
+	var le *listError
+	if !strings.HasPrefix(paymentID, clientRefPrefix) || !errors.As(listErr, &le) || le.errorCode != listErrorNoRecord {
+		return nil, false, nil
+	}
+
+	start, err := p.threeDStartLookup(ctx, paymentID)
+	if errors.Is(err, provider.ErrLogValueNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if start.Status != string(provider.StatusFailed) {
+		return nil, false, nil
+	}
+
+	message := start.Message
+	if message == "" {
+		message = "3D payment start was rejected"
+	}
+	return &provider.PaymentResponse{
+		PaymentID:  paymentID,
+		Success:    false,
+		Status:     provider.StatusFailed,
+		Message:    message,
+		ErrorCode:  start.ErrorCode,
+		SystemTime: timePtr(time.Now()),
+		ProviderResponse: map[string]any{
+			"transactions": listItemsForResponse(nil),
+		},
+	}, true, nil
 }
 
 // verify3DResultWithList settles an unsigned 3D callback from PaymentList. By the time the bank
@@ -521,8 +583,9 @@ type paymentListItem struct {
 
 // parsePaymentList reads a PaymentList answer. Nkolay wraps it as {"id":"","result":{...}}. Queried
 // by clientRefCode the whole body arrives JSON-encoded as a string, and on a hash error "result" is
-// such a string; the documentation shows it bare. A RESPONSE_CODE other than "2" is an error,
-// including "Listelenecek kayıt bulunamadı.", so a missing payment is never reported as a status.
+// such a string; the documentation shows it bare. A RESPONSE_CODE other than "2" is a *listError,
+// including "Listelenecek kayıt bulunamadı.": a missing payment is a status only for a rejected start
+// (rejectedStartStatus).
 func parsePaymentList(body []byte) ([]paymentListItem, error) {
 	raw, err := decodeJSONObject(body)
 	if err != nil {
@@ -542,7 +605,7 @@ func parsePaymentList(body []byte) ([]paymentListItem, error) {
 		if message == "" {
 			message = listField(raw, "RESPONSE_DATA")
 		}
-		return nil, fmt.Errorf("payment list returned %s %s: %s", code, listField(raw, "ERROR_CODE"), message)
+		return nil, &listError{responseCode: code, errorCode: listField(raw, "ERROR_CODE"), message: message}
 	}
 
 	list, _ := raw["LIST"].([]any)

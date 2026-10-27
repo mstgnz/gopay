@@ -473,6 +473,38 @@ func GetProviderRequestObjectFromLog(providerName, paymentID, key string) (strin
 // Complete3DEndpoint is the endpoint recorded on a 3D callback's log row.
 const Complete3DEndpoint = "/payment/3d/complete"
 
+// Start3DEndpoint is the endpoint recorded on a 3D payment start's log row.
+const Start3DEndpoint = "/payment/3d"
+
+// LoggedOutcome is GoPay's answer to a request as its log row recorded it.
+type LoggedOutcome struct {
+	Status    string
+	ErrorCode string
+	Message   string
+}
+
+// GetThreeDStartOutcome returns the logged answer of the newest 3D start row for paymentID. LogResponse
+// sets payment_id from the answer, so a start that ended in a Go error (payment_id blanked) is not found.
+func GetThreeDStartOutcome(ctx context.Context, providerName, paymentID string) (LoggedOutcome, error) {
+	query := fmt.Sprintf(`
+		SELECT COALESCE(status, ''), COALESCE(error_code, ''), COALESCE(response ->> 'message', '')
+		FROM %s
+		WHERE endpoint = $1 AND payment_id = $2
+		ORDER BY id DESC
+		LIMIT 1;
+	`, providerName)
+
+	var out LoggedOutcome
+	err := config.App().DB.QueryRowContext(ctx, query, Start3DEndpoint, paymentID).Scan(&out.Status, &out.ErrorCode, &out.Message)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return LoggedOutcome{}, fmt.Errorf("3D start %w", ErrLogValueNotFound)
+		}
+		return LoggedOutcome{}, fmt.Errorf("failed to find 3D start log: %w", err)
+	}
+	return out, nil
+}
+
 // GetThreeDCallbackRequest returns the request JSON of the newest 3D callback row for paymentID.
 // It matches request->>'paymentId', not the payment_id column, because LogError blanks that column
 // when the callback fails.

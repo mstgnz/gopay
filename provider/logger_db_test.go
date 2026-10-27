@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -92,6 +93,53 @@ func TestGetThreeDCallbackRequest(t *testing.T) {
 
 	if _, err := GetThreeDCallbackRequest("paycell", session+"-none"); !errors.Is(err, ErrLogValueNotFound) {
 		t.Errorf("no callback: err = %v, want ErrLogValueNotFound", err)
+	}
+}
+
+func insertNkolayLogRow(t *testing.T, endpoint, paymentID, status, errorCode, responseJSON string) {
+	t.Helper()
+	var id int64
+	err := config.App().DB.QueryRow(
+		`INSERT INTO nkolay (tenant_id, payment_id, endpoint, status, error_code, response) VALUES (1, $1, $2, $3, $4, $5::jsonb) RETURNING id`,
+		paymentID, endpoint, status, errorCode, responseJSON,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert log row: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := config.App().DB.Exec(`DELETE FROM nkolay WHERE id = $1`, id); err != nil {
+			t.Errorf("delete log row %d: %v", id, err)
+		}
+	})
+}
+
+func TestGetThreeDStartOutcome(t *testing.T) {
+	requireTestDB(t)
+	ctx := context.Background()
+	paymentID := fmt.Sprintf("gopay_%d", time.Now().UnixNano())
+
+	insertNkolayLogRow(t, Start3DEndpoint, paymentID, "failed", "GENERAL_ERROR", `{"message":"older"}`)
+	insertNkolayLogRow(t, Start3DEndpoint, paymentID, "failed", "GENERAL_ERROR", `{"message":"İşlem Başarısız."}`)
+	// Status queries log under the same payment_id and must not be read as the start.
+	insertNkolayLogRow(t, "/payment/status", paymentID, "", "STATUS_ERROR", `{"message":"status"}`)
+
+	got, err := GetThreeDStartOutcome(ctx, "nkolay", paymentID)
+	if err != nil {
+		t.Fatalf("GetThreeDStartOutcome: %v", err)
+	}
+	want := LoggedOutcome{Status: "failed", ErrorCode: "GENERAL_ERROR", Message: "İşlem Başarısız."}
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+
+	noMessage := paymentID + "-nomsg"
+	insertNkolayLogRow(t, Start3DEndpoint, noMessage, "failed", "", `{}`)
+	if got, err := GetThreeDStartOutcome(ctx, "nkolay", noMessage); err != nil || got != (LoggedOutcome{Status: "failed"}) {
+		t.Errorf("row without message: got %+v, %v", got, err)
+	}
+
+	if _, err := GetThreeDStartOutcome(ctx, "nkolay", paymentID+"-none"); !errors.Is(err, ErrLogValueNotFound) {
+		t.Errorf("unknown payment: err = %v, want ErrLogValueNotFound", err)
 	}
 }
 

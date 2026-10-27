@@ -62,7 +62,7 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 	method := "POST"
 	endpoint := "/payment"
 	if request.Use3D {
-		endpoint = "/payment/3d"
+		endpoint = Start3DEndpoint
 	}
 
 	// Log request to database

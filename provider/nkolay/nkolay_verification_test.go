@@ -347,6 +347,82 @@ func TestGetPaymentStatus_ClientRefCodeSkipsLookup(t *testing.T) {
 	}
 }
 
+// rejectedStart is the /payment/3d log row of production row 11844: Nkolay refused the start.
+var rejectedStart = provider.LoggedOutcome{Status: "failed", ErrorCode: "GENERAL_ERROR", Message: "İşlem Başarısız."}
+
+func TestGetPaymentStatus_RejectedStart(t *testing.T) {
+	// One minute old: a rejected start answers failed at once, nothing is in flight.
+	clientRef := fmt.Sprintf("gopay_%d", time.Now().Add(-time.Minute).UnixNano())
+	tests := []struct {
+		name        string
+		paymentID   string
+		code        int
+		answer      string
+		start       provider.LoggedOutcome
+		startErr    error
+		wantStatus  provider.PaymentStatus
+		wantErr     string
+		wantLookups int
+	}{
+		{name: "no record and a rejected start is failed", paymentID: clientRef, answer: noRecordAnswer, start: rejectedStart, wantStatus: provider.StatusFailed, wantLookups: 1},
+		{name: "a listed sale wins over the logged start", paymentID: clientRef, answer: listAnswer(listRow("IKSIRPF1", clientRef, "SALES", "SUCCESS")), start: rejectedStart, wantStatus: provider.StatusSuccessful},
+		{name: "start not logged as failed", paymentID: clientRef, answer: noRecordAnswer, start: provider.LoggedOutcome{Status: "pending"}, wantErr: "Listelenecek kayıt bulunamadı", wantLookups: 1},
+		{name: "start not logged", paymentID: clientRef, answer: noRecordAnswer, startErr: fmt.Errorf("3D start %w", provider.ErrLogValueNotFound), wantErr: "CORE0305", wantLookups: 1},
+		{name: "start lookup fails", paymentID: clientRef, answer: noRecordAnswer, startErr: errors.New("connection refused"), wantErr: "connection refused", wantLookups: 1},
+		{name: "hash error is not a missing record", paymentID: clientRef, answer: hashErrorAnswer, start: rejectedStart, wantErr: "hashData error"},
+		{name: "list unreachable", paymentID: clientRef, code: http.StatusBadGateway, answer: "bad gateway", start: rejectedStart, wantErr: "HTTP error 502"},
+		{name: "a REFERENCE_CODE with no record stays an error", paymentID: "IKSIRPF1", answer: noRecordAnswer, start: rejectedStart, wantErr: "Listelenecek kayıt bulunamadı"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _ := newListProvider(t, func(url.Values) (int, string) {
+				code := tt.code
+				if code == 0 {
+					code = http.StatusOK
+				}
+				return code, tt.answer
+			}, lookupReturning(clientRef))
+			var lookups []string
+			p.threeDStartLookup = func(_ context.Context, paymentID string) (provider.LoggedOutcome, error) {
+				lookups = append(lookups, paymentID)
+				return tt.start, tt.startErr
+			}
+
+			resp, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: tt.paymentID})
+			if len(lookups) != tt.wantLookups {
+				t.Errorf("3D start looked up %d times, want %d", len(lookups), tt.wantLookups)
+			}
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected an error, got status %s", resp.Status)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error %q does not mention %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetPaymentStatus: %v", err)
+			}
+			if resp.Status != tt.wantStatus || resp.Success != (tt.wantStatus == provider.StatusSuccessful) {
+				t.Errorf("status %s success %v, want %s", resp.Status, resp.Success, tt.wantStatus)
+			}
+			if resp.PaymentID != tt.paymentID {
+				t.Errorf("paymentId %q, want %q", resp.PaymentID, tt.paymentID)
+			}
+			if tt.wantStatus == provider.StatusFailed {
+				if lookups[0] != clientRef {
+					t.Errorf("3D start looked up for %q, want %q", lookups[0], clientRef)
+				}
+				if resp.ErrorCode != "GENERAL_ERROR" || resp.Message != "İşlem Başarısız." {
+					t.Errorf("errorCode %q message %q, want the logged start's", resp.ErrorCode, resp.Message)
+				}
+			}
+		})
+	}
+}
+
 func TestPaymentListWindow(t *testing.T) {
 	now := time.Date(2026, 10, 6, 18, 0, 0, 0, time.UTC) // 06.10.2026 21:00 in Turkey
 	format := func(start, end time.Time) string {

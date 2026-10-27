@@ -140,7 +140,12 @@ curl -X GET "http://localhost:9999/v1/payments/nkolay/{paymentID}?environment=pr
 | sale `ERROR` | `failed` |
 | sale `NEW`, started 45 min ago or less | `pending` |
 | sale `NEW`, started more than 45 min ago | `failed` |
-| no record, or Nkolay error | HTTP 500, never a guessed status |
+| no record (`CORE0305`) for a `gopay_...` id whose 3D start Nkolay rejected | `failed`, with the start's `errorCode` and message |
+| any other no record, or Nkolay error | HTTP 500, never a guessed status |
+
+A `gopay_...` id means Nkolay returned no `REFERENCE_CODE` because it refused the 3D start, so no bank
+page was shown and nothing can be charged. The `failed` answer needs both Nkolay's refusal (logged on the
+`/payment/3d` row) and PaymentList's `CORE0305`; a sale row in PaymentList always wins.
 
 ### 4. Refund Payment
 
