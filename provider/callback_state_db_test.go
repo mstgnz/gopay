@@ -19,7 +19,7 @@ func insertCallbackRow(t *testing.T, providerName, paymentID string, used bool, 
 	var id int64
 	err := config.App().DB.QueryRow(
 		`INSERT INTO callbacks (tenant_id, provider, payment_id, state_data, expires_at, used)
-		 VALUES (1, $1, $2, jsonb_build_object('paymentId', $2::text), now() + $3::interval, $4) RETURNING id`,
+		 VALUES (1, $1, $2::text, jsonb_build_object('paymentId', $2::text), now() + $3::interval, $4) RETURNING id`,
 		providerName, paymentID, expiresIn, used,
 	).Scan(&id)
 	if err != nil {
