@@ -138,8 +138,8 @@ curl -X GET "http://localhost:9999/v1/payments/nkolay/{paymentID}?environment=pr
 | --- | --- |
 | sale `SUCCESS` | `successful` (`cancelled` / `refunded` when a successful CANCEL / REFUND row follows) |
 | sale `ERROR` | `failed` |
-| sale `NEW`, callback URL still live (30 min) | `pending` |
-| sale `NEW`, callback URL expired | `failed` |
+| sale `NEW`, started 30 min ago or less | `pending` |
+| sale `NEW`, started more than 30 min ago | `failed` |
 | no record, or Nkolay error | HTTP 500, never a guessed status |
 
 ### 4. Refund Payment

@@ -68,6 +68,10 @@ const (
 	responseCodeOrderNotFound = "2013" // status query before the order is queryable (transient)
 	responseCodeProcessing    = "3023" // transaction is still being processed (transient)
 
+	// errorCodeThreeDSessionExpired is GoPay's own code, not Paycell's: the 3D page was abandoned
+	// and its callback can no longer be accepted.
+	errorCodeThreeDSessionExpired = "3D_SESSION_EXPIRED"
+
 	// Test constants from official PHP implementation
 	testPrefix          = "666"
 	testApplicationName = "PAYCELLTEST"
@@ -149,8 +153,8 @@ type PaycellProvider struct {
 	logReader paymentLogReader
 }
 
-// paymentLogReader reads values back out of a payment's log rows. A value no row holds is an
-// error wrapping provider.ErrLogValueNotFound.
+// paymentLogReader reads values back out of a payment's log rows, plus whether its callback state
+// still exists. A value no row holds is an error wrapping provider.ErrLogValueNotFound.
 type paymentLogReader interface {
 	// value is the recursive any-depth lookup; nested and object read one exact path.
 	value(paymentID, key string) (string, error)
@@ -159,6 +163,10 @@ type paymentLogReader interface {
 	// callbackRequest is the request JSON of the newest 3D callback row, found even when its
 	// payment_id was blanked.
 	callbackRequest(paymentID string) (string, error)
+	// threeDSessionAge is the time since the 3D session's own row got its response.
+	threeDSessionAge(paymentID string) (time.Duration, error)
+	// callbackStateExists is false once the cleanup deleted the payment's callbacks row.
+	callbackStateExists(ctx context.Context, paymentID string) (bool, error)
 }
 
 type dbLogReader struct{}
@@ -177,6 +185,14 @@ func (dbLogReader) object(paymentID, key string) (string, error) {
 
 func (dbLogReader) callbackRequest(paymentID string) (string, error) {
 	return provider.GetThreeDCallbackRequest("paycell", paymentID)
+}
+
+func (dbLogReader) threeDSessionAge(paymentID string) (time.Duration, error) {
+	return provider.GetThreeDSessionAge("paycell", paymentID)
+}
+
+func (dbLogReader) callbackStateExists(ctx context.Context, paymentID string) (bool, error) {
+	return provider.CallbackStateExists(ctx, "paycell", paymentID)
 }
 
 func (p *PaycellProvider) logs() paymentLogReader {
@@ -460,7 +476,7 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	// inquire query target the wrong order and Paycell returns "Order is not found" (2013).
 	originalReferenceNumber, err := p.logs().nested(request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if errors.Is(err, provider.ErrLogValueNotFound) {
-		return p.statusWithoutProvision(request.PaymentID, err)
+		return p.statusWithoutProvision(ctx, request.PaymentID, err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
@@ -607,10 +623,11 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 // statusWithoutProvision answers for a payment whose log holds no provision. Complete3DPayment
 // provisions only after threeDResult "0", so a logged rejection is final and no money moved. A
 // 3D session without a result is pending: the payer may still be on the bank page, unless a failed
-// callback for it reached provisioning. A successful result without a provision stays an error,
-// because logRequest drops write failures and the provision may have been sent unlogged. notFound
-// is the provision lookup's error, returned unchanged when nothing at all is logged.
-func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound error) (*provider.PaymentResponse, error) {
+// callback for it reached provisioning, or no callback came and none can come any more (failed). A
+// successful result without a provision stays an error, because logRequest drops write failures
+// and the provision may have been sent unlogged. notFound is the provision lookup's error, returned
+// unchanged when nothing at all is logged.
+func (p *PaycellProvider) statusWithoutProvision(ctx context.Context, paymentID string, notFound error) (*provider.PaymentResponse, error) {
 	now := time.Now()
 
 	resultJSON, err := p.logs().object(paymentID, "getThreeDSessionResultResponse")
@@ -641,6 +658,7 @@ func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound erro
 	// A failed callback's row has a blanked payment_id, so the lookups above cannot see its result
 	// or provision. Once it got a successful 3D result or sent a provision, money may have moved.
 	callbackJSON, err := p.logs().callbackRequest(paymentID)
+	callbackLogged := err == nil
 	switch {
 	case err == nil:
 		var callback struct {
@@ -667,6 +685,26 @@ func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound erro
 		return nil, fmt.Errorf("failed to get 3D session: %s %w", paymentID, err)
 	}
 
+	// A logged callback without a result may still be running, so only a session no callback reached
+	// can expire.
+	if !callbackLogged {
+		expired, err := p.threeDSessionExpired(ctx, paymentID)
+		if err != nil {
+			return nil, err
+		}
+		if expired {
+			return &provider.PaymentResponse{
+				Success:    false,
+				Status:     provider.StatusFailed,
+				PaymentID:  paymentID,
+				Currency:   "TRY",
+				Message:    "3D session expired",
+				ErrorCode:  errorCodeThreeDSessionExpired,
+				SystemTime: &now,
+			}, nil
+		}
+	}
+
 	return &provider.PaymentResponse{
 		Success:    false,
 		Status:     provider.StatusPending,
@@ -675,6 +713,29 @@ func (p *PaycellProvider) statusWithoutProvision(paymentID string, notFound erro
 		Message:    "3D authentication not completed",
 		SystemTime: &now,
 	}, nil
+}
+
+// threeDSessionExpired reports whether a 3D session can no longer get its callback: it is older than
+// CallbackStateTTL and the cleanup has deleted its callbacks row. The age alone is not enough, because
+// RetrieveCallbackState still accepts a callback until that row is gone (production row 52541 came
+// 33 minutes after its session). A session whose age is not logged stays open.
+func (p *PaycellProvider) threeDSessionExpired(ctx context.Context, paymentID string) (bool, error) {
+	age, err := p.logs().threeDSessionAge(paymentID)
+	if errors.Is(err, provider.ErrLogValueNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get 3D session age: %s %w", paymentID, err)
+	}
+	if age <= provider.CallbackStateTTL {
+		return false, nil
+	}
+
+	exists, err := p.logs().callbackStateExists(ctx, paymentID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get 3D callback state: %s %w", paymentID, err)
+	}
+	return !exists, nil
 }
 
 // threeDFailureMessage is the message for a rejected 3D result: Paycell's mdErrorMessage (the

@@ -216,8 +216,8 @@ type CommissionResponse struct {
 	CommissionAmount float64 `json:"commissionAmount"`
 }
 
-// CallbackStateTTL is how long a 3D callback URL stays usable; after it the payment cannot complete
-// through GoPay.
+// CallbackStateTTL is how long a 3D callback URL is meant to stay usable. It actually stays usable
+// until the cleanup deletes the callbacks row, see CallbackStateExists.
 const CallbackStateTTL = 30 * time.Minute
 
 // StoreCallbackState stores callback state in database and returns short ID
@@ -369,6 +369,25 @@ func CleanupExpiredCallbackStates(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CallbackStateExists reports whether a callbacks row is left for the payment. Once the cleanup has
+// deleted it the callback can never be accepted. The expiry check in RetrieveCallbackState cannot
+// prove that: lib/pq reads the zoneless expires_at as UTC, so with TZ=Europe/Istanbul it passes
+// three hours late.
+func CallbackStateExists(ctx context.Context, providerName, paymentID string) (bool, error) {
+	db := config.App().DB
+	if db == nil {
+		return false, errors.New("database connection not available")
+	}
+
+	var exists bool
+	query := "SELECT EXISTS (SELECT 1 FROM callbacks WHERE provider = $1 AND payment_id = $2)"
+	if err := db.QueryRowContext(ctx, query, providerName, paymentID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to look up callback state: %w", err)
+	}
+
+	return exists, nil
 }
 
 // CreateShortCallbackURL creates a callback URL with short database-stored state ID

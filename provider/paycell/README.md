@@ -255,6 +255,19 @@ log.Printf("Amount: %.2f %s", response.Amount, response.Currency)
 log.Printf("Message: %s", response.Message)
 ```
 
+With a provision logged, the status comes from Paycell's inquireAll. Without one, it comes from GoPay's
+own log and Paycell is not called:
+
+| Logged | GoPay `status` |
+| --- | --- |
+| 3D result rejected | `failed`, `errorCode` = threeDResult |
+| 3D result successful, no provision | HTTP 500: a provision may have been sent unlogged |
+| callback reached provisioning, outcome not logged | HTTP 500 |
+| 3D session, no callback, callback still acceptable | `pending` |
+| 3D session, no callback, older than 30 min and its `callbacks` row deleted | `failed`, `errorCode: 3D_SESSION_EXPIRED` |
+| callback logged without a 3D result | `pending` |
+| nothing | HTTP 500 |
+
 ### Cancel Payment
 
 Cancel a pending or authorized payment:

@@ -436,7 +436,8 @@ func (p *NkolayProvider) verify3DResultWithList(ctx context.Context, paymentID s
 // paymentStatusFromList asks PaymentList for paymentID, which is the Nkolay REFERENCE_CODE consumers
 // hold or, when the 3D start returned none, GoPay's own clientRefCode. It returns the matching rows.
 // flowOver says the 3D flow has ended, so a NEW sale is a failure rather than in progress; it also
-// holds once the callback URL has expired, after which the payment can no longer complete.
+// holds once the payment is older than CallbackStateTTL. The status is re-read on every query, so a
+// sale Nkolay completes later still turns successful.
 func (p *NkolayProvider) paymentStatusFromList(ctx context.Context, paymentID string, flowOver bool) (provider.PaymentStatus, []paymentListItem, error) {
 	clientRefCode, referenceCode := paymentID, ""
 	if !strings.HasPrefix(paymentID, clientRefPrefix) {

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -92,6 +93,83 @@ func TestGetThreeDCallbackRequest(t *testing.T) {
 
 	if _, err := GetThreeDCallbackRequest("paycell", session+"-none"); !errors.Is(err, ErrLogValueNotFound) {
 		t.Errorf("no callback: err = %v, want ErrLogValueNotFound", err)
+	}
+}
+
+func TestGetThreeDSessionAge(t *testing.T) {
+	requireTestDB(t)
+	session := fmt.Sprintf("logage-%d", time.Now().UnixNano())
+
+	insertPaycellLogRow(t, session, `{"getThreeDSessionRequest":{"merchantCode":"9998"}}`)
+	setResponseAt(t, session, "40 minutes")
+	insertPaycellLogRow(t, session, `{"paymentId":"status query"}`)
+
+	age, err := GetThreeDSessionAge("paycell", session)
+	if err != nil {
+		t.Fatalf("GetThreeDSessionAge: %v", err)
+	}
+	if age < 40*time.Minute || age > 41*time.Minute {
+		t.Errorf("age = %v, want about 40m", age)
+	}
+
+	// A row without response_at never got payment_id from LogResponse in production; it is not a start.
+	pending := session + "-noresponse"
+	insertPaycellLogRow(t, pending, `{"getThreeDSessionRequest":{"merchantCode":"9998"}}`)
+	if _, err := GetThreeDSessionAge("paycell", pending); !errors.Is(err, ErrLogValueNotFound) {
+		t.Errorf("no response_at: err = %v, want ErrLogValueNotFound", err)
+	}
+	if _, err := GetThreeDSessionAge("paycell", session+"-none"); !errors.Is(err, ErrLogValueNotFound) {
+		t.Errorf("unknown session: err = %v, want ErrLogValueNotFound", err)
+	}
+}
+
+// setResponseAt backdates the response_at of the session's 3D start row, using the database clock
+// the way LogResponse does.
+func setResponseAt(t *testing.T, paymentID, ago string) {
+	t.Helper()
+	_, err := config.App().DB.Exec(
+		`UPDATE paycell SET response_at = now() - $2::interval WHERE payment_id = $1 AND request -> 'getThreeDSessionRequest' IS NOT NULL`,
+		paymentID, ago,
+	)
+	if err != nil {
+		t.Fatalf("set response_at: %v", err)
+	}
+}
+
+func TestCallbackStateExists(t *testing.T) {
+	requireTestDB(t)
+	session := fmt.Sprintf("cbstate-%d", time.Now().UnixNano())
+
+	var id int64
+	err := config.App().DB.QueryRow(
+		`INSERT INTO callbacks (tenant_id, provider, payment_id, state_data, expires_at) VALUES (1, 'paycell', $1, '{}'::jsonb, now()) RETURNING id`,
+		session,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert callbacks row: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := config.App().DB.Exec(`DELETE FROM callbacks WHERE id = $1`, id); err != nil {
+			t.Errorf("delete callbacks row %d: %v", id, err)
+		}
+	})
+
+	ctx := context.Background()
+	for _, tt := range []struct {
+		provider, paymentID string
+		want                bool
+	}{
+		{"paycell", session, true},
+		{"nkolay", session, false},
+		{"paycell", session + "-none", false},
+	} {
+		got, err := CallbackStateExists(ctx, tt.provider, tt.paymentID)
+		if err != nil {
+			t.Fatalf("CallbackStateExists(%s, %s): %v", tt.provider, tt.paymentID, err)
+		}
+		if got != tt.want {
+			t.Errorf("CallbackStateExists(%s, %s) = %v, want %v", tt.provider, tt.paymentID, got, tt.want)
+		}
 	}
 }
 

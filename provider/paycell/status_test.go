@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mstgnz/gopay/provider"
 )
@@ -22,8 +23,12 @@ type fakeLogReader struct {
 	paths    map[string]string // "parent.child"
 	objects  map[string]string // top-level key, JSON text
 	callback string            // newest 3D callback row's request JSON, "" = none; fails via failKeys["callback"]
-	failWith error
-	failKeys map[string]error
+	// sessionAge is the 3D session row's age, 0 = not logged; fails via failKeys["sessionAge"].
+	sessionAge time.Duration
+	// callbackGone means the cleanup deleted the callbacks row; fails via failKeys["callbackState"].
+	callbackGone bool
+	failWith     error
+	failKeys     map[string]error
 }
 
 func (f *fakeLogReader) lookup(m map[string]string, key string) (string, error) {
@@ -55,12 +60,41 @@ func (f *fakeLogReader) callbackRequest(string) (string, error) {
 	return f.lookup(m, "callback")
 }
 
-// threeDStartLogs is what /payment/3d leaves behind: a 3D session request, no result, no provision.
+func (f *fakeLogReader) threeDSessionAge(string) (time.Duration, error) {
+	m := map[string]string{}
+	if f.sessionAge > 0 {
+		m["sessionAge"] = f.sessionAge.String()
+	}
+	v, err := f.lookup(m, "sessionAge")
+	if err != nil {
+		return 0, err
+	}
+	return time.ParseDuration(v)
+}
+
+func (f *fakeLogReader) callbackStateExists(context.Context, string) (bool, error) {
+	if _, err := f.lookup(map[string]string{"callbackState": ""}, "callbackState"); err != nil {
+		return false, err
+	}
+	return !f.callbackGone, nil
+}
+
+// threeDStartLogs is what /payment/3d leaves behind: a 3D session request, no result, no provision,
+// started a minute ago.
 func threeDStartLogs() *fakeLogReader {
 	return &fakeLogReader{
-		values: map[string]string{"msisdn": "5551234567"},
-		paths:  map[string]string{"getThreeDSessionRequest.merchantCode": "9998"},
+		values:     map[string]string{"msisdn": "5551234567"},
+		paths:      map[string]string{"getThreeDSessionRequest.merchantCode": "9998"},
+		sessionAge: time.Minute,
 	}
+}
+
+// expiredSessionLogs is a 3D session past CallbackStateTTL whose callbacks row the cleanup deleted.
+func expiredSessionLogs() *fakeLogReader {
+	logs := threeDStartLogs()
+	logs.sessionAge = provider.CallbackStateTTL + time.Minute
+	logs.callbackGone = true
+	return logs
 }
 
 func threeDResultJSON(t *testing.T, result PaycellGetThreeDSessionResultResponse) string {
@@ -213,6 +247,117 @@ func TestGetPaymentStatus_ThreeDOpenOrAbandonedIsPending(t *testing.T) {
 	}
 }
 
+// An abandoned 3D session closes only once no callback can reach it any more. Until then a callback
+// may still provision, and a tenant that read "failed" would let the payer pay twice.
+func TestGetPaymentStatus_ThreeDSessionExpiry(t *testing.T) {
+	tests := []struct {
+		name         string
+		sessionAge   time.Duration
+		callbackGone bool
+		callback     string
+		wantExpired  bool
+	}{
+		{name: "young session", sessionAge: time.Minute},
+		{name: "young session, callbacks row already gone", sessionAge: time.Minute, callbackGone: true},
+		{name: "exactly the TTL", sessionAge: provider.CallbackStateTTL, callbackGone: true},
+		// Production row 52541: a callback was accepted 33 minutes after its session.
+		{name: "older than the TTL, callbacks row still there", sessionAge: provider.CallbackStateTTL + time.Minute},
+		{name: "age not logged", callbackGone: true},
+		{
+			name:       "callback logged without a result",
+			sessionAge: provider.CallbackStateTTL + time.Minute, callbackGone: true,
+			callback: `{"getThreeDSessionResultRequest":{"merchantCode":"9998"}}`,
+		},
+		{name: "expired", sessionAge: provider.CallbackStateTTL + time.Minute, callbackGone: true, wantExpired: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := threeDStartLogs()
+			logs.sessionAge = tt.sessionAge
+			logs.callbackGone = tt.callbackGone
+			logs.callback = tt.callback
+			p, srv := newStatusTestProvider(t, logs, nil)
+
+			resp, err := getStatus(t, p)
+			if err != nil {
+				t.Fatalf("GetPaymentStatus: %v", err)
+			}
+			if resp.Success {
+				t.Error("success = true for an unpaid session")
+			}
+			if tt.wantExpired {
+				if resp.Status != provider.StatusFailed || resp.ErrorCode != errorCodeThreeDSessionExpired || resp.Message != "3D session expired" {
+					t.Errorf("status=%q errorCode=%q message=%q, want failed/%s/3D session expired", resp.Status, resp.ErrorCode, resp.Message, errorCodeThreeDSessionExpired)
+				}
+				if resp.Amount != 0 {
+					t.Errorf("amount = %v, want 0: nothing was charged", resp.Amount)
+				}
+			} else if resp.Status != provider.StatusPending || resp.ErrorCode != "" {
+				t.Errorf("status=%q errorCode=%q, want pending with no error code", resp.Status, resp.ErrorCode)
+			}
+			if n := srv.callCount(); n != 0 {
+				t.Errorf("Paycell called %d times", n)
+			}
+		})
+	}
+}
+
+// The expiry applies only to a session nothing came back for; every other branch keeps its answer.
+func TestGetPaymentStatus_ExpiryLeavesOtherBranches(t *testing.T) {
+	successResult := rejectedThreeDResult("")
+	successResult.ThreeDOperationResult.ThreeDResult = responseCodeSuccess
+
+	t.Run("rejected result stays failed with its own code", func(t *testing.T) {
+		logs := expiredSessionLogs()
+		logs.objects = map[string]string{"getThreeDSessionResultResponse": threeDResultJSON(t, rejectedThreeDResult("3D Şifresi Yanlış."))}
+		p, _ := newStatusTestProvider(t, logs, nil)
+
+		resp, err := getStatus(t, p)
+		if err != nil {
+			t.Fatalf("GetPaymentStatus: %v", err)
+		}
+		if resp.Status != provider.StatusFailed || resp.ErrorCode != "10009" {
+			t.Errorf("status=%q errorCode=%q, want failed/10009", resp.Status, resp.ErrorCode)
+		}
+	})
+
+	t.Run("successful result without provision stays an error", func(t *testing.T) {
+		logs := expiredSessionLogs()
+		logs.objects = map[string]string{"getThreeDSessionResultResponse": threeDResultJSON(t, successResult)}
+		p, _ := newStatusTestProvider(t, logs, nil)
+
+		if resp, err := getStatus(t, p); err == nil {
+			t.Fatalf("want an error, got status %q", resp.Status)
+		}
+	})
+
+	t.Run("callback that reached provisioning stays an error", func(t *testing.T) {
+		logs := expiredSessionLogs()
+		logs.callback = `{"getThreeDSessionResultResponse":{"threeDOperationResult":{"threeDResult":"0"}},"providerProvisionRequest":{"referenceNumber":"1"}}`
+		p, _ := newStatusTestProvider(t, logs, nil)
+
+		if resp, err := getStatus(t, p); err == nil {
+			t.Fatalf("want an error, got status %q", resp.Status)
+		}
+	})
+
+	t.Run("provisioned payment is still inquired", func(t *testing.T) {
+		logs := provisionedLogs()
+		logs.sessionAge = provider.CallbackStateTTL + time.Minute
+		logs.callbackGone = true
+		p, srv := newStatusTestProvider(t, logs, inquireWithProvision(responseCodeSuccess, "Islem basarili", "10050"))
+
+		resp, err := getStatus(t, p)
+		if err != nil {
+			t.Fatalf("GetPaymentStatus: %v", err)
+		}
+		if resp.Status != provider.StatusSuccessful || srv.callCount() != 1 {
+			t.Errorf("status=%q inquiries=%d, want successful after one inquiry", resp.Status, srv.callCount())
+		}
+	})
+}
+
 // A successful 3D result with no provision logged may still have been provisioned, because
 // logRequest drops write failures. That is unknown, so it must not become pending or failed.
 func TestGetPaymentStatus_ThreeDSuccessWithoutProvisionIsUnknown(t *testing.T) {
@@ -256,11 +401,12 @@ func TestGetPaymentStatus_LogQueryFailureIsError(t *testing.T) {
 	}
 }
 
-// After the provision lookup, a failing 3D result, callback or 3D session lookup is just as unknown.
+// After the provision lookup, a failing 3D result, callback, 3D session, session age or callback
+// state lookup is just as unknown. An expired session makes every one of them reachable.
 func TestGetPaymentStatus_LaterLookupFailureIsError(t *testing.T) {
-	for _, key := range []string{"getThreeDSessionResultResponse", "callback", "getThreeDSessionRequest.merchantCode"} {
+	for _, key := range []string{"getThreeDSessionResultResponse", "callback", "getThreeDSessionRequest.merchantCode", "sessionAge", "callbackState"} {
 		t.Run(key, func(t *testing.T) {
-			logs := threeDStartLogs()
+			logs := expiredSessionLogs()
 			logs.failKeys = map[string]error{key: errors.New("connection refused")}
 			p, _ := newStatusTestProvider(t, logs, nil)
 
