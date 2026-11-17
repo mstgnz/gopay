@@ -2,911 +2,226 @@ package iyzico
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/mstgnz/gopay/provider"
 )
 
-func TestNewProvider(t *testing.T) {
-	provider := NewProvider()
-	if provider == nil {
-		t.Error("NewProvider() should not return nil")
+func TestRegisteredAsIyzico(t *testing.T) {
+	factory, err := provider.Get("iyzico")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if _, ok := provider.(*IyzicoProvider); !ok {
-		t.Error("NewProvider() should return *IyzicoProvider")
+	if _, ok := factory().(*IyzicoProvider); !ok {
+		t.Fatal("the iyzico factory must build an *IyzicoProvider")
 	}
 }
 
-func TestIyzicoProvider_Initialize(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      map[string]string
-		expectError bool
-		expectProd  bool
-		expectURL   string
+func TestInitialize(t *testing.T) {
+	cases := []struct {
+		name    string
+		conf    map[string]string
+		wantErr bool
+		wantURL string
+		prod    bool
 	}{
-		{
-			name: "Valid sandbox config",
-			config: map[string]string{
-				"apiKey":      "test-api-key",
-				"secretKey":   "test-secret-key",
-				"environment": "sandbox",
-			},
-			expectError: false,
-			expectProd:  false,
-			expectURL:   apiSandboxURL,
-		},
-		{
-			name: "Valid production config",
-			config: map[string]string{
-				"apiKey":      "test-api-key",
-				"secretKey":   "test-secret-key",
-				"environment": "production",
-			},
-			expectError: false,
-			expectProd:  true,
-			expectURL:   apiProductionURL,
-		},
-		{
-			name: "Default to sandbox",
-			config: map[string]string{
-				"apiKey":    "test-api-key",
-				"secretKey": "test-secret-key",
-			},
-			expectError: false,
-			expectProd:  false,
-			expectURL:   apiSandboxURL,
-		},
-		{
-			name: "Invalid environment defaults to sandbox",
-			config: map[string]string{
-				"apiKey":      "test-api-key",
-				"secretKey":   "test-secret-key",
-				"environment": "invalid",
-			},
-			expectError: false,
-			expectProd:  false,
-			expectURL:   apiSandboxURL,
-		},
-		{
-			name: "Missing apiKey",
-			config: map[string]string{
-				"secretKey":   "test-secret-key",
-				"environment": "sandbox",
-			},
-			expectError: true,
-		},
-		{
-			name: "Missing secretKey",
-			config: map[string]string{
-				"apiKey":      "test-api-key",
-				"environment": "sandbox",
-			},
-			expectError: true,
-		},
-		{
-			name:        "Empty config",
-			config:      map[string]string{},
-			expectError: true,
-		},
+		{"sandbox", map[string]string{"apiKey": "a", "secretKey": "s", "environment": "sandbox"}, false, apiSandboxURL, false},
+		{"production", map[string]string{"apiKey": "a", "secretKey": "s", "environment": "production"}, false, apiProductionURL, true},
+		{"unknown environment is sandbox", map[string]string{"apiKey": "a", "secretKey": "s", "environment": "x"}, false, apiSandboxURL, false},
+		{"missing apiKey", map[string]string{"secretKey": "s"}, true, "", false},
+		{"missing secretKey", map[string]string{"apiKey": "a"}, true, "", false},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			provider := NewProvider().(*IyzicoProvider)
-			err := provider.Initialize(tt.config)
-
-			if tt.expectError {
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := NewProvider().(*IyzicoProvider)
+			err := p.Initialize(tc.conf)
+			if tc.wantErr {
 				if err == nil {
-					t.Error("Expected error but got nil")
+					t.Fatal("want an error")
 				}
 				return
 			}
-
 			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
+				t.Fatal(err)
 			}
-
-			if provider.apiKey != tt.config["apiKey"] {
-				t.Errorf("Expected apiKey %s, got %s", tt.config["apiKey"], provider.apiKey)
+			if p.client.baseURL != tc.wantURL || p.isProduction != tc.prod || p.client.apiKey != "a" || p.client.secretKey != "s" {
+				t.Errorf("client = %+v, production = %v", p.client, p.isProduction)
 			}
-
-			if provider.secretKey != tt.config["secretKey"] {
-				t.Errorf("Expected secretKey %s, got %s", tt.config["secretKey"], provider.secretKey)
-			}
-
-			if provider.isProduction != tt.expectProd {
-				t.Errorf("Expected isProduction %v, got %v", tt.expectProd, provider.isProduction)
-			}
-
-			if provider.baseURL != tt.expectURL {
-				t.Errorf("Expected baseURL %s, got %s", tt.expectURL, provider.baseURL)
-			}
-
-			// The HTTP client is built here, not in NewProvider.
-			if provider.httpClient == nil {
-				t.Error("HTTP client should be initialized")
+			if p.client.http != httpClient {
+				t.Error("Initialize must use the TLS-verifying shared client")
 			}
 		})
 	}
 }
 
-func TestIyzicoProvider_ValidatePaymentRequest(t *testing.T) {
-	iyzicoProvider := &IyzicoProvider{}
-
-	validRequest := provider.PaymentRequest{
-		TenantID: 1,
-		Amount:   100.0,
-		Currency: "TRY",
-		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
-		},
-		CardInfo: provider.CardInfo{
-			CardNumber:  "5528790000000008",
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
-		},
-		CallbackURL: "https://example.com/callback",
+func TestCloneSharesTheClientOnly(t *testing.T) {
+	p := NewProvider().(*IyzicoProvider)
+	if err := p.Initialize(map[string]string{"apiKey": "a", "secretKey": "s"}); err != nil {
+		t.Fatal(err)
 	}
-
-	tests := []struct {
-		name        string
-		request     provider.PaymentRequest
-		is3D        bool
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name:        "Valid request",
-			request:     validRequest,
-			is3D:        false,
-			expectError: false,
-		},
-		{
-			name: "Missing tenant",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.TenantID = 0
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "tenantID is required",
-		},
-		{
-			name:        "Valid 3D request",
-			request:     validRequest,
-			is3D:        true,
-			expectError: false,
-		},
-		{
-			name: "Invalid amount - zero",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Amount = 0
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "amount must be greater than 0",
-		},
-		{
-			name: "Invalid amount - negative",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Amount = -10
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "amount must be greater than 0",
-		},
-		{
-			name: "Missing currency",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Currency = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "currency is required",
-		},
-		{
-			name: "Missing customer email",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Customer.Email = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "customer email is required",
-		},
-		{
-			name: "Missing customer name",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Customer.Name = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "customer name and surname are required",
-		},
-		{
-			name: "Missing customer surname",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.Customer.Surname = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "customer name and surname are required",
-		},
-		{
-			name: "Missing card number",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.CardInfo.CardNumber = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "card number is required",
-		},
-		{
-			name: "Missing CVV",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.CardInfo.CVV = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "CVV is required",
-		},
-		{
-			name: "Missing expire month",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.CardInfo.ExpireMonth = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "card expiration month and year are required",
-		},
-		{
-			name: "Missing expire year",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.CardInfo.ExpireYear = ""
-				return req
-			}(),
-			expectError: true,
-			errorMsg:    "card expiration month and year are required",
-		},
-		{
-			name: "Missing callback URL for 3D",
-			request: func() provider.PaymentRequest {
-				req := validRequest
-				req.CallbackURL = ""
-				return req
-			}(),
-			is3D:        true,
-			expectError: true,
-			errorMsg:    "callback URL is required for 3D secure payments",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := iyzicoProvider.validatePaymentRequest(tt.request, tt.is3D)
-
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error but got nil")
-					return
-				}
-				if !strings.Contains(err.Error(), tt.errorMsg) {
-					t.Errorf("Expected error to contain '%s', got '%s'", tt.errorMsg, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			}
-		})
+	c := p.Clone().(*IyzicoProvider)
+	if c == p || c.client != p.client {
+		t.Fatal("Clone must return a new provider sharing the read-only client")
 	}
 }
 
-func TestIyzicoProvider_MapToIyzicoPaymentRequest(t *testing.T) {
-	iyzicoProvider := &IyzicoProvider{}
-
-	request := provider.PaymentRequest{
-		Amount:   100.50,
-		Currency: "TRY",
-		Customer: provider.Customer{
-			ID:      "customer123",
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
-			Address: &provider.Address{
-				City:    "Istanbul",
-				Country: "Turkey",
-				Address: "Test Address",
-				ZipCode: "34000",
-			},
-		},
-		CardInfo: provider.CardInfo{
-			CardHolderName: "John Doe",
-			CardNumber:     "5528790000000008",
-			CVV:            "123",
-			ExpireMonth:    "12",
-			ExpireYear:     "2030",
-		},
-		Items: []provider.Item{
-			{
-				ID:       "item1",
-				Name:     "Test Item",
-				Category: "Electronics",
-				Price:    100.50,
-			},
-		},
-		CallbackURL: "https://example.com/callback",
+func TestValidateConfig(t *testing.T) {
+	p := NewProvider()
+	good := map[string]string{"apiKey": "sandbox-aaaaaaaaaaaaaaaaaaaa", "secretKey": "sandbox-bbbbbbbbbbbbbbbbbbbb", "environment": "sandbox"}
+	if err := p.ValidateConfig(good); err != nil {
+		t.Errorf("valid config refused: %v", err)
 	}
-
-	tests := []struct {
-		name     string
-		request  provider.PaymentRequest
-		is3D     bool
-		validate func(t *testing.T, result map[string]any)
-	}{
-		{
-			name:    "Regular payment request",
-			request: request,
-			is3D:    false,
-			validate: func(t *testing.T, result map[string]any) {
-				if result["price"] != "100.50" {
-					t.Errorf("Expected price '100.50', got %v", result["price"])
-				}
-				if result["currency"] != "TRY" {
-					t.Errorf("Expected currency 'TRY', got %v", result["currency"])
-				}
-				if result["installment"] != 1 {
-					t.Errorf("Expected installment 1, got %v", result["installment"])
-				}
-				if result["locale"] != defaultLocale {
-					t.Errorf("Expected locale '%s', got %v", defaultLocale, result["locale"])
-				}
-
-				buyer, ok := result["buyer"].(map[string]any)
-				if !ok {
-					t.Error("buyer should be a map")
-					return
-				}
-				if buyer["email"] != "john@example.com" {
-					t.Errorf("Expected buyer email 'john@example.com', got %v", buyer["email"])
-				}
-
-				paymentCard, ok := result["paymentCard"].(map[string]any)
-				if !ok {
-					t.Error("paymentCard should be a map")
-					return
-				}
-				if paymentCard["cardNumber"] != "5528790000000008" {
-					t.Errorf("Expected card number '5528790000000008', got %v", paymentCard["cardNumber"])
-				}
-			},
-		},
-		{
-			name:    "3D payment request",
-			request: request,
-			is3D:    true,
-			validate: func(t *testing.T, result map[string]any) {
-				// Updated to expect GoPay callback URL format with originalCallbackUrl parameter
-				expectedPattern := "/v1/callback/iyzico?originalCallbackUrl=https://example.com/callback"
-				callbackURL := result["callbackUrl"].(string)
-				if !strings.Contains(callbackURL, expectedPattern) {
-					t.Errorf("Expected callbackUrl to contain '%s', got %v", expectedPattern, callbackURL)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := iyzicoProvider.mapToIyzicoPaymentRequest(tt.request, tt.is3D)
-			tt.validate(t, result)
-		})
+	if err := p.ValidateConfig(map[string]string{"apiKey": "short", "environment": "sandbox"}); err == nil {
+		t.Error("an incomplete config must be refused")
 	}
 }
 
-func TestIyzicoProvider_SendPaymentRequest(t *testing.T) {
-	tests := []struct {
-		name           string
-		serverResponse map[string]any
-		statusCode     int
-		expectError    bool
-		expectedStatus provider.PaymentStatus
-		expectedHTML   string
-	}{
-		{
-			name: "Successful payment",
-			serverResponse: map[string]any{
-				"status":    statusSuccess,
-				"paymentId": "payment123",
-				"price":     "100.50",
-				"currency":  "TRY",
-			},
-			statusCode:     200,
-			expectError:    false,
-			expectedStatus: provider.StatusSuccessful,
-		},
-		{
-			name: "Failed payment",
-			serverResponse: map[string]any{
-				"status":       statusFailure,
-				"errorCode":    "5007",
-				"errorMessage": "Invalid card",
-			},
-			statusCode:     200,
-			expectError:    false,
-			expectedStatus: provider.StatusFailed,
-		},
-		{
-			name: "3D Secure required",
-			serverResponse: map[string]any{
-				"status":             statusSuccess,
-				"paymentId":          "payment123",
-				"threeDSHtmlContent": "<html>3D Secure form</html>",
-			},
-			statusCode:     200,
-			expectError:    false,
-			expectedStatus: provider.StatusPending,
-			expectedHTML:   "<html>3D Secure form</html>",
-		},
+func TestCardAndInstallmentCallsRefuse(t *testing.T) {
+	p := &IyzicoProvider{}
+	ctx := context.Background()
+	if _, err := p.CreatePayment(ctx, provider.PaymentRequest{}); !errors.Is(err, ErrUseCheckout) {
+		t.Errorf("CreatePayment: %v", err)
 	}
+	if _, err := p.Create3DPayment(ctx, provider.PaymentRequest{}); !errors.Is(err, ErrUseCheckout) {
+		t.Errorf("Create3DPayment: %v", err)
+	}
+	if _, err := p.Complete3DPayment(ctx, &provider.CallbackState{}, nil); !errors.Is(err, ErrUseCheckout) {
+		t.Errorf("Complete3DPayment: %v", err)
+	}
+	if _, err := p.GetInstallmentCount(ctx, provider.InstallmentInquireRequest{}); !errors.Is(err, ErrUseCheckout) {
+		t.Errorf("GetInstallmentCount: %v", err)
+	}
+	if _, err := p.GetCommission(ctx, provider.CommissionRequest{}); !errors.Is(err, ErrUseCheckout) {
+		t.Errorf("GetCommission: %v", err)
+	}
+	if ok, _, err := p.ValidateWebhook(ctx, nil, nil); ok || err == nil {
+		t.Error("a webhook must never be accepted yet")
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(tt.statusCode)
-				_ = json.NewEncoder(w).Encode(tt.serverResponse)
-			}))
-			defer server.Close()
+func detailAnswer(t *testing.T, status string, fraud int) string {
+	c := newClient(testAPIKey, testSecretKey, "http://unused")
+	return mustJSON(t, map[string]any{"status": "success", "paymentStatus": status, "paymentId": "12345", "currency": "TRY",
+		"basketId": "B-1", "conversationId": "c", "paidPrice": 450.5, "price": 450.5, "fraudStatus": fraud,
+		"signature": c.responseSignature("12345", "TRY", "B-1", "c", "450.5", "450.5")})
+}
 
-			iyzicoProvider := &IyzicoProvider{
-				apiKey:    "test-key",
-				secretKey: "test-secret",
-				baseURL:   server.URL,
-				httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-					BaseURL: server.URL,
-					Timeout: 5 * time.Second,
-				}),
-			}
-
-			ctx := context.Background()
-			requestData := map[string]any{
-				"locale": "tr",
-				"price":  "100.50",
-			}
-
-			response, err := iyzicoProvider.sendPaymentRequest(ctx, "/test", requestData)
-
-			if tt.expectError {
-				if err == nil {
-					t.Error("Expected error but got nil")
-				}
-				return
-			}
-
+func TestCommonGetPaymentStatus(t *testing.T) {
+	cases := []struct {
+		name    string
+		answer  func(*testing.T) string
+		status  provider.PaymentStatus
+		success bool
+	}{
+		{"paid", func(t *testing.T) string { return detailAnswer(t, "SUCCESS", 1) }, provider.StatusSuccessful, true},
+		{"fraud review", func(t *testing.T) string { return detailAnswer(t, "SUCCESS", 0) }, provider.StatusPending, false},
+		{"fraud rejected", func(t *testing.T) string { return detailAnswer(t, "SUCCESS", -1) }, provider.StatusFailed, false},
+		{"declined", func(t *testing.T) string { return detailAnswer(t, "FAILURE", 1) }, provider.StatusFailed, false},
+		{"3DS open", func(t *testing.T) string { return detailAnswer(t, "INIT_THREEDS", 1) }, provider.StatusPending, false},
+		{"error answer is pending", func(*testing.T) string { return `{"status":"failure","errorCode":"5086","errorMessage":"x"}` }, provider.StatusPending, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, fake := newTestProvider(t, http.StatusOK, tc.answer(t))
+			got, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: "12345"})
 			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
+				t.Fatal(err)
 			}
-
-			if response.Status != tt.expectedStatus {
-				t.Errorf("Expected status %v, got %v", tt.expectedStatus, response.Status)
+			if got.Status != tc.status || got.Success != tc.success {
+				t.Errorf("status=%s success=%v", got.Status, got.Success)
 			}
-
-			if tt.expectedHTML != "" && response.HTML != tt.expectedHTML {
-				t.Errorf("Expected HTML %s, got %s", tt.expectedHTML, response.HTML)
+			if sent := fake.last(); sent.path != pathPaymentDetail || sent.body["paymentId"] != "12345" {
+				t.Errorf("sent %s %v", sent.path, sent.body)
 			}
 		})
 	}
-}
 
-func TestIyzicoProvider_CreatePayment(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]any{
-			"status":    statusSuccess,
-			"paymentId": "payment123",
-			"price":     "100.50",
-			"currency":  "TRY",
+	p, _ := newTestProvider(t, http.StatusOK, detailAnswer(t, "SUCCESS", 1))
+	if got, _ := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: "12345"}); got.Amount != 450.5 {
+		t.Errorf("amount = %v", got.Amount)
+	}
+
+	p, _ = newTestProvider(t, http.StatusServiceUnavailable, `x`)
+	if _, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: "1"}); !errors.Is(err, provider.ErrProviderUnavailable) {
+		t.Errorf("a transport failure must be an error, got %v", err)
+	}
+	for name, answer := range map[string]string{
+		"wrong signature":         `{"status":"success","paymentStatus":"SUCCESS","fraudStatus":1,"paymentId":"1","signature":"00"}`,
+		"unsigned success":        `{"status":"success","paymentStatus":"SUCCESS","fraudStatus":1,"paymentId":"1"}`,
+		"unsigned failure":        `{"status":"success","paymentStatus":"FAILURE","paymentId":"1"}`,
+		"wrong signature pending": `{"status":"success","paymentStatus":"INIT_THREEDS","paymentId":"1","signature":"00"}`,
+	} {
+		p, _ = newTestProvider(t, http.StatusOK, answer)
+		got, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: "1"})
+		if err != nil || got.Status != provider.StatusPending || got.Success || got.ErrorCode != codeSignatureMismatch {
+			t.Errorf("%s: a verdict needs iyzico's signature, got %+v %v", name, got, err)
 		}
-		_ = json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	iyzicoProvider := &IyzicoProvider{
-		apiKey:    "test-key",
-		secretKey: "test-secret",
-		baseURL:   server.URL,
-		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-			BaseURL: server.URL,
-			Timeout: 5 * time.Second,
-		}),
 	}
-
-	request := provider.PaymentRequest{
-		TenantID: 1,
-		Amount:   100.50,
-		Currency: "TRY",
-		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
-		},
-		CardInfo: provider.CardInfo{
-			CardNumber:  "5528790000000008",
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
-		},
+	p, _ = newTestProvider(t, http.StatusOK, `{"status":"success","paymentStatus":"INIT_THREEDS","paymentId":"1"}`)
+	if got, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{PaymentID: "1"}); err != nil || got.ErrorCode != "" {
+		t.Errorf("an unsigned answer without a verdict stays plain pending, got %+v %v", got, err)
 	}
-
-	ctx := context.Background()
-	response, err := iyzicoProvider.CreatePayment(ctx, request)
-
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-		return
-	}
-
-	if !response.Success {
-		t.Error("Expected successful payment")
-	}
-
-	if response.PaymentID != "payment123" {
-		t.Errorf("Expected payment ID 'payment123', got %s", response.PaymentID)
+	if _, err := p.GetPaymentStatus(context.Background(), provider.GetPaymentStatusRequest{}); err == nil {
+		t.Error("an empty paymentId must be refused")
 	}
 }
 
-func TestIyzicoProvider_Create3DPayment(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]any{
-			"status":             statusSuccess,
-			"paymentId":          "payment123",
-			"threeDSHtmlContent": "<html>3D form</html>",
-		}
-		_ = json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	iyzicoProvider := &IyzicoProvider{
-		apiKey:    "test-key",
-		secretKey: "test-secret",
-		baseURL:   server.URL,
-		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-			BaseURL: server.URL,
-			Timeout: 5 * time.Second,
-		}),
+func TestCommonCancelPayment(t *testing.T) {
+	p, fake := newTestProvider(t, http.StatusOK, `{"status":"success","paymentId":"12345","currency":"TRY"}`)
+	got, err := p.CancelPayment(context.Background(), provider.CancelRequest{PaymentID: "12345"})
+	if err != nil || !got.Success || got.Status != provider.StatusCancelled {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	if _, ok := fake.last().body["ip"]; ok {
+		t.Error("the common cancel has no buyer IP and must not invent one")
 	}
 
-	request := provider.PaymentRequest{
-		TenantID: 1,
-		Amount:   100.50,
-		Currency: "TRY",
-		Customer: provider.Customer{
-			Name:    "John",
-			Surname: "Doe",
-			Email:   "john@example.com",
-		},
-		CardInfo: provider.CardInfo{
-			CardNumber:  "5528790000000008",
-			CVV:         "123",
-			ExpireMonth: "12",
-			ExpireYear:  "2030",
-		},
-		CallbackURL: "https://example.com/callback",
-		Use3D:       true,
+	p, _ = newTestProvider(t, http.StatusOK, `{"status":"failure","errorCode":"5086","errorMessage":"x"}`)
+	got, err = p.CancelPayment(context.Background(), provider.CancelRequest{PaymentID: "12345"})
+	if err != nil || got.Success || got.ErrorCode != "5086" {
+		t.Fatalf("refusal: got %+v %v", got, err)
 	}
 
-	ctx := context.Background()
-	response, err := iyzicoProvider.Create3DPayment(ctx, request)
-
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-		return
+	p, _ = newTestProvider(t, http.StatusBadGateway, `x`)
+	if _, err := p.CancelPayment(context.Background(), provider.CancelRequest{PaymentID: "1"}); !errors.Is(err, provider.ErrProviderUnavailable) {
+		t.Errorf("want unavailable, got %v", err)
 	}
-
-	if response.Status != provider.StatusPending {
-		t.Errorf("Expected status pending, got %v", response.Status)
-	}
-
-	if response.HTML != "<html>3D form</html>" {
-		t.Errorf("Expected HTML content, got %s", response.HTML)
+	if _, err := p.CancelPayment(context.Background(), provider.CancelRequest{}); err == nil {
+		t.Error("an empty paymentId must be refused")
 	}
 }
 
-func TestIyzicoProvider_GetPaymentStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]any{
-			"status":    statusSuccess,
-			"paymentId": "payment123",
-			"price":     "100.50",
-		}
-		_ = json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	iyzicoProvider := &IyzicoProvider{
-		apiKey:    "test-key",
-		secretKey: "test-secret",
-		baseURL:   server.URL,
-		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-			BaseURL: server.URL,
-			Timeout: 5 * time.Second,
-		}),
+func TestCommonRefundPayment(t *testing.T) {
+	p, fake := newTestProvider(t, http.StatusOK, refundAnswerJSON(t, true))
+	got, err := p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "777", RefundAmount: 100, ConversationID: "c-2"})
+	if err != nil || !got.Success || got.RefundID != "777" {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	sent := fake.last().body
+	if sent["paymentTransactionId"] != "777" || sent["price"] != "100.00" || sent["currency"] != "TRY" {
+		t.Errorf("sent %v", sent)
 	}
 
-	ctx := context.Background()
-
-	// Test with valid payment ID
-	response, err := iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: "payment123"})
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-		return
+	p, _ = newTestProvider(t, http.StatusOK, `{"status":"failure","errorCode":"10223","errorMessage":"End of day"}`)
+	got, err = p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "777", RefundAmount: 1})
+	if err != nil || got.Success || got.ErrorCode != "10223" {
+		t.Fatalf("refusal: got %+v %v", got, err)
 	}
 
-	if !response.Success {
-		t.Error("Expected successful response")
+	p, _ = newTestProvider(t, http.StatusOK, refundAnswerJSON(t, false))
+	if _, err := p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "777", RefundAmount: 100}); !errors.Is(err, provider.ErrProviderUnavailable) {
+		t.Errorf("bad signature: want unavailable, got %v", err)
 	}
-
-	// Test with empty payment ID
-	_, err = iyzicoProvider.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{PaymentID: ""})
-	if err == nil {
-		t.Error("Expected error for empty payment ID")
+	p, _ = newTestProvider(t, http.StatusBadGateway, `x`)
+	if _, err := p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "777", RefundAmount: 1}); !errors.Is(err, provider.ErrProviderUnavailable) {
+		t.Errorf("transport: want unavailable, got %v", err)
 	}
-}
-
-func TestIyzicoProvider_RefundPayment(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]any{
-			"status":               statusSuccess,
-			"paymentTransactionId": "refund123",
-		}
-		_ = json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	iyzicoProvider := &IyzicoProvider{
-		apiKey:    "test-key",
-		secretKey: "test-secret",
-		baseURL:   server.URL,
-		httpClient: provider.NewProviderHTTPClient(&provider.HTTPClientConfig{
-			BaseURL: server.URL,
-			Timeout: 5 * time.Second,
-		}),
+	if _, err := p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "777"}); err == nil {
+		t.Error("a zero amount must be refused")
 	}
-
-	refundRequest := provider.RefundRequest{
-		PaymentID:    "payment123",
-		RefundAmount: 50.0,
-		Reason:       "Customer request",
-	}
-
-	ctx := context.Background()
-	response, err := iyzicoProvider.RefundPayment(ctx, refundRequest)
-
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-		return
-	}
-
-	if !response.Success {
-		t.Error("Expected successful refund")
-	}
-
-	if response.RefundID != "refund123" {
-		t.Errorf("Expected refund ID 'refund123', got %s", response.RefundID)
-	}
-}
-
-func TestGenerateAuthString(t *testing.T) {
-	iyzicoProvider := &IyzicoProvider{
-		apiKey:    "test-api-key",
-		secretKey: "test-secret-key",
-	}
-
-	uri := "/payment/auth"
-	body := `{"price":"100.00","currency":"TRY"}`
-
-	authString := iyzicoProvider.generateAuthString(uri, body)
-
-	if !strings.HasPrefix(authString, "IYZWS test-api-key:") {
-		t.Errorf("Auth string should start with 'IYZWS test-api-key:', got %s", authString)
-	}
-}
-
-func TestSortAndConcatRequest(t *testing.T) {
-	jsonString := `{"currency":"TRY","price":"100.00","locale":"tr"}`
-	result := sortAndConcatRequest(jsonString)
-
-	expected := "currencyTRYlocaletrprice100.00"
-	if result != expected {
-		t.Errorf("Expected %s, got %s", expected, result)
-	}
-}
-
-func TestParseFloat(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected float64
-		hasError bool
-	}{
-		{"input 100.50", "100.50", 100.50, false},
-		{"input 100,50", "100,50", 100.50, false},
-		{"input 1000.99", "1000.99", 1000.99, false},
-		{"input 1000,99", "1000,99", 1000.99, false},
-		{"input invalid", "invalid", 0.0, true},
-		{"input ", "", 0.0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseFloat(tt.input)
-
-			if tt.hasError {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error but got: %s", err.Error())
-				}
-				if result != tt.expected {
-					t.Errorf("parseFloat(%s) = %f, want %f", tt.input, result, tt.expected)
-				}
-			}
-		})
-	}
-}
-
-func TestIyzicoProvider_GetRequiredConfig(t *testing.T) {
-	provider := NewProvider().(*IyzicoProvider)
-
-	tests := []struct {
-		name        string
-		environment string
-		expected    int
-	}{
-		{"sandbox environment", "sandbox", 3},
-		{"production environment", "production", 3},
-		{"test environment", "test", 3},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := provider.GetRequiredConfig(tt.environment)
-			if len(result) != tt.expected {
-				t.Errorf("GetRequiredConfig() returned %d fields, want %d", len(result), tt.expected)
-			}
-
-			// Check required fields
-			expectedFields := []string{"apiKey", "secretKey", "environment"}
-			for i, field := range result {
-				if field.Key != expectedFields[i] {
-					t.Errorf("Expected field %s, got %s", expectedFields[i], field.Key)
-				}
-				if !field.Required {
-					t.Errorf("Field %s should be required", field.Key)
-				}
-				if field.Type != "string" {
-					t.Errorf("Field %s should be string type", field.Key)
-				}
-			}
-		})
-	}
-}
-
-func TestIyzicoProvider_ValidateConfig(t *testing.T) {
-	provider := NewProvider().(*IyzicoProvider)
-
-	tests := []struct {
-		name        string
-		config      map[string]string
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "valid sandbox config",
-			config: map[string]string{
-				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
-				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
-				"environment": "sandbox",
-			},
-			expectError: false,
-		},
-		{
-			name: "valid production config",
-			config: map[string]string{
-				"apiKey":      "production-BIOoONNaqF8UZZmP3real123",
-				"secretKey":   "production-NjQwOTRkMDBkZmE1real456",
-				"environment": "production",
-			},
-			expectError: false,
-		},
-		{
-			name: "missing apiKey",
-			config: map[string]string{
-				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'apiKey' is missing",
-		},
-		{
-			name: "missing secretKey",
-			config: map[string]string{
-				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'secretKey' is missing",
-		},
-		{
-			name: "empty apiKey",
-			config: map[string]string{
-				"apiKey":      "",
-				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "required field 'apiKey' cannot be empty",
-		},
-		{
-			name: "invalid environment",
-			config: map[string]string{
-				"apiKey":      "sandbox-BIOoONNaqF8UZZmP3fake123",
-				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
-				"environment": "invalid_env",
-			},
-			expectError: true,
-			errorMsg:    "environment must be one of",
-		},
-		{
-			name: "apiKey too short",
-			config: map[string]string{
-				"apiKey":      "short",
-				"secretKey":   "sandbox-NjQwOTRkMDBkZmE1fake456",
-				"environment": "sandbox",
-			},
-			expectError: true,
-			errorMsg:    "must be at least 20 characters",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := provider.ValidateConfig(tt.config)
-
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				} else if !strings.Contains(err.Error(), tt.errorMsg) {
-					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error but got: %s", err.Error())
-				}
-			}
-		})
+	if _, err := p.RefundPayment(context.Background(), provider.RefundRequest{RefundAmount: 1}); err == nil {
+		t.Error("an empty paymentId must be refused")
 	}
 }

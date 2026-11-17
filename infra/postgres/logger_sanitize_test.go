@@ -212,6 +212,31 @@ func TestSanitizeForLogRedactsNkolaySx(t *testing.T) {
 	}
 }
 
+// iyzico checkout buyers and sub-merchants carry a TCKN, an IBAN and a tax number; none may reach
+// the log in full.
+func TestSanitizeForLogMasksIdentityIBANAndTaxNumber(t *testing.T) {
+	const tckn, iban, taxNo = "12345678901", "TR330006100519786457841326", "9876543210"
+	got := SanitizeForLog(map[string]any{
+		"buyer":       map[string]any{"identityNumber": tckn, "email": "ada@example.com"},
+		"subMerchant": map[string]any{"iban": iban, "taxNumber": taxNo, "identityNumber": tckn, "name": "Moda Spor"},
+		"basketId":    "B-1",
+	})
+
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, secret := range []string{tckn, iban, taxNo} {
+		if strings.Contains(string(encoded), secret) {
+			t.Errorf("%q survived in the log: %s", secret, encoded)
+		}
+	}
+	sm := got["subMerchant"].(map[string]any)
+	if sm["name"] != "Moda Spor" || got["basketId"] != "B-1" || got["buyer"].(map[string]any)["email"] != "ada@example.com" {
+		t.Errorf("non-identity fields altered: %+v", got)
+	}
+}
+
 // Nkolay answers a 3D request with an auto-submitting form that echoes the card. It reaches the
 // log as a string, either as plain HTML or inside a raw JSON body with escaped quotes.
 func TestSanitizeForLogRedactsCardInputsInHTML(t *testing.T) {

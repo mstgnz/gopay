@@ -191,11 +191,14 @@ curl -X POST http://localhost:9999/v1/config/tenant \
 
 ### 4. Process Payments
 
+The card examples below are for card-based providers. iyzico takes no card data through GoPay:
+it uses the hosted checkout and marketplace routes in [provider/iyzico/README.md](provider/iyzico/README.md).
+
 #### 💳 **Standard Payment (Direct)**
 
 ```bash
 # Create direct payment (no 3D Secure)
-curl -X POST http://localhost:9999/v1/payments/iyzico \
+curl -X POST "http://localhost:9999/v1/payments/nkolay?environment=sandbox" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -231,7 +234,7 @@ curl -X POST http://localhost:9999/v1/payments/iyzico \
 
 ```bash
 # Step 1: Initialize 3D Secure payment
-curl -X POST http://localhost:9999/v1/payments/iyzico \
+curl -X POST "http://localhost:9999/v1/payments/nkolay?environment=sandbox" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

@@ -35,6 +35,11 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 	cardService := provider.NewCardService(provider.NewDBPaymentLogger(config.App().DB), cardRepo, providerConfig)
 	cardHandler := handler.NewCardHandler(cardService, validator)
 
+	// Hosted checkout and marketplace: optional capabilities, like card storage.
+	capabilityLogger := provider.NewDBPaymentLogger(config.App().DB)
+	checkoutHandler := handler.NewCheckoutHandler(provider.NewCheckoutService(capabilityLogger), validator)
+	marketplaceHandler := handler.NewMarketplaceHandler(provider.NewMarketplaceService(capabilityLogger), validator)
+
 	// Initialize provider-specific logger for logs handler
 	providerLogger := provider.NewProviderSpecificLogger(config.App().DB)
 	logsHandler := handler.NewLogsHandler(providerLogger, postgresLogger)
@@ -51,6 +56,19 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 		r.Get("/{provider}/cards", cardHandler.ListCards)
 		r.Delete("/{provider}/cards/{cardId}", cardHandler.DeleteCard)
 		r.Post("/{provider}/cards/{cardId}/pay", cardHandler.PayWithCard)
+
+		// Hosted checkout (static "checkout" segment, like "cards"). Amounts are decimal strings.
+		r.Post("/{provider}/checkout", checkoutHandler.StartCheckout)
+		r.Get("/{provider}/checkout/{token}", checkoutHandler.CheckoutResult)
+		r.Post("/{provider}/checkout/cancel", checkoutHandler.CancelPayment)
+		r.Post("/{provider}/checkout/refund", checkoutHandler.RefundItem)
+
+		// Marketplace sub-merchants and item approval.
+		r.Post("/{provider}/submerchants", marketplaceHandler.CreateSubMerchant)
+		r.Put("/{provider}/submerchants/{key}", marketplaceHandler.UpdateSubMerchant)
+		r.Get("/{provider}/submerchants/{externalId}", marketplaceHandler.SubMerchantDetail)
+		r.Post("/{provider}/items/{paymentTransactionId}/approve", marketplaceHandler.ApproveItem)
+		r.Post("/{provider}/items/{paymentTransactionId}/disapprove", marketplaceHandler.DisapproveItem)
 
 		r.Get("/{provider}/{paymentID}", paymentHandler.GetPaymentStatus)
 		r.Delete("/{provider}/{paymentID}", paymentHandler.CancelPayment)

@@ -2,680 +2,200 @@ package iyzico
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/provider"
 )
 
-const (
-	// API URLs
-	apiSandboxURL    = "https://sandbox-api.iyzipay.com"
-	apiProductionURL = "https://api.iyzipay.com"
-
-	// API Endpoints
-	endpointPayment    = "/payment/auth"
-	endpoint3DInit     = "/payment/3dsecure/initialize"
-	endpoint3DComplete = "/payment/3dsecure/auth"
-	endpointCancel     = "/payment/cancel"
-	endpointRefund     = "/payment/refund"
-	endpointRetrieve   = "/payment/detail"
-
-	// İyzico Status Codes
-	statusSuccess = "success"
-	statusFailure = "failure"
-
-	// İyzico Error Codes
-	errorCodeNotEnoughMoney      = "5006"
-	errorCodeInvalidCard         = "5007"
-	errorCodeFraudulent          = "5208"
-	errorCodeInsufficientBalance = "5053"
-
-	// Default Values
-	defaultLocale         = "tr"
-	defaultIdentityNumber = "74300864791" // Test identity number
-	defaultItemType       = "PHYSICAL"
-	defaultRegisterCard   = 0
-)
-
-// IyzicoProvider implements the provider.PaymentProvider interface for Iyzico
+// IyzicoProvider implements provider.PaymentProvider plus the optional HostedCheckoutProvider and
+// MarketplaceProvider capabilities. Card data never passes through it: payments start on iyzico's
+// Checkout Form, so the card-based PaymentProvider methods refuse.
 type IyzicoProvider struct {
-	apiKey       string
-	secretKey    string
-	baseURL      string
-	gopayBaseURL string // GoPay's own base URL for callbacks
+	client       *client
 	isProduction bool
-	httpClient   *provider.ProviderHTTPClient
-	logID        int64
 }
 
-// NewProvider creates a new Iyzico payment provider
+var (
+	_ provider.PaymentProvider        = (*IyzicoProvider)(nil)
+	_ provider.HostedCheckoutProvider = (*IyzicoProvider)(nil)
+	_ provider.MarketplaceProvider    = (*IyzicoProvider)(nil)
+)
+
+// ErrUseCheckout answers the card-based and installment calls: iyzico payments go through
+// POST /v1/payments/iyzico/checkout.
+var ErrUseCheckout = errors.New("iyzico: not supported; start the payment with POST /v1/payments/iyzico/checkout")
+
 func NewProvider() provider.PaymentProvider {
 	return &IyzicoProvider{}
 }
 
-// Clone returns a per-request copy. See provider.PaymentProvider.Clone.
+// Clone returns a per-request copy. The provider holds no per-request state; the client is
+// read-only and shared.
 func (p *IyzicoProvider) Clone() provider.PaymentProvider {
 	c := *p
 	return &c
 }
 
-// GetRequiredConfig returns the configuration fields required for Iyzico
 func (p *IyzicoProvider) GetRequiredConfig(environment string) []provider.ConfigField {
 	return []provider.ConfigField{
-		{
-			Key:         "apiKey",
-			Required:    true,
-			Type:        "string",
-			Description: "Iyzico API Key (found in Iyzico merchant panel)",
-			Example:     "sandbox-BIOoONNaqF8UZZmP3...",
-			MinLength:   20,
-			MaxLength:   200,
-		},
-		{
-			Key:         "secretKey",
-			Required:    true,
-			Type:        "string",
-			Description: "Iyzico Secret Key (found in Iyzico merchant panel)",
-			Example:     "sandbox-NjQwOTRkMDBkZmE1...",
-			MinLength:   20,
-			MaxLength:   200,
-		},
-		{
-			Key:         "environment",
-			Required:    true,
-			Type:        "string",
-			Description: "Environment setting (sandbox or production)",
-			Example:     "sandbox",
-			Pattern:     "^(sandbox|production)$",
-		},
+		{Key: "apiKey", Required: true, Type: "string", Description: "iyzico API key (merchant panel, Settings > Company Settings)",
+			Example: "sandbox-xxxxxxxxxxxxxxxxxxxxxxxx", MinLength: 20, MaxLength: 200},
+		{Key: "secretKey", Required: true, Type: "string", Description: "iyzico secret key (merchant panel, Settings > Company Settings)",
+			Example: "sandbox-xxxxxxxxxxxxxxxxxxxxxxxx", MinLength: 20, MaxLength: 200},
+		{Key: "environment", Required: true, Type: "string", Description: "Environment setting (sandbox or production)",
+			Example: "sandbox", Pattern: "^(sandbox|production)$"},
 	}
 }
 
-// ValidateConfig validates the provided configuration against Iyzico requirements
 func (p *IyzicoProvider) ValidateConfig(config map[string]string) error {
-	requiredFields := p.GetRequiredConfig(config["environment"])
-	return provider.ValidateConfigFields("iyzico", config, requiredFields)
+	return provider.ValidateConfigFields("iyzico", config, p.GetRequiredConfig(config["environment"]))
 }
 
-// Initialize sets up the Iyzico payment provider with authentication credentials
+// Initialize reads the tenant's key pair. Anything but "production" is the sandbox.
 func (p *IyzicoProvider) Initialize(conf map[string]string) error {
-	p.apiKey = conf["apiKey"]
-	p.secretKey = conf["secretKey"]
-
-	if p.apiKey == "" || p.secretKey == "" {
+	if conf["apiKey"] == "" || conf["secretKey"] == "" {
 		return errors.New("iyzico: apiKey and secretKey are required")
 	}
-
-	p.gopayBaseURL = config.GetEnv("APP_URL", "http://localhost:9999")
-
 	p.isProduction = conf["environment"] == "production"
+	baseURL := apiSandboxURL
 	if p.isProduction {
-		p.baseURL = apiProductionURL
-	} else {
-		p.baseURL = apiSandboxURL
+		baseURL = apiProductionURL
 	}
-
-	p.httpClient = provider.NewProviderHTTPClient(provider.CreateHTTPClientConfig(p.baseURL, p.isProduction))
-
+	p.client = newClient(conf["apiKey"], conf["secretKey"], baseURL)
 	return nil
 }
 
-// GetInstallmentCount returns the installment count for a payment
-func (p *IyzicoProvider) GetInstallmentCount(ctx context.Context, request provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
-	return provider.InstallmentInquireResponse{}, nil
+func (p *IyzicoProvider) CreatePayment(context.Context, provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	return nil, ErrUseCheckout
 }
 
-// GetCommission returns the commission for a payment
-func (p *IyzicoProvider) GetCommission(ctx context.Context, request provider.CommissionRequest) (provider.CommissionResponse, error) {
-	return provider.CommissionResponse{}, nil
+func (p *IyzicoProvider) Create3DPayment(context.Context, provider.PaymentRequest) (*provider.PaymentResponse, error) {
+	return nil, ErrUseCheckout
 }
 
-// CreatePayment makes a non-3D payment request
-func (p *IyzicoProvider) CreatePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
-	p.logID = request.LogID
-	if err := p.validatePaymentRequest(request, false); err != nil {
-		return nil, fmt.Errorf("iyzico: invalid payment request: %w", err)
-	}
-
-	iyzicoReq := p.mapToIyzicoPaymentRequest(request, false)
-	return p.sendPaymentRequest(ctx, endpointPayment, iyzicoReq)
+func (p *IyzicoProvider) Complete3DPayment(context.Context, *provider.CallbackState, map[string]string) (*provider.PaymentResponse, error) {
+	return nil, ErrUseCheckout
 }
 
-// Create3DPayment starts a 3D secure payment process
-func (p *IyzicoProvider) Create3DPayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
-	p.logID = request.LogID
-	if err := p.validatePaymentRequest(request, true); err != nil {
-		return nil, fmt.Errorf("iyzico: invalid 3D payment request: %w", err)
-	}
-
-	iyzicoReq := p.mapToIyzicoPaymentRequest(request, true)
-	return p.sendPaymentRequest(ctx, endpoint3DInit, iyzicoReq)
+func (p *IyzicoProvider) GetInstallmentCount(context.Context, provider.InstallmentInquireRequest) (provider.InstallmentInquireResponse, error) {
+	return provider.InstallmentInquireResponse{}, ErrUseCheckout
 }
 
-// Complete3DPayment completes a 3D secure payment after user authentication
-func (p *IyzicoProvider) Complete3DPayment(ctx context.Context, callbackState *provider.CallbackState, data map[string]string) (*provider.PaymentResponse, error) {
-	if callbackState.PaymentID == "" || callbackState.ConversationID == "" {
-		return nil, errors.New("iyzico: paymentID and conversationID are required for 3D completion")
-	}
-
-	req := map[string]any{
-		"paymentId":      callbackState.PaymentID,
-		"conversationId": callbackState.ConversationID,
-		"locale":         defaultLocale,
-		"callbackUrl":    callbackState.OriginalCallback,
-	}
-
-	// Add additional callback data received from 3D payment page
-	for k, v := range data {
-		if k != "paymentId" && k != "conversationId" && k != "locale" {
-			req[k] = v
-		}
-	}
-
-	return p.sendPaymentRequest(ctx, endpoint3DComplete, req)
+func (p *IyzicoProvider) GetCommission(context.Context, provider.CommissionRequest) (provider.CommissionResponse, error) {
+	return provider.CommissionResponse{}, ErrUseCheckout
 }
 
-// GetPaymentStatus retrieves the current status of a payment
-func (p *IyzicoProvider) GetPaymentStatus(ctx context.Context, request provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
-	if request.PaymentID == "" {
-		return nil, errors.New("iyzico: paymentID is required")
-	}
-
-	req := map[string]any{
-		"paymentId":      request.PaymentID,
-		"locale":         defaultLocale,
-		"conversationId": uuid.New().String(),
-	}
-
-	return p.sendPaymentRequest(ctx, endpointRetrieve, req)
+// ValidateWebhook: iyzico merchant notifications are not wired yet; a webhook is never accepted.
+func (p *IyzicoProvider) ValidateWebhook(context.Context, map[string]string, map[string]string) (bool, map[string]string, error) {
+	return false, nil, errors.New("iyzico: webhooks are not supported yet")
 }
 
-// CancelPayment cancels a payment
-func (p *IyzicoProvider) CancelPayment(ctx context.Context, request provider.CancelRequest) (*provider.PaymentResponse, error) {
-	if request.PaymentID == "" {
-		return nil, errors.New("iyzico: paymentID is required")
-	}
+const pathPaymentDetail = "/payment/detail"
 
-	req := map[string]any{
-		"paymentId":      request.PaymentID,
-		"ip":             "127.0.0.1", // Usually this would come from the client
-		"locale":         defaultLocale,
-		"conversationId": uuid.New().String(),
-	}
-
-	if request.Reason != "" {
-		req["reason"] = request.Reason
-		req["description"] = request.Description
-	}
-
-	return p.sendPaymentRequest(ctx, endpointCancel, req)
+type paymentDetailAnswer struct {
+	PaymentStatus  string     `json:"paymentStatus"`
+	PaymentID      flexString `json:"paymentId"`
+	ConversationID string     `json:"conversationId"`
+	BasketID       string     `json:"basketId"`
+	Currency       string     `json:"currency"`
+	Price          amount     `json:"price"`
+	PaidPrice      amount     `json:"paidPrice"`
+	FraudStatus    flexInt    `json:"fraudStatus"`
+	Signature      string     `json:"signature"`
 }
 
-// RefundPayment issues a refund for a payment
-func (p *IyzicoProvider) RefundPayment(ctx context.Context, request provider.RefundRequest) (*provider.RefundResponse, error) {
-	if request.PaymentID == "" {
-		return nil, errors.New("iyzico: paymentID is required for refund")
+// GetPaymentStatus serves the common status route by iyzico paymentId (/payment/detail). The
+// common response carries float64 amounts; exact amounts and item lines are on the checkout route.
+// An error answer is pending, never failed; a transport failure is an error.
+func (p *IyzicoProvider) GetPaymentStatus(ctx context.Context, r provider.GetPaymentStatusRequest) (*provider.PaymentResponse, error) {
+	if r.PaymentID == "" {
+		return nil, errors.New("iyzico: paymentId is required")
 	}
+	body := map[string]string{"locale": defaultLocale, "conversationId": conversationID(r.ConversationID), "paymentId": r.PaymentID}
 
-	req := map[string]any{
-		"paymentTransactionId": request.PaymentID,
-		"locale":               defaultLocale,
-		"ip":                   "127.0.0.1",
-		"conversationId":       request.ConversationID,
+	var a paymentDetailAnswer
+	err := p.client.do(ctx, http.MethodPost, pathPaymentDetail, body, &a)
+	var refusal *provider.ProviderRefusal
+	if errors.As(err, &refusal) {
+		return &provider.PaymentResponse{Success: false, Status: provider.StatusPending, PaymentID: r.PaymentID,
+			ErrorCode: refusal.Code, Message: refusal.Message}, nil
 	}
-
-	if request.ConversationID == "" {
-		req["conversationId"] = uuid.New().String()
-	}
-
-	if request.RefundAmount > 0 {
-		req["price"] = fmt.Sprintf("%.2f", request.RefundAmount)
-	}
-
-	if request.Reason != "" {
-		req["reason"] = request.Reason
-	}
-
-	if request.Description != "" {
-		req["description"] = request.Description
-	}
-
-	resp, err := p.sendRequest(ctx, endpointRefund, req)
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now()
-	// Parse the Iyzico response into RefundResponse
-	refundResp := &provider.RefundResponse{
-		Success:      resp["status"] == statusSuccess,
-		PaymentID:    request.PaymentID,
-		RefundAmount: request.RefundAmount,
-		SystemTime:   &now,
-		RawResponse:  resp,
+	resp := &provider.PaymentResponse{PaymentID: orDefault(string(a.PaymentID), r.PaymentID), OrderID: a.BasketID,
+		Currency: a.Currency, Status: provider.StatusPending, Message: a.PaymentStatus}
+	if a.FraudStatus.set {
+		resp.FraudStatus = a.FraudStatus.value
 	}
-
-	if refundID, ok := resp["paymentTransactionId"].(string); ok {
-		refundResp.RefundID = refundID
+	if paid, err := strconv.ParseFloat(string(a.PaidPrice), 64); err == nil {
+		resp.Amount = paid
 	}
-
-	if resp["status"] != statusSuccess {
-		refundResp.ErrorCode = fmt.Sprintf("%v", resp["errorCode"])
-		refundResp.Message = fmt.Sprintf("%v", resp["errorMessage"])
-	} else {
-		refundResp.Status = "success"
-		refundResp.Message = "Refund successful"
+	switch {
+	case a.PaymentStatus == paymentStatusFailure, a.FraudStatus.set && a.FraudStatus.value == -1:
+		resp.Status = provider.StatusFailed
+	case a.PaymentStatus == paymentStatusSuccess && a.FraudStatus.set && a.FraudStatus.value == 1:
+		resp.Status, resp.Success = provider.StatusSuccessful, true
 	}
-
-	return refundResp, nil
+	// As on the checkout route, a verdict counts only on an answer iyzico signed.
+	signed := p.client.signatureMatches(a.Signature, string(a.PaymentID), a.Currency, a.BasketID,
+		a.ConversationID, string(a.PaidPrice), string(a.Price))
+	if !signed && (resp.Status != provider.StatusPending || a.Signature != "") {
+		resp.Status, resp.Success, resp.ErrorCode = provider.StatusPending, false, codeSignatureMismatch
+	}
+	return resp, nil
 }
 
-// ValidateWebhook validates an incoming webhook notification
-// Note: İyzico doesn't provide a specific webhook validation mechanism
-// This implementation validates by querying the payment status
-func (p *IyzicoProvider) ValidateWebhook(ctx context.Context, data map[string]string, headers map[string]string) (bool, map[string]string, error) {
-	paymentID, ok := data["paymentId"]
-	if !ok {
-		return false, nil, errors.New("iyzico: missing paymentId in webhook data")
+// CancelPayment serves the common cancel route. It sends no IP: the common request has none.
+func (p *IyzicoProvider) CancelPayment(ctx context.Context, r provider.CancelRequest) (*provider.PaymentResponse, error) {
+	if r.PaymentID == "" {
+		return nil, errors.New("iyzico: paymentId is required")
 	}
+	body := map[string]string{"locale": defaultLocale, "conversationId": conversationID(r.ConversationID), "paymentId": r.PaymentID}
 
-	response, err := p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{
-		PaymentID: paymentID,
-	})
-	if err != nil {
-		return false, nil, fmt.Errorf("iyzico: failed to validate webhook: %w", err)
+	var a cancelAnswer
+	err := p.client.do(ctx, http.MethodPost, pathCancel, body, &a)
+	var refusal *provider.ProviderRefusal
+	if errors.As(err, &refusal) {
+		return &provider.PaymentResponse{Success: false, PaymentID: r.PaymentID, ErrorCode: refusal.Code, Message: refusal.Message}, nil
 	}
-
-	return response.Success, map[string]string{
-		"status":    string(response.Status),
-		"paymentId": response.PaymentID,
-		"message":   response.Message,
-	}, nil
-}
-
-// validatePaymentRequest validates the payment request
-func (p *IyzicoProvider) validatePaymentRequest(request provider.PaymentRequest, is3D bool) error {
-	if request.TenantID == 0 {
-		return errors.New("tenantID is required")
-	}
-
-	if request.Amount <= 0 {
-		return errors.New("amount must be greater than 0")
-	}
-
-	if request.Currency == "" {
-		return errors.New("currency is required")
-	}
-
-	if request.Customer.Email == "" {
-		return errors.New("customer email is required")
-	}
-
-	if request.Customer.Name == "" || request.Customer.Surname == "" {
-		return errors.New("customer name and surname are required")
-	}
-
-	if request.CardInfo.CardNumber == "" {
-		return errors.New("card number is required")
-	}
-
-	if request.CardInfo.CVV == "" {
-		return errors.New("CVV is required")
-	}
-
-	if request.CardInfo.ExpireMonth == "" || request.CardInfo.ExpireYear == "" {
-		return errors.New("card expiration month and year are required")
-	}
-
-	if is3D && request.CallbackURL == "" {
-		return errors.New("callback URL is required for 3D secure payments")
-	}
-
-	return nil
-}
-
-// mapToIyzicoPaymentRequest creates the Iyzico payment request structure
-func (p *IyzicoProvider) mapToIyzicoPaymentRequest(request provider.PaymentRequest, is3D bool) map[string]any {
-	// Create a unique conversation ID if not provided
-	conversationID := request.ConversationID
-	if conversationID == "" {
-		conversationID = uuid.New().String()
-	}
-
-	// Use default locale if not provided
-	locale := request.Locale
-	if locale == "" {
-		locale = defaultLocale
-	}
-
-	// Format price as string with 2 decimal places
-	priceStr := fmt.Sprintf("%.2f", request.Amount)
-
-	// Set default installment count if not provided
-	installmentCount := request.InstallmentCount
-	if installmentCount < 1 {
-		installmentCount = 1
-	}
-
-	// Basic payment request structure
-	req := map[string]any{
-		"locale":         locale,
-		"conversationId": conversationID,
-		"price":          priceStr,
-		"paidPrice":      priceStr,
-		"currency":       request.Currency,
-		"installment":    installmentCount,
-		"paymentChannel": request.PaymentChannel,
-		"paymentGroup":   request.PaymentGroup,
-	}
-
-	// Add basket items if available
-	if len(request.Items) > 0 {
-		basketItems := make([]map[string]any, len(request.Items))
-		for i, item := range request.Items {
-			basketItems[i] = map[string]any{
-				"id":        item.ID,
-				"name":      item.Name,
-				"category1": item.Category,
-				"itemType":  "PHYSICAL",
-				"price":     fmt.Sprintf("%.2f", item.Price),
-			}
-		}
-		req["basketItems"] = basketItems
-	}
-
-	// Add buyer information
-	buyerIP := request.Customer.IPAddress
-	if buyerIP == "" {
-		buyerIP = request.ClientIP
-	}
-	if buyerIP == "" {
-		buyerIP = "127.0.0.1" // Default IP
-	}
-
-	buyerID := request.Customer.ID
-	if buyerID == "" {
-		buyerID = uuid.New().String()
-	}
-
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	// Address fields with nil check
-	var regAddress, city, country, zipCode string
-	if request.Customer.Address != nil {
-		regAddress = request.Customer.Address.Address
-		city = request.Customer.Address.City
-		country = request.Customer.Address.Country
-		zipCode = request.Customer.Address.ZipCode
-	}
-
-	req["buyer"] = map[string]any{
-		"id":                  buyerID,
-		"name":                request.Customer.Name,
-		"surname":             request.Customer.Surname,
-		"gsmNumber":           request.Customer.PhoneNumber,
-		"email":               request.Customer.Email,
-		"identityNumber":      defaultIdentityNumber, // Test identity number
-		"lastLoginDate":       now,
-		"registrationDate":    now,
-		"registrationAddress": regAddress,
-		"ip":                  buyerIP,
-		"city":                city,
-		"country":             country,
-		"zipCode":             zipCode,
-	}
-
-	// Add shipping address
-	shippingAddress := map[string]any{
-		"contactName": request.Customer.Name + " " + request.Customer.Surname,
-		"address":     regAddress,
-		"city":        city,
-		"country":     country,
-		"zipCode":     zipCode,
-	}
-	if request.Customer.Address != nil {
-		shippingAddress["address"] = request.Customer.Address.Address
-		shippingAddress["city"] = request.Customer.Address.City
-		shippingAddress["country"] = request.Customer.Address.Country
-		shippingAddress["zipCode"] = request.Customer.Address.ZipCode
-	}
-	req["shippingAddress"] = shippingAddress
-
-	// Add billing address
-	billingAddress := map[string]any{
-		"contactName": request.Customer.Name + " " + request.Customer.Surname,
-		"address":     regAddress,
-		"city":        city,
-		"country":     country,
-		"zipCode":     zipCode,
-	}
-	if request.Customer.Address != nil {
-		billingAddress["address"] = request.Customer.Address.Address
-		billingAddress["city"] = request.Customer.Address.City
-		billingAddress["country"] = request.Customer.Address.Country
-		billingAddress["zipCode"] = request.Customer.Address.ZipCode
-	}
-	req["billingAddress"] = billingAddress
-
-	// Add payment card information
-	req["paymentCard"] = map[string]any{
-		"cardHolderName": request.CardInfo.CardHolderName,
-		"cardNumber":     request.CardInfo.CardNumber,
-		"expireMonth":    request.CardInfo.ExpireMonth,
-		"expireYear":     request.CardInfo.ExpireYear,
-		"cvc":            request.CardInfo.CVV,
-		"registerCard":   defaultRegisterCard,
-	}
-
-	// Add 3D specific fields
-	if is3D {
-		// Callback state stored server-side; the callback URL carries only its id
-		state := provider.CallbackState{
-			TenantID:         int(request.TenantID),
-			PaymentID:        conversationID, // Use conversationID as payment identifier
-			OriginalCallback: request.CallbackURL,
-			Amount:           request.Amount,
-			Currency:         request.Currency,
-			ConversationID:   conversationID,
-			LogID:            p.logID,
-			Provider:         "iyzico",
-			Environment:      map[bool]string{true: "production", false: "sandbox"}[p.isProduction],
-			Timestamp:        time.Now(),
-			Installment:      request.InstallmentCount,
-			SessionID:        request.SessionID,
-		}
-
-		// Use short callback URL system with fallback
-		gopayCallbackURL, err := provider.CreateShortCallbackURL(context.Background(), p.gopayBaseURL, "iyzico", state)
-		if err != nil {
-			// Fallback to basic callback URL
-			gopayCallbackURL = fmt.Sprintf("%s/v1/callback/iyzico?originalCallbackUrl=%s", p.gopayBaseURL, request.CallbackURL)
-		}
-		req["callbackUrl"] = gopayCallbackURL
-	}
-
-	return req
-}
-
-// sendPaymentRequest sends payment requests to Iyzico and maps the response
-func (p *IyzicoProvider) sendPaymentRequest(ctx context.Context, endpoint string, requestData map[string]any) (*provider.PaymentResponse, error) {
-	now := time.Now()
-	resp, err := p.sendRequest(ctx, endpoint, requestData)
 	if err != nil {
 		return nil, err
 	}
-
-	// add provider request to client request
-	if reqMap, err := provider.StructToMap(requestData); err == nil {
-		_ = provider.AddProviderRequestToClientRequest("iyzico", "providerRequest", reqMap, p.logID)
-	}
-
-	// Only 3D requests carry a callbackUrl; a non-3D payment leaves RedirectURL empty.
-	callbackURL, _ := requestData["callbackUrl"].(string)
-
-	// Map Iyzico response to our common PaymentResponse
-	paymentResp := &provider.PaymentResponse{
-		Success:          resp["status"] == statusSuccess,
-		SystemTime:       &now,
-		ProviderResponse: resp,
-		RedirectURL:      callbackURL,
-	}
-
-	// Extract payment info based on response
-	if resp["status"] == statusSuccess {
-		paymentResp.Status = provider.StatusSuccessful
-		paymentResp.Message = "Payment successful"
-
-		// Extract payment ID
-		if paymentID, ok := resp["paymentId"].(string); ok {
-			paymentResp.PaymentID = paymentID
-		}
-
-		// Extract transaction ID
-		if transactionID, ok := resp["paymentTransactionId"].(string); ok {
-			paymentResp.TransactionID = transactionID
-		}
-
-		// Extract fraud status
-		if fraudStatus, ok := resp["fraudStatus"].(float64); ok {
-			paymentResp.FraudStatus = int(fraudStatus)
-		}
-
-		// If this is a 3D response with HTML content
-		if htmlContent, ok := resp["threeDSHtmlContent"].(string); ok && htmlContent != "" {
-			paymentResp.Status = provider.StatusPending
-			paymentResp.HTML = htmlContent
-		}
-
-		// Check for redirect URL in 3D response
-		if redirectURL, ok := resp["redirectUrl"].(string); ok && redirectURL != "" {
-			paymentResp.RedirectURL = redirectURL
-		}
-	} else {
-		paymentResp.Status = provider.StatusFailed
-		if errorCode, ok := resp["errorCode"].(string); ok {
-			paymentResp.ErrorCode = errorCode
-		}
-		if errorMessage, ok := resp["errorMessage"].(string); ok {
-			paymentResp.Message = errorMessage
-		} else {
-			paymentResp.Message = "Payment failed"
-		}
-	}
-
-	// Parse the amount if available
-	if price, ok := resp["price"].(string); ok {
-		if priceFloat, err := parseFloat(price); err == nil {
-			paymentResp.Amount = priceFloat
-		}
-	} else if paidPrice, ok := resp["paidPrice"].(string); ok {
-		if priceFloat, err := parseFloat(paidPrice); err == nil {
-			paymentResp.Amount = priceFloat
-		}
-	}
-
-	// Extract currency
-	if currency, ok := resp["currency"].(string); ok {
-		paymentResp.Currency = currency
-	}
-
-	return paymentResp, nil
+	return &provider.PaymentResponse{Success: true, Status: provider.StatusCancelled, PaymentID: r.PaymentID,
+		Currency: a.Currency, Message: "Payment cancelled"}, nil
 }
 
-// sendRequest sends a request to Iyzico API
-func (p *IyzicoProvider) sendRequest(ctx context.Context, endpoint string, requestData map[string]any) (map[string]any, error) {
-	// Add some default values if not present
-	if _, ok := requestData["locale"]; !ok {
-		requestData["locale"] = defaultLocale
+// RefundPayment serves the common refund route: PaymentID is the iyzico paymentTransactionId of
+// one basket item, as it always was for this provider. The common request carries a float64
+// amount; exact refunds go through POST /v1/payments/iyzico/checkout/refund.
+func (p *IyzicoProvider) RefundPayment(ctx context.Context, r provider.RefundRequest) (*provider.RefundResponse, error) {
+	if r.PaymentID == "" {
+		return nil, errors.New("iyzico: paymentId (the item's paymentTransactionId) is required")
 	}
-
-	// Generate random conversation ID if not present
-	if _, ok := requestData["conversationId"]; !ok {
-		requestData["conversationId"] = uuid.New().String()
+	if r.RefundAmount <= 0 {
+		return nil, errors.New("iyzico: refundAmount must be greater than 0")
 	}
+	body := map[string]string{"locale": defaultLocale, "conversationId": conversationID(r.ConversationID),
+		"paymentTransactionId": r.PaymentID, "price": fmt.Sprintf("%.2f", r.RefundAmount),
+		"currency": orDefault(r.Currency, provider.CheckoutCurrencyTRY)}
 
-	// Convert request data to JSON for authentication
-	jsonData, err := json.Marshal(requestData)
+	var a refundAnswer
+	err := p.client.do(ctx, http.MethodPost, pathRefund, body, &a)
+	var refusal *provider.ProviderRefusal
+	if errors.As(err, &refusal) {
+		return &provider.RefundResponse{Success: false, PaymentID: r.PaymentID, ErrorCode: refusal.Code, Message: refusal.Message}, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, err
 	}
-
-	// Calculate authentication header
-	authStr := p.generateAuthString(endpoint, string(jsonData))
-
-	// Use new HTTP client
-	httpReq := &provider.HTTPRequest{
-		Method:   "POST",
-		Endpoint: endpoint,
-		Body:     requestData,
-		Headers: map[string]string{
-			"Authorization": authStr,
-		},
+	if a.Signature != "" && !p.client.signatureMatches(a.Signature, string(a.PaymentID), string(a.Price), a.Currency, a.ConversationID) {
+		return nil, unavailable("refund answer signature does not match")
 	}
-
-	resp, err := p.httpClient.SendJSON(ctx, httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-
-	// Parse response as JSON
-	var responseData map[string]any
-	if err := p.httpClient.ParseJSONResponse(resp, &responseData); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return responseData, nil
-}
-
-// generateAuthString generates Iyzico authentication string using HMAC-SHA1
-func (p *IyzicoProvider) generateAuthString(uri string, body string) string {
-	// Calculate HMAC-SHA1 signature
-	hash := hmac.New(sha1.New, []byte(p.secretKey))
-	hash.Write([]byte(p.apiKey + uri + sortAndConcatRequest(body) + p.secretKey))
-	hmacDigest := base64.StdEncoding.EncodeToString(hash.Sum(nil))
-
-	// Return formatted authorization header
-	return fmt.Sprintf("IYZWS %s:%s", p.apiKey, hmacDigest)
-}
-
-// sortAndConcatRequest sorts and concatenates request fields for HMAC calculation
-func sortAndConcatRequest(jsonString string) string {
-	var data map[string]any
-	if err := json.Unmarshal([]byte(jsonString), &data); err != nil {
-		return ""
-	}
-
-	// Get all keys and sort them
-	var keys []string
-	for key := range data {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	// Concatenate key=value pairs
-	var result string
-	for _, key := range keys {
-		value := fmt.Sprintf("%v", data[key])
-		if value != "" && value != "[]" && value != "{}" {
-			result += key + value
-		}
-	}
-
-	return result
-}
-
-// parseFloat parses float values from string, handling comma decimal separators
-func parseFloat(value string) (float64, error) {
-	return strconv.ParseFloat(strings.ReplaceAll(value, ",", "."), 64)
+	return &provider.RefundResponse{Success: true, Status: "success", PaymentID: r.PaymentID,
+		RefundID: string(a.PaymentTransactionID), RefundAmount: r.RefundAmount, Message: "Refund successful"}, nil
 }

@@ -1,430 +1,249 @@
-# GoPay İyzico Integration
+# iyzico in GoPay: HTTP contract
 
-This documentation explains GoPay's İyzico payment provider integration.
+iyzico payments go through iyzico's hosted **Checkout Form**: the customer types the card on
+iyzico's page, so card data never reaches GoPay or the tenant. **Marketplace** (sub-merchants,
+item approval) is supported. Amounts are exact decimal strings on every route below.
 
-[Iyzico API Documentation](https://docs.iyzico.com/)
+Verified against docs.iyzico.com and the official Java, PHP and Node SDKs on 2026-11-17 (there
+is no official Go SDK). Requests are signed with IYZWSv2 (HMAC-SHA256).
 
-## Features
+## Setup
 
-- **Standard Card Payments**: Regular card payments
-- **3D Secure Payments**: Secure 3D authenticated payments
-- **Payment Inquiry**: Payment status checking
-- **Payment Cancellation**: Payment cancellation
-- **Refund Operations**: Full and partial refunds
-- **Webhook Support**: Payment notifications
-- **Test/Production Environment**: Sandbox and production support
-- **Secure Callbacks**: Protected return URL management
+1. A GoPay admin stores the tenant's iyzico key pair (merchant panel, Settings > Company Settings):
 
-## Configuration
+   ```http
+   POST /v1/config/tenant
+   Authorization: Bearer <admin JWT>
 
-### Environment Variables
+   {"tenantId": 5, "provider": "iyzico", "environment": "sandbox",
+    "configs": [{"key": "apiKey", "value": "sandbox-..."}, {"key": "secretKey", "value": "sandbox-..."}]}
+   ```
 
-Configure İyzico in your `.env` file:
+2. Every call below carries the tenant's JWT (`Authorization: Bearer ...`) and
+   `?environment=sandbox|production`. A missing or unknown environment is `400`.
 
-```bash
-# İyzico API Credentials
-IYZICO_API_KEY=your_iyzico_api_key
-IYZICO_SECRET_KEY=your_iyzico_secret_key
-IYZICO_ENVIRONMENT=sandbox  # or "production"
+## Response envelope and failure kinds
 
-# GoPay Base URL (required for 3D Secure callbacks)
-APP_URL=https://your-gopay-domain.com
-```
+Every answer is `{"code", "success", "message", "error", "data"}`.
 
-### Programmatic Configuration
+| HTTP | `data.kind` | Meaning | What the caller does |
+|---|---|---|---|
+| 200 | | The call was done (for a result lookup: see `outcome`). | Act on `data`. |
+| 400 | | GoPay refused the request before calling iyzico (`error` names the field). | Fix the request. |
+| 422 | `refused` | iyzico answered and refused. `providerErrorCode`, `providerErrorMessage`, `retryable`. | Same call unchanged will fail; see the codes below. |
+| 502 | `unavailable` | No answer from iyzico: network, timeout, HTTP 5xx or 429, rate limit (50000), an unreadable answer, or an initialize/refund answer whose signature does not match. | **Outcome unknown.** Read the state again later; never record it as failed. |
+| 500 | `internal` | GoPay error (for example, no iyzico keys for this tenant). | **Outcome unknown.** Same as 502. |
 
-```go
-import (
-    "github.com/mstgnz/gopay/provider"
-    _ "github.com/mstgnz/gopay/provider/iyzico"
-)
+Only `200` and `422` are answers from iyzico.
 
-paymentService := provider.NewPaymentService()
+## Payment flow
 
-// Add İyzico provider
-iyzicoConfig := map[string]string{
-    "apiKey":      "your-api-key",
-    "secretKey":   "your-secret-key",
-    "environment": "sandbox", // "production" for production
-}
+1. Server-side, the tenant calls `POST /checkout` and redirects the customer to `paymentPageUrl`.
+2. The customer pays on iyzico's page. iyzico then POSTs **only `token`** (form field) to the
+   tenant's `callbackUrl`, through the customer's browser. That POST proves nothing: anyone can
+   send it.
+3. The tenant reads the verdict server-side with `GET /checkout/{token}` and acts only on
+   `outcome`. A reconcile job repeats the lookup for payments left at `no_verdict`.
 
-paymentService.AddProvider("iyzico", iyzicoConfig)
-paymentService.SetDefaultProvider("iyzico")
-```
+### Start: `POST /v1/payments/iyzico/checkout`
 
-## API Endpoints
-
-### Payment Processing
-
-#### Standard Payment
-
-```http
-POST /v1/payments/iyzico
-Content-Type: application/json
-Authorization: Bearer your_jwt_token
-
+```json
 {
-  "amount": 100.50,
+  "conversationId": "bk-9-1",
+  "basketId": "BK-9",
+  "price": "450.50",
   "currency": "TRY",
-  "use3D": false,
-  "customer": {
-    "name": "John",
-    "surname": "Doe",
-    "email": "john@example.com"
+  "callbackUrl": "https://tenant.example/odeme/sonuc",
+  "locale": "tr",
+  "buyer": {
+    "id": "u-7", "name": "Ada", "surname": "Kaya", "identityNumber": "12345678901",
+    "email": "ada@example.com", "gsmNumber": "+905551112233",
+    "address": "Moda Cd. 1", "city": "Istanbul", "country": "Turkey", "zipCode": "34710",
+    "ip": "85.34.78.112"
   },
-  "cardInfo": {
-    "cardHolderName": "John Doe",
-    "cardNumber": "5528790000000008",
-    "expireMonth": "12",
-    "expireYear": "2030",
-    "cvv": "123"
-  }
-}
-```
-
-#### 3D Secure Payment
-
-```http
-POST /v1/payments/iyzico
-Content-Type: application/json
-Authorization: Bearer your_jwt_token
-
-{
-  "amount": 250.75,
-  "currency": "TRY",
-  "use3D": true,
-  "callbackUrl": "https://myapp.com/payment-result?successUrl=https://myapp.com/success&errorUrl=https://myapp.com/error",
-  "customer": {
-    "name": "Jane",
-    "surname": "Smith",
-    "email": "jane@example.com",
-    "address": {
-      "city": "Istanbul",
-      "country": "Turkey",
-      "address": "Besiktas Mah. Test Sok. No:1",
-      "zipCode": "34100"
-    }
-  },
-  "cardInfo": {
-    "cardHolderName": "Jane Smith",
-    "cardNumber": "5528790000000008",
-    "expireMonth": "06",
-    "expireYear": "2029",
-    "cvv": "456"
-  },
+  "billingAddress": {"contactName": "Ada Kaya", "address": "Moda Cd. 1", "city": "Istanbul", "country": "Turkey"},
   "items": [
-    {
-      "id": "item1",
-      "name": "Test Product",
-      "category": "Electronics",
-      "price": 250.75,
-      "quantity": 1
-    }
+    {"id": "BK-9", "name": "Saha 1, 20:00", "category": "Saha kiralama", "itemType": "VIRTUAL",
+     "price": "450.50", "subMerchantKey": "smk-...", "subMerchantPrice": "405.45"}
   ]
 }
 ```
 
-### Payment Management
+- Optional: `conversationId` (generated when absent, returned), `currency` (only `TRY`), `locale`
+  (`tr` default, `en`), `buyer.country` and address countries (`Turkey` default), `zipCode`,
+  `billingAddress` (defaults to the buyer's name and address), `shippingAddress` (required only when
+  an item is `PHYSICAL`; leave it out for `VIRTUAL` baskets).
+- Amounts: strings, at most 2 fraction digits, no exponent (`"450.50"`, `"450.5"`, `"450"`). A JSON
+  number is refused.
+- `price` must equal the sum of `items[].price` exactly. `subMerchantKey` and `subMerchantPrice` come
+  together; `0 < subMerchantPrice <= price` of the item. The customer is charged `price`, in one
+  installment.
+- `buyer.ip` is the customer's IP (not the tenant server's). `buyer.identityNumber` is the TCKN
+  (5 to 20 characters). `gsmNumber` is E.164.
+- `callbackUrl` must be `https`; `http` is accepted only with `environment=sandbox`.
+- Unknown fields are refused (`400`).
 
-#### Payment Status Inquiry
+`200`:
 
-```http
-GET /v1/payments/iyzico/{paymentId}
-Authorization: Bearer your_jwt_token
+```json
+{"token": "4f3...", "paymentPageUrl": "https://sandbox-cpp.iyzipay.com?token=4f3...",
+ "tokenExpireSeconds": 1800, "conversationId": "bk-9-1"}
 ```
 
-#### Payment Cancellation
+### Result: `GET /v1/payments/iyzico/checkout/{token}?conversationId=bk-9-1`
 
-```http
-DELETE /v1/payments/iyzico/{paymentId}
-Authorization: Bearer your_jwt_token
-Content-Type: application/json
-
-{
-  "reason": "Customer request"
-}
-```
-
-#### Refund Operation
-
-```http
-POST /v1/payments/iyzico/refund
-Authorization: Bearer your_jwt_token
-Content-Type: application/json
-
-{
-  "paymentId": "payment_id_here",
-  "refundAmount": 50.00,  // For partial refund, leave empty for full refund
-  "reason": "Customer request",
-  "description": "Refund upon customer request"
-}
-```
-
-## Test Cards
-
-Card numbers you can use for testing in İyzico sandbox environment:
-
-### Successful Test Cards
-
-- **5528790000000008** - Successful payment
-- **4059030000000009** - Successful payment (Visa)
-
-### Error Scenarios
-
-- **5528790000000016** - Insufficient funds
-- **5528790000000024** - Do not honor
-- **5528790000000032** - Invalid card
-- **5528790000000040** - Lost card
-- **5528790000000057** - Stolen card
-- **5528790000000065** - Expired card
-- **5528790000000073** - Invalid security code
-- **5528790000000081** - Invalid amount
-
-### 3D Secure Test Cards
-
-- **5528790000000008** - Successful 3D authentication
-- **5528790000000016** - Failed 3D authentication
-
-**Note:** For all test cards:
-
-- **CVV**: Any 3-digit number (e.g., 123)
-- **Expiry Date**: Any future date (e.g., 12/2030)
-
-## 3D Secure Callback Flow
-
-İyzico 3D Secure payments use GoPay's secure callback flow:
-
-```
-1. [Your App] ──→ [GoPay] ──→ [İyzico]
-2. [İyzico] ──→ [User 3D Auth Page]
-3. [User 3D Auth] ──→ [İyzico] ──→ [GoPay Callback] ──→ [Your App]
-```
-
-### Callback URL Structure
-
-**Your Sent URL:**
-
-```
-https://myapp.com/payment-result?successUrl=https://myapp.com/success&errorUrl=https://myapp.com/error
-```
-
-**GoPay → İyzico URL:**
-
-```
-https://gopay.domain.com/v1/callback/iyzico?originalCallbackUrl=https://myapp.com/payment-result?successUrl=...
-```
-
-**Returned URLs:**
-
-```bash
-# Successful payment
-https://myapp.com/success?paymentId=123&status=successful
-
-# Failed payment
-https://myapp.com/error?error=Payment failed
-```
-
-## Error Codes
-
-Common error codes that may come from İyzico:
-
-| Code | Description              |
-| ---- | ------------------------ |
-| 5006 | Insufficient funds       |
-| 5007 | Invalid card information |
-| 5053 | Insufficient limit       |
-| 5208 | Suspected fraud          |
-
-## Response Formats
-
-### Successful Payment Response
+`conversationId` is optional (the token is used when absent). `200` for every outcome; the
+envelope's `success` is `true` only for `paid`.
 
 ```json
 {
-  "success": true,
-  "status": "successful",
-  "paymentId": "12345678",
-  "transactionId": "87654321",
-  "amount": 100.5,
+  "outcome": "paid",
+  "readable": true,
+  "paymentStatus": "SUCCESS",
+  "fraudStatus": 1,
+  "paymentId": "28157797",
+  "conversationId": "bk-9-1",
+  "basketId": "BK-9",
+  "price": "450.5",
+  "paidPrice": "450.5",
   "currency": "TRY",
-  "message": "Payment successful",
-  "systemTime": "2024-01-15T10:30:00Z"
+  "itemTransactions": [
+    {"itemId": "BK-9", "paymentTransactionId": "30113131", "transactionStatus": 1,
+     "price": "450.5", "paidPrice": "450.5", "subMerchantKey": "smk-...", "subMerchantPrice": "405.45"}
+  ]
 }
 ```
 
-### 3D Secure Response
+Amounts come back exact with trailing zeros removed (`"450.5"`, `"0"`): compare them as decimals,
+not as strings.
+
+| `outcome` | When | Tenant action |
+|---|---|---|
+| `paid` | `paymentStatus` SUCCESS, `fraudStatus` 1, every item has a `paymentTransactionId`, answer signed by iyzico | Confirm. Store `paymentId` (cancel) and each `paymentTransactionId` (refund, approval). |
+| `in_review` | SUCCESS with `fraudStatus` 0 | Hold; read again later. Do not deliver. |
+| `declined` | `paymentStatus` FAILURE, or `fraudStatus` -1 | Release the booking once the callback for this token has arrived or `tokenExpireSeconds` has passed: while the page is open the customer may still retry with another card (unverified at iyzico). `errorCode` may carry the bank code (e.g. 10051 no funds). |
+| `no_verdict` | iyzico error answer (`readable: false`, `errorCode` set), page or 3-D Secure still open (`INIT_THREEDS`, `CALLBACK_THREEDS`), or an answer GoPay cannot trust | Keep the payment open; read again later. See "Abandoned pages" below. |
+
+A verdict needs iyzico's response signature. On a success answer it must be present and match. iyzico
+documents no signature on error answers, so a FAILURE in an error answer counts unsigned, but a
+signature sent there must match.
+
+`errorCode` values that GoPay itself sets start with `GOPAY_`:
+`GOPAY_SIGNATURE_MISMATCH` (the signature was missing or did not match; never acted on) and
+`GOPAY_UNREADABLE_RESULT` (SUCCESS without a fraud status, a payment id or item lines).
+
+### Abandoned pages (open item, settle in the sandbox before go-live)
+
+A customer who opens the page and leaves never produces a verdict, and iyzico does not document what
+the retrieve answers after the token expires. Until the sandbox run settles it, GoPay keeps every such
+answer at `no_verdict`, and the tenant decides when an unpaid booking is abandoned. A rule of the form
+"past `tokenExpireSeconds`, an error answer means not paid" is safe only if iyzico still answers a
+**paid** token after expiry; check that first:
+
+1. Start a checkout, pay it with `5528790000000008`, wait more than `tokenExpireSeconds`, retrieve.
+2. Start a checkout, leave the page, wait more than `tokenExpireSeconds`, retrieve.
+3. Record both answers (`errorCode`, `paymentStatus`) here.
+
+`transactionStatus` per item (iyzico): `0` fraud review, `-1` rejected, `1` approved and, in a
+marketplace, waiting for item approval, `2` item approval given.
+
+The token's lifetime after the page is paid is not documented by iyzico; read the result soon
+after the callback and keep `paymentId` for later lookups through `GET /v1/payments/iyzico/{paymentId}`.
+
+## Returns
+
+The same day: **cancel** the whole payment. A later day, up to 365 days: **refund** per item. iyzico
+does not say which day the bank has closed, so:
+
+- cancel refused on a later day: refund instead (iyzico documents no code for this; treat any `422` on
+  cancel as "refund instead" after checking the payment's day);
+- refund refused with **10223** ("End of day required for the POS") on the payment's day: cancel instead.
+
+### Cancel: `POST /v1/payments/iyzico/checkout/cancel`
 
 ```json
-{
-  "success": true,
-  "status": "pending",
-  "paymentId": "12345678",
-  "html": "<html>3D form content...</html>",
-  "message": "3D Secure authentication required"
-}
+{"paymentId": "28157797", "ip": "85.34.78.112", "conversationId": "c-1", "reason": "BUYER_REQUEST", "description": "Customer cancelled"}
 ```
 
-### Error Response
+`ip` is required (the IP of whoever asked for the cancel). `reason` is optional, one of `OTHER`,
+`FRAUD`, `BUYER_REQUEST`, `DOUBLE_PAYMENT`; `description` needs a `reason`.
+`200`: `{"paymentId": "28157797", "price": "450.5", "currency": "TRY", "conversationId": "c-1"}`.
+
+### Refund: `POST /v1/payments/iyzico/checkout/refund`
 
 ```json
-{
-  "success": false,
-  "status": "failed",
-  "errorCode": "5006",
-  "message": "Insufficient funds",
-  "systemTime": "2024-01-15T10:30:00Z"
-}
+{"paymentTransactionId": "30113131", "price": "100.00", "ip": "85.34.78.112", "conversationId": "r-1", "reason": "BUYER_REQUEST"}
 ```
 
-## Production Migration
+`price` at most the item's `paidPrice` minus what was refunded already; several partial refunds are
+allowed. `200`: `{"paymentId", "paymentTransactionId", "price", "currency", "conversationId"}`.
 
-To migrate from sandbox to production:
+**iyzico does not deduplicate refunds.** After a `502` or `500` the refund may have happened. Do not
+send it again blindly: check the merchant panel or wait for reconciliation first.
 
-1. Obtain your production API keys from İyzico
-2. Update environment variables:
-   ```bash
-   IYZICO_ENVIRONMENT=production
-   IYZICO_API_KEY=production_api_key
-   IYZICO_SECRET_KEY=production_secret_key
-   ```
-3. Test with real card information
-4. Point your webhook URLs to production environment
+## Marketplace
 
-## Integration Tests
+### Create a sub-merchant: `POST /v1/payments/iyzico/submerchants`
 
-GoPay İyzico integration includes comprehensive real API tests that verify the integration works correctly with İyzico's sandbox environment.
+```json
+{"externalId": "fac-1", "type": "PERSONAL", "name": "Moda Spor", "email": "info@moda.example",
+ "gsmNumber": "+905551112233", "address": "Moda Cd. 1", "iban": "TR330006100519786457841326",
+ "contactName": "Ada", "contactSurname": "Kaya", "identityNumber": "12345678901", "conversationId": "c"}
+```
 
-### Test Coverage
+Required by `type` (iyzico):
 
-#### **Unit Tests** (`iyzico_test.go`)
+| `type` | Required besides `externalId`, `email`, `gsmNumber`, `address` |
+|---|---|
+| `PERSONAL` | `contactName`, `contactSurname`, `identityNumber` |
+| `PRIVATE_COMPANY` | `taxOffice`, `legalCompanyTitle` |
+| `LIMITED_OR_JOINT_STOCK_COMPANY` | `taxOffice`, `taxNumber`, `legalCompanyTitle` |
 
-- Provider initialization and configuration
-- Request validation and mapping
-- Response parsing and error handling
-- Authentication string generation
-- Mock HTTP server scenarios
+`iban` may wait until before the first item approval. iyzico refuses item approval for a
+sub-merchant created without `identityNumber` (5024). `200`: `{"subMerchantKey": "...", "conversationId": "c"}`.
+A duplicate `externalId` is `422` with `2002`. A `502` may mean the sub-merchant was created: look it
+up by `externalId` before creating again.
 
-#### **Integration Tests** (`iyzico_integration_test.go`)
+### Update: `PUT /v1/payments/iyzico/submerchants/{subMerchantKey}`
 
-- **Real İyzico Sandbox API**: Tests against actual İyzico endpoints
-- **Payment Processing**: Create payments with test cards
-- **Error Scenarios**: Test various error conditions (insufficient funds, invalid cards)
-- **3D Secure Flow**: Test 3D payment initiation
-- **Payment Management**: Status checking, refunds, cancellations
-- **Authentication**: Test invalid credentials handling
-- **Performance**: Benchmark tests for payment processing
-- **Full Workflow**: End-to-end payment lifecycle testing
+Same fields as create without `externalId` and `type` (iyzico does not let them change). `email`,
+`gsmNumber`, `address` and `iban` are required; iyzico also requires the identity fields of the type.
+`200`: `{"subMerchantKey": "..."}`.
 
-### Running Tests
+### Look up: `GET /v1/payments/iyzico/submerchants/{externalId}`
 
-#### Unit Tests (Always Available)
+`200`: `{"subMerchantKey", "externalId", "type", "name", "email", "gsmNumber", "address", "iban",
+"currency", "taxOffice", "legalCompanyTitle"}`. Identity and tax numbers are not returned.
+
+### Item approval
+
+`POST /v1/payments/iyzico/items/{paymentTransactionId}/approve` releases a paid item's
+sub-merchant share; `/disapprove` withdraws it. The body is optional: `{"conversationId": "c"}`.
+`200`: `{"paymentTransactionId": "30113131", "conversationId": "c"}`. Already approved: `422` with `5064`.
+There is no panel action for approval at iyzico; only this call.
+
+## Common routes for iyzico
+
+| Route | Behaviour |
+|---|---|
+| `GET /v1/payments/iyzico/{paymentId}` | `/payment/detail` by iyzico paymentId. `status`: `successful` (SUCCESS + fraud 1), `failed` (FAILURE or fraud -1), otherwise `pending`; an iyzico error answer is `pending`, and so is a verdict without a matching signature (`errorCode` `GOPAY_SIGNATURE_MISMATCH`). Amounts are float64 here. |
+| `DELETE /v1/payments/iyzico/{paymentId}` | Cancel without a buyer IP. Prefer `POST /checkout/cancel`. |
+| `POST /v1/payments/iyzico/refund` | `paymentId` is the item's `paymentTransactionId`; `refundAmount` is a float. Prefer `POST /checkout/refund`. |
+| `POST /v1/payments/iyzico` (card), installments, commission, webhooks | Not supported: card data does not pass through GoPay for iyzico. |
+
+## Logging
+
+Every call is logged in the `iyzico` table. `identityNumber`, `iban` and `taxNumber` are masked
+there. Failed calls carry `error_code` `REFUSED_<iyzico code>`, `PROVIDER_UNAVAILABLE` or
+`INVALID_REQUEST`. The `payment_id` column stays empty on these rows, so
+`GET /v1/logs/iyzico/payment/{id}` does not find them; search the request JSON by token or basket id.
+
+## Tests
 
 ```bash
-# Run all unit tests
-go test ./gateway/iyzico/
-
-# Run specific test
-go test ./gateway/iyzico/ -run TestNewProvider
-
-# Run with verbose output
-go test -v ./gateway/iyzico/
+go test ./provider/iyzico/   # httptest, no network
+IYZICO_TEST_API_KEY=... IYZICO_TEST_SECRET_KEY=... go test -tags integration -run TestIntegration ./provider/iyzico/
 ```
 
-#### Integration Tests (Requires İyzico Credentials)
-
-**Prerequisites:**
-
-1. İyzico sandbox account
-2. Valid sandbox API credentials
-
-**Setup:**
-
-```bash
-# Set required environment variables
-export IYZICO_TEST_ENABLED=true
-export IYZICO_TEST_API_KEY=your_sandbox_api_key
-export IYZICO_TEST_SECRET_KEY=your_sandbox_secret_key
-
-# Run integration tests (they sit behind the "integration" build tag)
-go test -tags integration ./provider/iyzico/ -run TestIntegration
-
-# Run specific integration test
-go test -tags integration ./provider/iyzico/ -run TestIntegration_CreatePayment_Success
-
-# Run full workflow test
-go test -tags integration ./provider/iyzico/ -run TestIntegration_FullWorkflow -v
-```
-
-### Test Scenarios
-
-#### Payment Success Tests
-
-- **Valid Payment**: Uses İyzico test card `5528790000000008`
-- **Amount Verification**: Confirms request/response amount matching
-- **Currency Handling**: Tests TRY currency processing
-- **Customer Data**: Validates customer information handling
-
-#### Error Handling Tests
-
-- **Insufficient Funds**: Card `5528790000000016`
-- **Invalid Card**: Card `5528790000000032`
-- **Authentication Failure**: Invalid API credentials
-- **Request Timeout**: Context timeout handling
-
-#### 3D Secure Tests
-
-- **3D Initiation**: Tests 3D payment flow start
-- **Callback URL**: Validates callback URL generation
-- **HTML Content**: Checks 3D form content reception
-- **Status Verification**: Confirms pending status for 3D payments
-
-#### Payment Lifecycle Tests
-
-- **Status Checking**: Retrieve payment status after creation
-- **Partial Refunds**: Process partial refund amounts
-- **Payment Cancellation**: Cancel existing payments
-- **Full Workflow**: Complete payment → status → refund cycle
-
-### CI/CD Integration
-
-**GitHub Actions Example:**
-
-```yaml
-name: İyzico Integration Tests
-on: [push, pull_request]
-
-jobs:
-  integration-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: "1.21"
-
-      - name: Run Unit Tests
-        run: go test ./provider/iyzico/ -v
-
-      - name: Run Integration Tests
-        if: ${{ secrets.IYZICO_TEST_API_KEY }}
-        env:
-          IYZICO_TEST_ENABLED: true
-          IYZICO_TEST_API_KEY: ${{ secrets.IYZICO_TEST_API_KEY }}
-          IYZICO_TEST_SECRET_KEY: ${{ secrets.IYZICO_TEST_SECRET_KEY }}
-        run: go test -tags integration ./provider/iyzico/ -run TestIntegration -v
-```
-
-## Security
-
-- 🔒 All API communication over HTTPS
-- 🔐 Request signing with HMAC-SHA1
-- 🛡️ Callback URLs protected by GoPay
-- 🔍 Fraud detection and risk analysis
-- 📊 Real-time transaction monitoring
-
-## Support
-
-For questions regarding İyzico integration:
-
-- İyzico API Documentation: https://dev.iyzipay.com/
-- GoPay GitHub Issues: https://github.com/mstgnz/gopay/issues
+Sandbox test cards: docs.iyzico.com "Test Cards" (`5528790000000008` succeeds, `4111111111111129`
+has no funds). `postman.json` here is iyzico's own collection, kept as a reference.

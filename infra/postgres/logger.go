@@ -500,10 +500,13 @@ func sanitizeMap(data map[string]any) map[string]any {
 	// Do NOT add "token" here. cardToken is read back out of the log to complete 3D payments
 	// (provider/paycell/paycell.go:275 and :396); masking it would break payment completion.
 	// "sx" is Nkolay's merchant token (sx, sxList, sxCancel); nothing reads it back from the log.
+	// identityNumber (TCKN), iban and taxNumber arrive with iyzico buyers and sub-merchants; nothing
+	// reads them back from the log either.
 	sensitiveFields := []string{
 		"cardnumber", "card_number", "credit", "pan",
 		"cvv", "cvc",
 		"applicationpwd", "password", "passwd", "pwd", "secret", "securecode", "sx",
+		"identitynumber", "iban", "taxnumber",
 	}
 
 	// Credentials are redacted whole. maskGenericSensitive keeps the first and last two

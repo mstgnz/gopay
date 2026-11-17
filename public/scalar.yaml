@@ -1674,6 +1674,174 @@ paths:
         '500':
           description: Internal server error
 
+  # Hosted checkout and marketplace: optional capabilities (iyzico today). The full contract,
+  # including every field and outcome, is provider/iyzico/README.md. Amounts are decimal strings.
+  # Failures: 400 invalid or unsupported; 422 data.kind=refused (provider answered no, with
+  # providerErrorCode); 502 data.kind=unavailable and 500 data.kind=internal (outcome unknown).
+  /v1/payments/{provider}/checkout:
+    post:
+      summary: Start a hosted checkout
+      description: |
+        Opens the provider's payment page; the customer types the card there, never through GoPay.
+        The provider POSTs only `token` to `callbackUrl`; read the verdict with GET /checkout/{token}.
+      tags: [Hosted Checkout]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              basketId: BK-9
+              price: "450.50"
+              callbackUrl: https://tenant.example/odeme/sonuc
+              buyer: {id: u-7, name: Ada, surname: Kaya, identityNumber: "12345678901", email: ada@example.com,
+                      gsmNumber: "+905551112233", address: Moda Cd. 1, city: Istanbul, ip: 85.34.78.112}
+              items:
+                - {id: BK-9, name: Saha 1, category: Saha kiralama, itemType: VIRTUAL, price: "450.50",
+                   subMerchantKey: smk-1, subMerchantPrice: "405.45"}
+      responses:
+        '200': {description: "data: token, paymentPageUrl, tokenExpireSeconds, conversationId"}
+        '400': {description: Invalid request or provider without hosted checkout}
+        '422': {description: Provider refused (data.kind=refused)}
+        '502': {description: Provider unavailable; outcome unknown}
+
+  /v1/payments/{provider}/checkout/{token}:
+    get:
+      summary: Read a hosted checkout's verdict
+      description: |
+        `data.outcome` is paid, in_review, declined or no_verdict; `success` is true only for paid.
+        A 502 is never a failed payment: read again later.
+      tags: [Hosted Checkout]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: token, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+        - {name: conversationId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: "data: outcome, readable, paymentStatus, fraudStatus, paymentId, price, paidPrice, itemTransactions[]"}
+        '502': {description: Provider unavailable; outcome unknown}
+
+  /v1/payments/{provider}/checkout/cancel:
+    post:
+      summary: Cancel a whole hosted payment (same day)
+      tags: [Hosted Checkout]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: {paymentId: "28157797", ip: 85.34.78.112, reason: BUYER_REQUEST}
+      responses:
+        '200': {description: "data: paymentId, price, currency, conversationId"}
+        '422': {description: Refused (on a later day, refund instead)}
+        '502': {description: Provider unavailable; outcome unknown}
+
+  /v1/payments/{provider}/checkout/refund:
+    post:
+      summary: Refund part or all of one paid item
+      description: A refusal with providerErrorCode 10223 on the payment's day means cancel instead. Refunds are not deduplicated; after a 502 the refund may have happened.
+      tags: [Hosted Checkout]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: {paymentTransactionId: "30113131", price: "100.00", ip: 85.34.78.112}
+      responses:
+        '200': {description: "data: paymentId, paymentTransactionId, price, currency, conversationId"}
+        '422': {description: Refused}
+        '502': {description: Provider unavailable; outcome unknown}
+
+  /v1/payments/{provider}/submerchants:
+    post:
+      summary: Register a marketplace sub-merchant
+      tags: [Marketplace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: {externalId: fac-1, type: PERSONAL, name: Moda Spor, email: info@moda.example, gsmNumber: "+905551112233",
+                      address: Moda Cd. 1, iban: TR330006100519786457841326, contactName: Ada, contactSurname: Kaya,
+                      identityNumber: "12345678901"}
+      responses:
+        '200': {description: "data: subMerchantKey"}
+        '422': {description: Refused (2002 = external id already registered)}
+        '502': {description: Unavailable; the sub-merchant may exist, look it up by externalId}
+
+  # One OpenAPI path for two meanings: PUT takes the subMerchantKey, GET the tenant's external id.
+  /v1/payments/{provider}/submerchants/{id}:
+    put:
+      summary: Update a sub-merchant by its key ({id} = subMerchantKey)
+      tags: [Marketplace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: id, in: path, required: true, schema: {type: string}, description: subMerchantKey}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      responses:
+        '200': {description: "data: subMerchantKey"}
+        '422': {description: Refused}
+    get:
+      summary: Look up a sub-merchant by the tenant's external id ({id} = externalId)
+      tags: [Marketplace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: id, in: path, required: true, schema: {type: string}, description: externalId}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      responses:
+        '200': {description: "data: subMerchantKey, externalId, type, name, iban, ... (no identity or tax numbers)"}
+        '422': {description: Refused (not found)}
+
+  /v1/payments/{provider}/items/{paymentTransactionId}/approve:
+    post:
+      summary: Release a paid item's sub-merchant share
+      tags: [Marketplace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: paymentTransactionId, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      responses:
+        '200': {description: "data: paymentTransactionId"}
+        '422': {description: Refused (5064 = already approved)}
+
+  /v1/payments/{provider}/items/{paymentTransactionId}/disapprove:
+    post:
+      summary: Withdraw an item approval
+      tags: [Marketplace]
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string, enum: [iyzico]}}
+        - {name: paymentTransactionId, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: query, required: true, schema: {type: string, enum: [sandbox, production]}}
+      responses:
+        '200': {description: "data: paymentTransactionId"}
+        '422': {description: Refused}
+
   /v1/payments/{provider}/{paymentID}:
     get:
       summary: Get payment status with specific provider

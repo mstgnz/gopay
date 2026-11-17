@@ -75,12 +75,23 @@
 //	r.Delete("/v1/payments/{provider}/{paymentID}", paymentHandler.CancelPayment)
 //	r.Post("/v1/payments/{provider}/refund", paymentHandler.RefundPayment)
 //
+// # Hosted Checkout and Marketplace Handlers
+//
+// CheckoutHandler and MarketplaceHandler serve optional provider capabilities (iyzico today):
+// a hosted payment page with a server-side verdict, cancel and refund with decimal-string amounts,
+// sub-merchants and item approval. A provider without the capability answers 400. The contract,
+// including the 422 refused / 502 unavailable split, is provider/iyzico/README.md.
+//
+//	r.Post("/v1/payments/{provider}/checkout", checkoutHandler.StartCheckout)
+//	r.Get("/v1/payments/{provider}/checkout/{token}", checkoutHandler.CheckoutResult)
+//	r.Post("/v1/payments/{provider}/submerchants", marketplaceHandler.CreateSubMerchant)
+//
 // # Multi-Tenant Support
 //
 // All handlers support multi-tenant operations via JWT token authentication.
 // Tenant information is automatically extracted from the JWT token:
 //
-//	POST /v1/payments/iyzico
+//	POST /v1/payments/paycell
 //	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 //	Content-Type: application/json
 //
