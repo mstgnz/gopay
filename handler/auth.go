@@ -88,7 +88,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Reserved before bcrypt so a guessing run costs no CPU once it is throttled, and so parallel
 	// requests cannot all pass the check before the first failure is counted.
-	attempt, retryAfter := h.throttle.begin(req.Username, middle.ProxyClientIP(r))
+	attempt, retryAfter := h.throttle.begin(req.Username, middle.GetClientIP(r))
 	if attempt == nil {
 		w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
 		response.Error(w, http.StatusTooManyRequests, "Too many failed login attempts, try again later", nil)

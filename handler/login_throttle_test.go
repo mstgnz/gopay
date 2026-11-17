@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/mstgnz/gopay/infra/auth"
+	"github.com/mstgnz/gopay/infra/middle"
 )
 
 // Documentation addresses (RFC 5737): the consumer's server and an attacker.
@@ -315,7 +316,7 @@ func TestAuthHandler_Login_PanicReleasesReservation(t *testing.T) {
 				t.Fatal("expected Login to panic on the nil database")
 			}
 		}()
-		h.Login(httptest.NewRecorder(), req)
+		middle.ClientIP()(http.HandlerFunc(h.Login)).ServeHTTP(httptest.NewRecorder(), req)
 	}()
 
 	if n := windowCount(h.throttle); n != 0 {
@@ -337,8 +338,10 @@ func TestAuthHandler_Login_ThrottledReturns429(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Real-IP", attackerIP)
 	req.Header.Set("True-Client-IP", consumerIP)
+	req.Header.Set("X-Forwarded-For", consumerIP)
 	rr := httptest.NewRecorder()
-	h.Login(rr, req)
+	// Behind middle.ClientIP, as cmd/main.go mounts it.
+	middle.ClientIP()(http.HandlerFunc(h.Login)).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429", rr.Code)

@@ -100,8 +100,10 @@ func main() {
 
 	// Basic Middleware
 	r.Use(middle.PanicRecoveryMiddleware())
+	// Client address from X-Real-IP only; chi RealIP trusted caller-set headers. Before Logger, which
+	// prints the resolved address.
+	r.Use(middle.ClientIP())
 	r.Use(middleware.Logger)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(60 * time.Second))
 

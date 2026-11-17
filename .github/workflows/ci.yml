@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [ main ]
 
+# Go: the exact toolchain the dockerfile builds production with; bump both together. go.mod keeps
+# `go 1.25.0` on purpose, so the GODEBUG defaults stay those of 1.25.
 jobs:
   test:
     name: Test
@@ -42,7 +44,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version: '1.26.11'
 
     - name: Download dependencies
       run: go mod download
@@ -72,7 +74,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version: '1.26.11'
 
     # Only issues introduced by the change fail the job; the existing backlog is tracked separately.
     - name: Run golangci-lint
@@ -82,10 +84,9 @@ jobs:
         only-new-issues: true
         args: --timeout=5m
 
-  build:
-    name: Build
+  vulncheck:
+    name: Vulnerability check
     runs-on: ubuntu-latest
-    needs: [test, lint]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -93,7 +94,27 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version: '1.26.11'
+
+    # Fails on a known vulnerability the code reaches, in a module or in the Go standard library.
+    # Pinned: a new govulncheck release can change what it reports.
+    - name: Run govulncheck
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+        govulncheck ./...
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [test, lint, vulncheck]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.11'
 
     - name: Build application
       run: |
@@ -123,7 +144,7 @@ jobs:
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, vulncheck]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     permissions:

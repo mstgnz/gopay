@@ -4,8 +4,10 @@ services:
     image: nginx:alpine
     container_name: gopay-nginx
     restart: always
+    # Loopback only: the host nginx is the one way in. The api trusts the X-Real-IP this nginx
+    # passes through, so a caller reaching this port directly could choose its own address.
     ports:
-      - "${APP_PORT}:80"
+      - "127.0.0.1:${APP_PORT}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:

@@ -4,10 +4,10 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/mstgnz/gopay/infra/config"
 	"github.com/mstgnz/gopay/infra/response"
 )
@@ -108,55 +108,23 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-// ProxyClientIP returns the client address that the TLS-terminating host nginx wrote into
-// X-Real-IP; the docker nginx passes it through. It is the real client only while the host
-// nginx resolves CF-Connecting-IP from Cloudflare ranges and port 9999 is unreachable from
-// outside. Not r.RemoteAddr: chi RealIP fills that from True-Client-IP, which no proxy strips.
-func ProxyClientIP(r *http.Request) string {
-	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
-		return xri
+// ClientIP resolves the client address once per request from X-Real-IP, the one header the host
+// nginx overwrites on every request (from CF-Connecting-IP through its realip module); the docker
+// nginx passes it through. X-Forwarded-For and True-Client-IP are caller-controlled and never read.
+// Mount it before every middleware that calls GetClientIP.
+func ClientIP() func(http.Handler) http.Handler {
+	return middleware.ClientIPFromHeader("X-Real-IP")
+}
+
+// GetClientIP returns the address ClientIP resolved. A request that did not pass the host nginx
+// (no X-Real-IP, e.g. a health check inside the docker network) falls back to its TCP peer.
+// It keys the rate limits and the login throttle and is the clientIp sent to the providers.
+func GetClientIP(r *http.Request) string {
+	if ip := middleware.GetClientIP(r.Context()); ip != "" {
+		return ip
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}
 	return r.RemoteAddr
-}
-
-// GetClientIP extracts the real client IP
-func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// Take the first IP in case of multiple
-		if idx := strings.Index(xff, ","); idx != -1 {
-			ip := strings.TrimSpace(xff[:idx])
-			return ip
-		}
-		ip := strings.TrimSpace(xff)
-		return ip
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		ip := strings.TrimSpace(xri)
-		return ip
-	}
-
-	// Fall back to RemoteAddr
-	remoteAddr := r.RemoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		ip := remoteAddr[:idx]
-		// Handle IPv6 localhost addresses
-		if ip == "[::1]" {
-			return "127.0.0.1"
-		}
-		return ip
-	}
-
-	// Handle case where RemoteAddr doesn't have port
-	if remoteAddr == "[::1]" {
-		return "127.0.0.1"
-	}
-
-	return remoteAddr
 }
