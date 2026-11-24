@@ -131,9 +131,11 @@ func (s *SQLPaymentStore) RecordEvent(ctx context.Context, paymentRowID int64, e
 		INSERT INTO payment_events (payment_id, kind, status, error_code, amount, log_id)
 		SELECT id, $6, $7::text, $8::text, $9::numeric, $10::bigint FROM upd`
 
+	// Without a new status there is nothing to compare, so the event is always written.
+	onlyOnChange := ev.OnlyOnChange && ev.PaymentStatus != ""
 	res, err := s.db.ExecContext(ctx, query,
 		paymentRowID, nullStatus(ev.PaymentStatus), nullString(ev.ErrorCode), nullString(ev.ProviderPaymentID),
-		ev.OnlyOnChange && ev.PaymentStatus != "",
+		onlyOnChange,
 		ev.Kind, nullStatus(ev.Status), nullString(ev.ErrorCode), nullFloat(ev.Amount), nullInt64(ev.LogID),
 	)
 	if err != nil {
@@ -143,7 +145,7 @@ func (s *SQLPaymentStore) RecordEvent(ctx context.Context, paymentRowID int64, e
 	if err != nil {
 		return fmt.Errorf("failed to read payment event result: %w", err)
 	}
-	if affected == 0 && !(ev.OnlyOnChange && ev.PaymentStatus != "") {
+	if affected == 0 && !onlyOnChange {
 		return fmt.Errorf("payment %d: %w", paymentRowID, ErrPaymentRowNotFound)
 	}
 	return nil
