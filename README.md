@@ -409,7 +409,8 @@ POST /v1/webhooks/{provider}                 # Payment status notifications
 ```
 GET /v1/analytics/dashboard  # Dashboard statistics
 GET /v1/logs/{provider}      # Payment logs
-GET /health                  # Health check
+GET /health                  # Up or down (public, status only)
+GET /v1/health/details       # Full health report (admin tenant)
 ```
 
 ## 📚 Documentation

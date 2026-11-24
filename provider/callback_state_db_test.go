@@ -30,6 +30,20 @@ func insertCallbackRow(t *testing.T, providerName, paymentID string, used bool, 
 	return id
 }
 
+// insertTokenRow is insertCallbackRow with a token, the only state a callback URL can carry.
+func insertTokenRow(t *testing.T, providerName, paymentID string, used bool, expiresIn string) (int64, string) {
+	t.Helper()
+	token, tokenHash, err := newCallbackToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := insertCallbackRow(t, providerName, paymentID, used, expiresIn)
+	if _, err := config.App().DB.Exec(`UPDATE callbacks SET token_hash = $1 WHERE id = $2`, tokenHash, id); err != nil {
+		t.Fatalf("set token_hash: %v", err)
+	}
+	return id, token
+}
+
 func deleteCallbackRowOnCleanup(t *testing.T, id int64) {
 	t.Cleanup(func() {
 		if _, err := config.App().DB.Exec(`DELETE FROM callbacks WHERE id = $1`, id); err != nil {
@@ -87,8 +101,8 @@ func TestCallbackStateTokenCannotBeWalkedByID(t *testing.T) {
 		t.Fatalf("issued state %q is not a token", token)
 	}
 	id := callbackRowID(t, token)
-	if _, err := RetrieveCallbackState(ctx, "paycell", strconv.FormatInt(id, 10)); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("numeric id of a token row: err = %v, want not found", err)
+	if _, err := RetrieveCallbackState(ctx, "paycell", strconv.FormatInt(id, 10)); !errors.Is(err, ErrInvalidCallbackState) {
+		t.Fatalf("numeric id of a token row: err = %v, want invalid state", err)
 	}
 	var stored string
 	if err := config.App().DB.QueryRow(`SELECT token_hash FROM callbacks WHERE id = $1`, id).Scan(&stored); err != nil ||
@@ -100,48 +114,29 @@ func TestCallbackStateTokenCannotBeWalkedByID(t *testing.T) {
 	}
 }
 
-// A 3D payment started by the previous release has a numeric state and no token; its callback must
-// still be accepted after the deploy, once.
-func TestRetrieveCallbackState_AcceptsLegacyNumericStateOnce(t *testing.T) {
-	requireTestDB(t)
-	ctx := context.Background()
-	id := insertCallbackRow(t, "paycell", fmt.Sprintf("cblegacy-%d", time.Now().UnixNano()), false, "10 minutes")
-	state := strconv.FormatInt(id, 10)
-
-	if _, err := HandleCallbackState(ctx, "paycell", state); err != nil {
-		t.Fatalf("legacy numeric state: %v", err)
-	}
-	if _, err := RetrieveCallbackState(ctx, "paycell", state); err == nil || !strings.Contains(err.Error(), "already used") {
-		t.Errorf("second legacy callback: err = %v, want already used", err)
-	}
-}
-
 // Nkolay writes its reference code into the state after storing it, addressing it by the URL's state.
-func TestUpdateCallbackState_ByTokenAndLegacyID(t *testing.T) {
+func TestUpdateCallbackState_ByToken(t *testing.T) {
 	requireTestDB(t)
 	ctx := context.Background()
 	token := storeTestCallbackState(t, fmt.Sprintf("cbupd-%d", time.Now().UnixNano()))
-	legacy := insertCallbackRow(t, "nkolay", fmt.Sprintf("cbupd-legacy-%d", time.Now().UnixNano()), false, "10 minutes")
+	id := callbackRowID(t, token)
 
-	for _, tc := range []struct {
-		state string
-		id    int64
-	}{{token, callbackRowID(t, token)}, {strconv.FormatInt(legacy, 10), legacy}} {
-		ref := fmt.Sprintf("REF-%d", tc.id)
-		if err := UpdateCallbackState(ctx, tc.state, ref); err != nil {
-			t.Fatalf("UpdateCallbackState: %v", err)
-		}
-		var paymentID, inState string
-		if err := config.App().DB.QueryRow(`SELECT payment_id, state_data->>'paymentId' FROM callbacks WHERE id = $1`, tc.id).
-			Scan(&paymentID, &inState); err != nil {
-			t.Fatalf("read row: %v", err)
-		}
-		if paymentID != ref || inState != ref {
-			t.Errorf("row %d: payment_id %q, state paymentId %q; want %q", tc.id, paymentID, inState, ref)
-		}
+	ref := fmt.Sprintf("REF-%d", id)
+	if err := UpdateCallbackState(ctx, token, ref); err != nil {
+		t.Fatalf("UpdateCallbackState: %v", err)
 	}
-	if err := UpdateCallbackState(ctx, "12abc", "REF"); !errors.Is(err, ErrInvalidCallbackState) {
-		t.Errorf("malformed state: err = %v", err)
+	var paymentID, inState string
+	if err := config.App().DB.QueryRow(`SELECT payment_id, state_data->>'paymentId' FROM callbacks WHERE id = $1`, id).
+		Scan(&paymentID, &inState); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if paymentID != ref || inState != ref {
+		t.Errorf("payment_id %q, state paymentId %q; want %q", paymentID, inState, ref)
+	}
+	for _, state := range []string{"12abc", strconv.FormatInt(id, 10)} {
+		if err := UpdateCallbackState(ctx, state, "REF"); !errors.Is(err, ErrInvalidCallbackState) {
+			t.Errorf("state %q: err = %v, want invalid state", state, err)
+		}
 	}
 }
 
@@ -168,10 +163,10 @@ func TestRetrieveCallbackState_AcceptsOnce(t *testing.T) {
 // expires_at as UTC and a callback was accepted hours after it expired.
 func TestRetrieveCallbackState_RefusesExpired(t *testing.T) {
 	requireTestDB(t)
-	id := insertCallbackRow(t, "paycell", fmt.Sprintf("cbexpired-%d", time.Now().UnixNano()), false, "-1 second")
+	id, token := insertTokenRow(t, "paycell", fmt.Sprintf("cbexpired-%d", time.Now().UnixNano()), false, "-1 second")
 	ctx := context.Background()
 
-	if _, err := RetrieveCallbackState(ctx, "paycell", strconv.FormatInt(id, 10)); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := RetrieveCallbackState(ctx, "paycell", token); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("err = %v, want expired", err)
 	}
 	var used bool
@@ -182,8 +177,12 @@ func TestRetrieveCallbackState_RefusesExpired(t *testing.T) {
 		t.Error("a refused callback marked the state used")
 	}
 
-	if _, err := RetrieveCallbackState(ctx, "paycell", "2147483647"); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Errorf("unknown id: err = %v, want not found", err)
+	unknown, _, err := newCallbackToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RetrieveCallbackState(ctx, "paycell", unknown); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unknown token: err = %v, want not found", err)
 	}
 }
 
@@ -202,8 +201,8 @@ func TestRetrieveCallbackState_RefusesAnotherProvider(t *testing.T) {
 	}
 
 	// The provider check comes first, so a wrong route learns nothing about used or expired rows.
-	spent := insertCallbackRow(t, "paycell", fmt.Sprintf("cbprovider-spent-%d", time.Now().UnixNano()), true, "-1 minute")
-	if _, err := RetrieveCallbackState(ctx, "ziraat", strconv.FormatInt(spent, 10)); err == nil || !strings.Contains(err.Error(), "another provider") {
+	_, spent := insertTokenRow(t, "paycell", fmt.Sprintf("cbprovider-spent-%d", time.Now().UnixNano()), true, "-1 minute")
+	if _, err := RetrieveCallbackState(ctx, "ziraat", spent); err == nil || !strings.Contains(err.Error(), "another provider") {
 		t.Errorf("spent row on another route: err = %v, want another provider", err)
 	}
 }

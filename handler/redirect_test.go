@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -88,6 +89,36 @@ func TestHandleCallback_RedirectSchemeAllowlist(t *testing.T) {
 		action, _ := formFields(t, rr.Body.String())
 		if rr.Code != http.StatusOK || action != target {
 			t.Errorf("%q: status %d, form action %q; want a redirect to it", target, rr.Code, action)
+		}
+	}
+}
+
+// The payer's browser renders a failed callback, with or without a redirect page; neither carries the
+// internal error text, which names log keys, payment ids and database errors.
+func TestHandleCallback_FailureShowsNoInternalErrorText(t *testing.T) {
+	internal := errors.New(`failed to get card token: pay-1 pq: relation "paycell" does not exist`)
+	for name, resp := range map[string]*provider.PaymentResponse{
+		"json page":     nil,
+		"redirect page": {PaymentID: "pay-1", RedirectURL: "https://consumer.example/sonuc"},
+	} {
+		mock := &MockPaymentService{
+			Complete3DPaymentFunc: func(context.Context, string, string, map[string]string) (*provider.PaymentResponse, error) {
+				return resp, internal
+			},
+		}
+		req := httptest.NewRequest(http.MethodPost, "/v1/callback/paycell?state=7", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("provider", "paycell")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rr := httptest.NewRecorder()
+		NewPaymentHandler(mock, validator.New()).HandleCallback(rr, req)
+
+		body := rr.Body.String()
+		if strings.Contains(body, "card token") || strings.Contains(body, "pq:") {
+			t.Errorf("%s shows the internal error: %s", name, body)
+		}
+		if !strings.Contains(body, callbackFailedText) {
+			t.Errorf("%s does not say the callback failed: %s", name, body)
 		}
 	}
 }

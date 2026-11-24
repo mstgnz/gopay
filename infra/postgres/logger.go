@@ -75,51 +75,6 @@ func NewLogger(db *conn.DB) *Logger {
 	}
 }
 
-// LogPaymentRequest logs a payment request to PostgreSQL
-func (l *Logger) LogPaymentRequest(ctx context.Context, logEntry PaymentLog) error {
-	// Convert maps to JSON strings
-	requestJSON, err := json.Marshal(logEntry.Request)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	responseJSON, err := json.Marshal(logEntry.Response)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	// Determine which table to use based on provider
-	tableName := l.getProviderTableName(logEntry.Provider)
-
-	// Insert into provider-specific table
-	query := fmt.Sprintf(`
-		INSERT INTO %s (tenant_id, request, response, request_at, response_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`, tableName)
-
-	var responseAt *time.Time
-	if timestamp, ok := logEntry.Response["timestamp"].(time.Time); ok && !timestamp.IsZero() {
-		responseAt = &timestamp
-	}
-
-	var id int64
-	err = l.db.QueryRowContext(ctx, query,
-		logEntry.TenantID,
-		string(requestJSON),
-		string(responseJSON),
-		logEntry.Timestamp,
-		responseAt,
-	).Scan(&id)
-
-	if err != nil {
-		return fmt.Errorf("failed to insert payment log: %w", err)
-	}
-
-	log.Printf("Logged payment request to %s with ID: %d", tableName, id)
-	return nil
-}
-
 // LogSystemEvent logs a system event to PostgreSQL
 func (l *Logger) LogSystemEvent(ctx context.Context, logEntry SystemLog) error {
 

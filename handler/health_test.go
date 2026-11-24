@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/provider"
 )
 
@@ -66,6 +71,59 @@ func TestHealthHandler_CheckHealth_Status(t *testing.T) {
 	// Should return either 200 or 503
 	if w.Code != 200 && w.Code != 503 {
 		t.Errorf("Health check should return 200 or 503, got %d", w.Code)
+	}
+}
+
+// /health is public and unlimited: it answers up or down and tells nothing about versions,
+// resources, providers or traffic.
+func TestCheckHealthPublicAnswerCarriesOnlyStatus(t *testing.T) {
+	h := NewHealthHandler(nil, nil, &provider.PaymentService{}, &config.ProviderConfig{})
+	w := httptest.NewRecorder()
+	h.CheckHealth(w, httptest.NewRequest("GET", "/health", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200", w.Code)
+	}
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Data["status"] != "healthy" {
+		t.Errorf("data.status = %v, want healthy", body.Data["status"])
+	}
+	for key := range body.Data {
+		if key != "status" && key != "timestamp" {
+			t.Errorf("public health exposes %q", key)
+		}
+	}
+}
+
+// A probe must see 503 when a payment service is missing, or traffic reaches a broken replica.
+func TestCheckHealthIsUnavailableWithoutItsServices(t *testing.T) {
+	for name, h := range map[string]*HealthHandler{
+		"no payment service": NewHealthHandler(nil, nil, nil, &config.ProviderConfig{}),
+		"no provider config": NewHealthHandler(nil, nil, &provider.PaymentService{}, nil),
+	} {
+		w := httptest.NewRecorder()
+		h.CheckHealth(w, httptest.NewRequest("GET", "/health", nil))
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s: status %d, want 503", name, w.Code)
+		}
+	}
+}
+
+func TestCheckHealthDetailsIsAdminOnly(t *testing.T) {
+	h := NewHealthHandler(nil, nil, &provider.PaymentService{}, &config.ProviderConfig{})
+	for tenant, want := range map[string]int{"": http.StatusForbidden, "2": http.StatusForbidden, adminTenantID: http.StatusOK} {
+		req := httptest.NewRequest("GET", "/v1/health/details", nil)
+		req = req.WithContext(context.WithValue(req.Context(), middle.TenantIDKey, tenant))
+		w := httptest.NewRecorder()
+		h.CheckHealthDetails(w, req)
+		if w.Code != want {
+			t.Errorf("tenant %q: status %d, want %d", tenant, w.Code, want)
+		}
 	}
 }
 

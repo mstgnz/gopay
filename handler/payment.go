@@ -273,6 +273,9 @@ func (h *PaymentHandler) GetCommission(w http.ResponseWriter, r *http.Request) {
 	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
 }
 
+// callbackFailedText is what the payer sees when a 3D callback fails; the cause is logged.
+const callbackFailedText = "Payment callback could not be completed"
+
 // Enhanced callback URL parsing and redirect logic
 func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -329,18 +332,21 @@ func (h *PaymentHandler) HandleCallback(w http.ResponseWriter, r *http.Request) 
 	paymentResp, err := h.paymentService.Complete3DPayment(ctx, providerName, state, callbackData)
 
 	if err != nil {
-		// Check if response and RedirectURL are available
+		// The payer's browser renders both answers, so the error text stays in the log.
+		logger.Warn("3D callback failed", logger.LogContext{
+			Provider: providerName,
+			Fields:   map[string]any{"error": err.Error()},
+		})
 		if paymentResp != nil && paymentResp.RedirectURL != "" {
 			h.postRedirect(w, paymentResp.RedirectURL, map[string]string{
 				"success":   "false",
 				"status":    "failed",
 				"errorCode": "500",
-				"message":   err.Error(),
+				"message":   callbackFailedText,
 				"sessionId": paymentResp.SessionID,
 			})
 		} else {
-			// Fallback: return JSON error response if no redirect URL
-			response.Error(w, http.StatusInternalServerError, "Payment callback failed: "+err.Error(), nil)
+			response.Error(w, http.StatusInternalServerError, callbackFailedText, nil)
 		}
 		return
 	}

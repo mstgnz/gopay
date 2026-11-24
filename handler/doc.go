@@ -289,10 +289,9 @@
 //	Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 //
 // Public endpoints (no authentication required):
-//   - /health - Health check
+//   - /health - Up or down, status only
 //   - /v1/auth/login - User login
 //   - /v1/auth/register - First user registration
-//   - /v1/analytics/* - Dashboard analytics
 //   - /v1/callback/* - 3D Secure callbacks
 //   - /v1/webhooks/* - Payment webhooks
 //
@@ -300,6 +299,7 @@
 //   - /v1/auth/create-tenant - Create new tenant
 //   - /v1/auth/change-password (for other users)
 //   - POST and DELETE /v1/config/tenant - Provider credentials
+//   - /v1/health/details - Full health report
 //
 // # JWT Middleware Integration
 //

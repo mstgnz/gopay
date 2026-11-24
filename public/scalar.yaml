@@ -3170,13 +3170,11 @@ paths:
     get:
       summary: Service health check
       description: |
-        Returns the health status of the GoPay service including:
-        - Service availability
-        - PostgreSQL database connectivity
-        - Payment provider connectivity
-        - System version
-        
-        **No Authentication Required** - This is a public health check endpoint.
+        Answers whether the service is up: 200 when the payment services are initialised and the
+        database answers a ping, 503 otherwise. It carries only the status and a timestamp.
+
+        **No Authentication Required** - This is a public health check endpoint. The full report
+        (database, providers, resources) is `GET /v1/health/details`, admin tenant only.
       tags: [System]
       responses:
         '200':
@@ -3197,18 +3195,12 @@ paths:
                     properties:
                       status:
                         type: string
-                        example: "ok"
+                        enum: [healthy, unhealthy]
+                        example: "healthy"
                       timestamp:
                         type: string
                         format: date-time
                         example: "2024-01-15T10:30:00Z"
-                      version:
-                        type: string
-                        example: "1.0.0"
-                      postgres_enabled:
-                        type: boolean
-                        example: true
-                        description: PostgreSQL database status
         '503':
           description: Service unavailable
 

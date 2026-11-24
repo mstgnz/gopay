@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mstgnz/gopay/infra/config"
+	"github.com/mstgnz/gopay/infra/middle"
 	"github.com/mstgnz/gopay/infra/postgres"
 	"github.com/mstgnz/gopay/infra/response"
 	"github.com/mstgnz/gopay/provider"
@@ -108,8 +109,40 @@ func NewHealthHandler(db *sql.DB, postgresLogger *postgres.Logger, paymentServic
 	}
 }
 
-// CheckHealth performs comprehensive health checks
+// CheckHealth is the public liveness answer for deploy checks and probes: 200 or 503 with a status
+// and nothing else. It is unauthenticated and not rate limited, so it costs one database ping and
+// tells a caller nothing about versions, resources or traffic.
 func (h *HealthHandler) CheckHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	status := "healthy"
+	switch {
+	case h.paymentService == nil, h.providerConfig == nil:
+		status = "unhealthy"
+	case h.db != nil && h.db.PingContext(ctx) != nil:
+		status = "unhealthy"
+	}
+
+	statusCode := http.StatusOK
+	if status == "unhealthy" {
+		statusCode = http.StatusServiceUnavailable
+	}
+	_ = response.WriteJSON(w, statusCode, response.Response{
+		Success: status == "healthy",
+		Message: fmt.Sprintf("Service is %s", status),
+		Data:    map[string]any{"status": status, "timestamp": time.Now().UTC()},
+	})
+}
+
+// CheckHealthDetails is the full report (database, providers with their 24 h error rates, memory,
+// disk) for the admin tenant only.
+func (h *HealthHandler) CheckHealthDetails(w http.ResponseWriter, r *http.Request) {
+	if !isAdminTenant(middle.GetTenantIDFromContext(r.Context())) {
+		response.Error(w, http.StatusForbidden, "Admin access required", nil)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 

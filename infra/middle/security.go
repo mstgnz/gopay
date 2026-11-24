@@ -60,6 +60,10 @@ func IPWhitelistMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// maxRequestBody bounds every request body; the largest legitimate one, a bank's 3D form post, is a
+// few kilobytes.
+const maxRequestBody = 10 << 20
+
 // RequestValidationMiddleware validates common request properties
 func RequestValidationMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -94,11 +98,12 @@ func RequestValidationMiddleware() func(http.Handler) http.Handler {
 				}
 			}
 
-			// Check request size (max 10MB)
-			if r.ContentLength > 10*1024*1024 {
+			if r.ContentLength > maxRequestBody {
 				response.Error(w, http.StatusRequestEntityTooLarge, "Request body too large", nil)
 				return
 			}
+			// A chunked body declares no length, so the limit also holds while the body is read.
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
 			next.ServeHTTP(w, r)
 		})

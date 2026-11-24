@@ -414,7 +414,7 @@ func (p *NkolayProvider) GetPaymentStatus(ctx context.Context, request provider.
 	if err != nil {
 		resp, rejected, startErr := p.rejectedStartStatus(ctx, request.PaymentID, err)
 		if startErr != nil {
-			return nil, fmt.Errorf("nkolay: failed to get payment status: %w; 3D start lookup: %v", err, startErr)
+			return nil, fmt.Errorf("nkolay: failed to get payment status: %w; 3D start lookup: %w", err, startErr)
 		}
 		if rejected {
 			return resp, nil

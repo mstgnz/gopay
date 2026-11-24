@@ -215,6 +215,9 @@ func main() {
 
 		// Add tenant rate limiting stats endpoint
 		r.Get("/rate-limit/stats", rateLimitHandler.GetTenantStats)
+
+		// The full health report; the public /health only answers up or down.
+		r.Get("/health/details", healthHandler.CheckHealthDetails)
 	})
 
 	// Not Found
