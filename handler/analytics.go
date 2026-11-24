@@ -115,6 +115,9 @@ func (h *AnalyticsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Requ
 	response.Success(w, http.StatusOK, "Dashboard stats retrieved successfully", stats)
 }
 
+// noTenant matches no rows: the scope of a caller whose own tenant id cannot be read.
+const noTenant = -1
+
 // parseAnalyticsFilters parses query parameters into analytics filters with tenant security
 func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilters {
 	now := time.Now()
@@ -141,25 +144,17 @@ func (h *AnalyticsHandler) parseAnalyticsFilters(r *http.Request) AnalyticsFilte
 		}
 	}
 
-	// Parse tenant_id with security enforcement
-	// Rule: If user is admin (tenant_id=1), they can specify any tenant_id
-	// Rule: If user is not admin, tenant_id parameter is ignored and user's own tenant_id is used
-	if tenantStr := r.URL.Query().Get("tenant_id"); tenantStr != "" && tenantStr != "all" {
-		if tenantID, err := strconv.Atoi(tenantStr); err == nil {
-			if isAdmin {
-				// Admin users (tenant_id=1) can access any tenant's data
-				filters.TenantID = &tenantID
-			} else {
-				// Non-admin users: ignore requested tenant_id, use their own tenant_id
-				if userTenantIDInt, err := strconv.Atoi(userTenantID); err == nil {
-					filters.TenantID = &userTenantIDInt
-				}
-			}
+	// A nil TenantID means every tenant, so only the admin may leave it nil. A non-admin is scoped to
+	// its own tenant whatever tenant_id says; an unreadable own id scopes it to no tenant at all.
+	if !isAdmin {
+		ownTenant, err := strconv.Atoi(userTenantID)
+		if err != nil {
+			ownTenant = noTenant
 		}
-	} else if !isAdmin {
-		// For non-admin users, always enforce their tenant_id even if "all" was requested
-		if userTenantIDInt, err := strconv.Atoi(userTenantID); err == nil {
-			filters.TenantID = &userTenantIDInt
+		filters.TenantID = &ownTenant
+	} else if tenantStr := r.URL.Query().Get("tenant_id"); tenantStr != "" && tenantStr != "all" {
+		if tenantID, err := strconv.Atoi(tenantStr); err == nil {
+			filters.TenantID = &tenantID
 		}
 	}
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -180,8 +179,7 @@ func TestComplete3DPaymentRecordsOnTheStartRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StoreCallbackState: %v", err)
 	}
-	id, _ := strconv.ParseInt(stateID, 10, 64)
-	deleteCallbackRowOnCleanup(t, id)
+	deleteCallbackRowOnCleanup(t, callbackRowID(t, stateID))
 
 	p := &scriptedProvider{resp: &PaymentResponse{Success: true, Status: StatusSuccessful, PaymentID: "X1"}}
 	GetProviderCache().Set(1, "paycell", "sandbox", p)

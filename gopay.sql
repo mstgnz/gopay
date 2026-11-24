@@ -319,6 +319,9 @@ CREATE TABLE "public"."callbacks" (
     "created_at" timestamp DEFAULT now(),
     "expires_at" timestamp NOT NULL,
     "used" boolean DEFAULT false,
+    -- SHA-256 (hex) of the random token in the callback URL. NULL only for rows from before tokens,
+    -- which only the old numeric id can address.
+    "token_hash" text,
     PRIMARY KEY ("id")
 );
 
@@ -326,6 +329,8 @@ CREATE TABLE "public"."callbacks" (
 CREATE INDEX callbacks_tenant_id ON public.callbacks USING btree (tenant_id);
 -- Serves CallbackStateOf: WHERE provider = $1 AND payment_id = $2.
 CREATE INDEX callbacks_provider_payment_id ON public.callbacks USING btree (provider, payment_id);
+-- Serves RetrieveCallbackState / UpdateCallbackState by token; one token selects one row.
+CREATE UNIQUE INDEX callbacks_token_hash ON public.callbacks USING btree (token_hash) WHERE token_hash IS NOT NULL;
 ALTER TABLE "public"."callbacks" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 INSERT INTO "public"."providers" ("name", "active") VALUES

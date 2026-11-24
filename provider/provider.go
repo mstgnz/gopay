@@ -2,10 +2,15 @@ package provider
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -223,7 +228,49 @@ const CallbackStateTTL = 45 * time.Minute
 // the used flag from it, so it must outlast the consumers' status polling (assistants stops at 24 h).
 const CallbackStateRetention = 7 * 24 * time.Hour
 
-// StoreCallbackState stores callback state in database and returns short ID
+// callbackTokenBytes is the entropy of a callback state token: 128 bits, 22 URL-safe characters, so
+// the URL a bank receives grows by about 16 characters over the old numeric id.
+const callbackTokenBytes = 16
+
+var callbackTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+
+// newCallbackToken returns a random state token and the hash stored in its place.
+func newCallbackToken() (string, string, error) {
+	b := make([]byte, callbackTokenBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", fmt.Errorf("failed to generate callback token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(b)
+	return token, callbackTokenHash(token), nil
+}
+
+func callbackTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// callbackStateKey is how a callback URL's state selects its row; one of the two is set. Every query
+// matches it with `(token_hash = $1::text OR (id = $2::int AND token_hash IS NULL))`.
+type callbackStateKey struct {
+	tokenHash any // a token: its hash
+	legacyID  any // a bare number: a state issued before tokens, matched only on a row without a token
+}
+
+// parseCallbackState accepts a token, or the canonical form of a positive numeric id. A numeric id
+// never selects a row that has a token, so new states cannot be found by walking ids.
+func parseCallbackState(state string) (callbackStateKey, error) {
+	if callbackTokenPattern.MatchString(state) {
+		return callbackStateKey{tokenHash: callbackTokenHash(state)}, nil
+	}
+	// callbacks.id is int4: a larger number would reach the query and fail there.
+	if id, err := strconv.ParseInt(state, 10, 32); err == nil && id > 0 && strconv.FormatInt(id, 10) == state {
+		return callbackStateKey{legacyID: int(id)}, nil
+	}
+	return callbackStateKey{}, ErrInvalidCallbackState
+}
+
+// StoreCallbackState stores callback state in database and returns the token for its callback URL.
+// Only the token's hash is stored.
 func StoreCallbackState(ctx context.Context, state CallbackState) (string, error) {
 	db := config.App().DB
 	if db == nil {
@@ -272,43 +319,44 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 		sessionID = sql.NullString{String: state.SessionID, Valid: true}
 	}
 
+	token, tokenHash, err := newCallbackToken()
+	if err != nil {
+		return "", err
+	}
+
 	// expires_at comes from the database clock: the column is zoneless and lib/pq reads it back as
 	// UTC, so every expiry comparison stays in SQL.
 	query := `
 		INSERT INTO callbacks (
 			tenant_id, provider, payment_id, original_callback,
 			amount, currency, conversation_id, log_id, environment,
-			client_ip, installment, session_id, state_data, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now() + make_interval(secs => $14))
-		RETURNING id
+			client_ip, installment, session_id, state_data, expires_at, token_hash
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now() + make_interval(secs => $14), $15)
 	`
 
-	var stateID int
-	err = db.QueryRowContext(ctx, query,
+	_, err = db.ExecContext(ctx, query,
 		state.TenantID, state.Provider, state.PaymentID, originalCallback,
 		state.Amount, currency, conversationID, logID, state.Environment,
-		state.ClientIP, installment, sessionID, string(stateData), CallbackStateTTL.Seconds(),
-	).Scan(&stateID)
-
+		state.ClientIP, installment, sessionID, string(stateData), CallbackStateTTL.Seconds(), tokenHash,
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to store callback state (tenant_id: %d): %w", state.TenantID, err)
 	}
 
-	return fmt.Sprintf("%d", stateID), nil
+	return token, nil
 }
 
-// RetrieveCallbackState accepts the callback state stateID for providerName, the provider whose
-// callback route was hit. A state issued for another provider is refused and stays unused.
-func RetrieveCallbackState(ctx context.Context, providerName, stateID string) (*CallbackState, error) {
+// RetrieveCallbackState accepts the callback state for providerName, the provider whose callback
+// route was hit. A state issued for another provider is refused and stays unused.
+func RetrieveCallbackState(ctx context.Context, providerName, rawState string) (*CallbackState, error) {
 	db := config.App().DB
 	if db == nil {
 		return nil, errors.New("database connection not available")
 	}
 
-	// Convert string ID to integer
-	id, err := strconv.Atoi(stateID)
+	key, err := parseCallbackState(rawState)
 	if err != nil {
-		return nil, fmt.Errorf("invalid callback state ID format: %w", err)
+		return nil, err
 	}
 
 	var stateData string
@@ -319,13 +367,14 @@ func RetrieveCallbackState(ctx context.Context, providerName, stateID string) (*
 	// completion, which may trust weaker evidence, from settling this payment.
 	query := `
 		UPDATE callbacks SET used = true
-		WHERE id = $1 AND provider = $2 AND used IS NOT TRUE AND expires_at > now()
+		WHERE (token_hash = $1::text OR (id = $2::int AND token_hash IS NULL))
+		  AND provider = $3 AND used IS NOT TRUE AND expires_at > now()
 		RETURNING state_data, session_id
 	`
 
-	err = db.QueryRowContext(ctx, query, id, providerName).Scan(&stateData, &sessionID)
+	err = db.QueryRowContext(ctx, query, key.tokenHash, key.legacyID, providerName).Scan(&stateData, &sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, callbackStateRefusal(ctx, id, providerName)
+		return nil, callbackStateRefusal(ctx, key, providerName)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve callback state: %w", err)
@@ -343,10 +392,12 @@ func RetrieveCallbackState(ctx context.Context, providerName, stateID string) (*
 }
 
 // callbackStateRefusal words why RetrieveCallbackState accepted nothing; its UPDATE already decided.
-func callbackStateRefusal(ctx context.Context, id int, providerName string) error {
+func callbackStateRefusal(ctx context.Context, key callbackStateKey, providerName string) error {
 	var otherProvider, used, expired bool
-	err := config.App().DB.QueryRowContext(ctx,
-		"SELECT provider <> $2, used IS TRUE, expires_at <= now() FROM callbacks WHERE id = $1", id, providerName,
+	err := config.App().DB.QueryRowContext(ctx, `
+		SELECT provider <> $3, used IS TRUE, expires_at <= now() FROM callbacks
+		WHERE (token_hash = $1::text OR (id = $2::int AND token_hash IS NULL))`,
+		key.tokenHash, key.legacyID, providerName,
 	).Scan(&otherProvider, &used, &expired)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -421,54 +472,60 @@ func CallbackStateOf(ctx context.Context, providerName, paymentID string) (Callb
 	}
 }
 
-// CreateShortCallbackURL creates a callback URL with short database-stored state ID. The route's
+// CreateShortCallbackURL stores the state and returns the callback URL carrying its token. The route's
 // provider and the stored one must be the same: RetrieveCallbackState accepts only that pair.
 func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, state CallbackState) (string, error) {
 	if state.Provider != provider {
 		return "", fmt.Errorf("callback state provider %q does not match the callback route %q", state.Provider, provider)
 	}
-	stateID, err := StoreCallbackState(ctx, state)
+	token, err := StoreCallbackState(ctx, state)
 	if err != nil {
 		return "", fmt.Errorf("failed to store callback state: %w", err)
 	}
 
-	return fmt.Sprintf("%s/v1/callback/%s?state=%s", gopayBaseURL, provider, stateID), nil
+	return fmt.Sprintf("%s/v1/callback/%s?state=%s", gopayBaseURL, provider, token), nil
 }
 
-// ErrInvalidCallbackState is returned for a state that is not a stored callback id. The old
-// self-contained encrypted state was removed: it was not single-use, carried its own timestamp,
-// and fell back to a key that is public whenever ENCRYPT_SECRET was unset.
+// ErrInvalidCallbackState is returned for a state that is neither a callback token nor a numeric id.
+// The old self-contained encrypted state was removed: it was not single-use, carried its own
+// timestamp, and fell back to a key that is public whenever ENCRYPT_SECRET was unset.
 var ErrInvalidCallbackState = errors.New("invalid callback state")
 
-// HandleCallbackState resolves the callback id issued by CreateShortCallbackURL for providerName.
+// HandleCallbackState resolves the state issued by CreateShortCallbackURL for providerName. The
+// error never repeats the state: an unspent token must not travel further than it already has.
 func HandleCallbackState(ctx context.Context, providerName, state string) (*CallbackState, error) {
-	if _, err := strconv.Atoi(state); err != nil {
-		return nil, ErrInvalidCallbackState
+	if _, err := parseCallbackState(state); err != nil {
+		return nil, err
 	}
 
 	callbackState, err := RetrieveCallbackState(ctx, providerName, state)
 	if err != nil {
-		return nil, fmt.Errorf("callback state not found or expired (ID: %s): %w", state, err)
+		return nil, fmt.Errorf("callback state not found or expired: %w", err)
 	}
 	return callbackState, nil
 }
 
-// UpdateCallbackState updates callback state in database
-func UpdateCallbackState(ctx context.Context, stateID string, referenceCode string) error {
+// UpdateCallbackState sets the payment id of the state its callback URL carries (Nkolay learns its
+// reference code only after the state was stored).
+func UpdateCallbackState(ctx context.Context, state string, referenceCode string) error {
 	db := config.App().DB
 	if db == nil {
 		return errors.New("database connection not available")
 	}
 
+	key, err := parseCallbackState(state)
+	if err != nil {
+		return err
+	}
+
 	query := `
-		UPDATE callbacks 
-		SET payment_id = $1,
-		    state_data = jsonb_set(state_data::jsonb, '{paymentId}', to_jsonb($2::text))
-		WHERE id = $3
+		UPDATE callbacks
+		SET payment_id = $3::text,
+		    state_data = jsonb_set(state_data::jsonb, '{paymentId}', to_jsonb($3::text))
+		WHERE (token_hash = $1::text OR (id = $2::int AND token_hash IS NULL))
 	`
 
-	_, err := db.ExecContext(ctx, query, referenceCode, referenceCode, stateID)
-	if err != nil {
+	if _, err := db.ExecContext(ctx, query, key.tokenHash, key.legacyID, referenceCode); err != nil {
 		return fmt.Errorf("failed to update callback state: %w", err)
 	}
 
