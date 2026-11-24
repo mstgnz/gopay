@@ -107,17 +107,12 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// Security Middleware
+	// Security Middleware. The rate limiter is not global: authenticated groups mount it through
+	// middle.TenantAuth, after the JWT check, and the public payment routes per IP below.
 	tenantRateLimiter := middle.NewTenantRateLimiter()
 	r.Use(middle.SecurityHeadersMiddleware())
 	r.Use(middle.IPWhitelistMiddleware())
-	r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter))
 	r.Use(middle.RequestValidationMiddleware())
-
-	// PostgreSQL Logging Middleware (add before authentication to log all requests)
-	if postgresLogger != nil {
-		r.Use(middle.PaymentLoggingMiddleware(postgresLogger))
-	}
 
 	// CORS
 	r.Use(cors.Handler(cors.Options{
@@ -177,12 +172,14 @@ func main() {
 
 	// Callback routes for payment providers (no auth required)
 	r.Route("/v1/callback", func(r chi.Router) {
+		r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter)) // per IP: no tenant here
 		// Provider-specific callback routes (provider is required)
 		r.HandleFunc("/{provider}", paymentHandler.HandleCallback)
 	})
 
 	// Webhook routes for payment notifications (no auth required)
 	r.Route("/v1/webhooks", func(r chi.Router) {
+		r.Use(middle.TenantRateLimitMiddleware(tenantRateLimiter)) // per IP: no tenant here
 		// Provider-specific webhook routes
 		r.Post("/{provider}", paymentHandler.HandleWebhook)
 	})
@@ -200,7 +197,7 @@ func main() {
 
 		// Protected auth endpoints (require JWT)
 		r.Group(func(r chi.Router) {
-			r.Use(middle.JWTAuthMiddleware(jwtService, tenantService))
+			r.Use(middle.TenantAuth(jwtService, tenantService, tenantRateLimiter))
 			r.Post("/create-tenant", authHandler.CreateTenant) // Admin-only tenant creation
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/change-password", authHandler.ChangePassword)
@@ -210,8 +207,8 @@ func main() {
 
 	// Protected v1 routes with authentication
 	r.Route("/v1", func(r chi.Router) {
-		// Add JWT authentication middleware only to protected routes
-		r.Use(middle.JWTAuthMiddleware(jwtService, tenantService))
+		// JWT authentication, then the tenant's rate limit, for every protected route
+		r.Use(middle.TenantAuth(jwtService, tenantService, tenantRateLimiter))
 
 		// Import v1 routes with required services (auth routes are handled above)
 		v1.Routes(r, postgresLogger, paymentService, providerConfig)

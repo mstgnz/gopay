@@ -145,7 +145,7 @@ func (s *TenantService) CheckTokenCurrent(claims *JWTClaims) error {
 		return err
 	}
 
-	return verifyFingerprint(claims, tenant.Password, time.Now(), s.jwtService.legacyTokensUntil)
+	return verifyFingerprint(claims, tenant.Password)
 }
 
 // RefreshToken issues a fresh token for a still-valid, unrevoked session, keeping its

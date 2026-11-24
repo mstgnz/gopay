@@ -259,8 +259,8 @@ func (p *OzanPayProvider) RefundPayment(ctx context.Context, request provider.Re
 	refundData := map[string]any{
 		"apiKey":        p.apiKey,
 		"transactionId": request.PaymentID,
-		"referenceNo":   request.PaymentID,                 // Use payment ID as reference
-		"amount":        int64(request.RefundAmount * 100), // Convert to minor units (cents)
+		"referenceNo":   request.PaymentID, // Use payment ID as reference
+		"amount":        provider.MinorUnits(request.RefundAmount),
 		"currency":      request.Currency,
 	}
 
@@ -440,7 +440,7 @@ func (p *OzanPayProvider) processPayment(ctx context.Context, request provider.P
 // Helper method to map our common request to OzanPay format according to documentation
 func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, force3D bool) map[string]any {
 	// Format amount - OzanPay expects amount in minor units (cents)
-	amountInMinorUnits := int64(request.Amount * 100)
+	amountInMinorUnits := provider.MinorUnits(request.Amount)
 
 	// Build payment request according to OzanPay API documentation
 	paymentReq := map[string]any{
@@ -545,7 +545,7 @@ func (p *OzanPayProvider) mapToOzanPayRequest(request provider.PaymentRequest, f
 				"category":    getItemCategory(item), // Default or from metadata
 				"extraField":  "",                    // Optional field
 				"quantity":    item.Quantity,
-				"unitPrice":   int64(item.Price * 100), // Price in minor units
+				"unitPrice":   provider.MinorUnits(item.Price),
 			}
 		}
 		paymentReq["basketItems"] = basketItems

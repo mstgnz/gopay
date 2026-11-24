@@ -148,8 +148,8 @@ type PaycellProvider struct {
 	// Postgres is unreachable.
 	logWriter func(kind string, payload map[string]any, logID int64)
 
-	// logReader is nil in production, for the same reason as logWriter. Only GetPaymentStatus
-	// reads through it so far.
+	// logReader is nil in production, for the same reason as logWriter. Status, 3D completion,
+	// cancel and refund read through it.
 	logReader paymentLogReader
 }
 
@@ -357,18 +357,18 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 
 	// Detect saved-card 3D flow: if a saved cardId was logged for this 3D session, complete with
 	// the saved cardId (no one-off card token). Token flow below is unchanged when no cardId.
-	savedCardID, _ := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "savedCardId")
+	savedCardID, _ := p.logs().value(callbackState.PaymentID, "savedCardId")
 
 	var cardToken string
 	var err error
 	if savedCardID == "" {
-		cardToken, err = provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "cardToken")
+		cardToken, err = p.logs().value(callbackState.PaymentID, "cardToken")
 		if err != nil {
 			return nil, fmt.Errorf("failed to get card token: %s %w", callbackState.PaymentID, err)
 		}
 	}
 
-	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", callbackState.PaymentID, "msisdn")
+	msisdn, err := p.logs().value(callbackState.PaymentID, "msisdn")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get phone number: %s %w", callbackState.PaymentID, err)
 	}
@@ -437,8 +437,10 @@ func (p *PaycellProvider) Complete3DPayment(ctx context.Context, callbackState *
 			return nil, err
 		}
 
+		// GetPaymentStatus binds the log row it is given; this completion's row, not none.
 		response, err = p.GetPaymentStatus(ctx, provider.GetPaymentStatusRequest{
 			PaymentID: callbackState.PaymentID,
+			LogID:     p.logID,
 		})
 		if err != nil {
 			return nil, err
@@ -727,6 +729,7 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 	if request.PaymentID == "" {
 		return nil, errors.New("paycell: paymentID is required")
 	}
+	p.logID = request.LogID
 
 	// reverse targets the provision by its referenceNumber, so both values have to come from
 	// providerProvisionRequest and nowhere else. A recursive any-key lookup also matches the
@@ -734,17 +737,17 @@ func (p *PaycellProvider) CancelPayment(ctx context.Context, request provider.Ca
 	// order, and it finds several representations of "amount" (TRY with a decimal point next
 	// to the kuruş value Paycell requires) with no defined winner. Missing keys must fail the
 	// cancel rather than fall back to a guess: reversing the wrong transaction moves money.
-	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
+	originalReferenceNumber, err := p.logs().nested(request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
-	amountStr, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "amount")
+	amountStr, err := p.logs().nested(request.PaymentID, "providerProvisionRequest", "amount")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get amount: %s %w", request.PaymentID, err)
 	}
 
-	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "msisdn")
+	msisdn, err := p.logs().value(request.PaymentID, "msisdn")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get phone number: %s %w", request.PaymentID, err)
 	}
@@ -838,16 +841,17 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	if request.RefundAmount <= 0 {
 		return nil, errors.New("paycell: refund amount must be greater than 0")
 	}
+	p.logID = request.LogID
 
 	// refundAll targets the provision by its referenceNumber. Same reasoning as CancelPayment:
 	// the recursive lookup can return inquireAll's own referenceNumber and refund a different
 	// order. The amount below is not affected, it comes from the caller's request.
-	originalReferenceNumber, err := provider.GetProviderNestedRequestValueFromLog("paycell", request.PaymentID, "providerProvisionRequest", "referenceNumber")
+	originalReferenceNumber, err := p.logs().nested(request.PaymentID, "providerProvisionRequest", "referenceNumber")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reference number: %s %w", request.PaymentID, err)
 	}
 
-	msisdn, err := provider.GetProviderRequestFromLogWithPaymentID("paycell", request.PaymentID, "msisdn")
+	msisdn, err := p.logs().value(request.PaymentID, "msisdn")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get phone number: %s %w", request.PaymentID, err)
 	}
@@ -947,7 +951,7 @@ func (p *PaycellProvider) GetCommission(ctx context.Context, request provider.Co
 		"binValue":         request.BinValue,
 		"installmentCount": strconv.Itoa(request.InstallmentCount),
 		"merchantCode":     p.merchantID,
-		"amount":           int(request.Amount * 100),
+		"amount":           provider.MinorUnits(request.Amount),
 		"requestHeader": PaycellRequestHeader{
 			ApplicationName:     p.username,
 			ApplicationPwd:      p.password,

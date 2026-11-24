@@ -23,15 +23,18 @@ var (
 	cacheOnce           sync.Once
 )
 
+// providerCacheTTL bounds how long a replica serves a tenant's provider config after it changed: a
+// config write invalidates only the replica that handled it, and an edit made in the database none.
+const providerCacheTTL = time.Minute
+
 // GetProviderCache returns the global provider cache instance
 func GetProviderCache() ProviderCache {
 	cacheOnce.Do(func() {
-		// Cache configuration: max 1000 entries, 1 hour TTL
-		globalProviderCache = NewProviderCache(1000, time.Hour)
+		globalProviderCache = NewProviderCache(1000, providerCacheTTL)
 
 		// Start cleanup goroutine for expired entries
 		go func() {
-			ticker := time.NewTicker(15 * time.Minute) // Cleanup every 15 minutes
+			ticker := time.NewTicker(5 * providerCacheTTL) // drops entries of keys nobody asks for any more
 			defer ticker.Stop()
 
 			for range ticker.C {
@@ -188,10 +191,8 @@ func (l *DBPaymentLogger) logResponse(ctx context.Context, logID int64, response
 	// same mechanism. That column is the lookup key for GetProviderRequestFromLogWithPaymentID
 	// (below), which recursively scans every matching row and takes LIMIT 1 with no
 	// ORDER BY. Populating it on error rows would enlarge that candidate set and can change
-	// which row wins: production currently holds 11 payments whose error rows carry a
-	// different "amount" than the row that wins today, and that value is sent to Paycell as
-	// the inquire amount (paycell/paycell.go:390 and :423). Restoring payment_id requires
-	// making that lookup deterministic first.
+	// which row wins for the keys still read that way (Paycell msisdn, cardToken, savedCardId).
+	// Restoring payment_id requires making that lookup deterministic first.
 	query := fmt.Sprintf(`
 		UPDATE %s
 		SET response = $1, response_at = NOW(), status = $2, error_code = $3,
@@ -288,7 +289,7 @@ func GetProvider(tenantID int, providerName, environment string) (PaymentProvide
 		},
 	})
 
-	provider, err := loadProviderFromDB(tenantID, providerName, environment)
+	provider, err := loadProvider(tenantID, providerName, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +305,13 @@ func GetProvider(tenantID int, providerName, environment string) (PaymentProvide
 		},
 	})
 
-	return provider, nil
+	// A copy here too: the cached instance is what every later hit clones, so a request writing
+	// onto it would hand its logID and client IP to every request until the entry expires.
+	return provider.Clone(), nil
 }
+
+// loadProvider is loadProviderFromDB; tests replace it to exercise the cache without a database.
+var loadProvider = loadProviderFromDB
 
 // loadProviderFromDB loads provider configuration from database and initializes it
 func loadProviderFromDB(tenantID int, providerName, environment string) (PaymentProvider, error) {

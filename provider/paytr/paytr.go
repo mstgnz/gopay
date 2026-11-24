@@ -212,7 +212,7 @@ func (p *PayTRProvider) RefundPayment(ctx context.Context, request provider.Refu
 	}
 
 	// Convert amount to PayTR format (multiply by 100 for kuruş)
-	refundAmountKurus := int64(request.RefundAmount * 100)
+	refundAmountKurus := provider.MinorUnits(request.RefundAmount)
 
 	data := map[string]string{
 		"merchant_id":   p.merchantID,
@@ -298,7 +298,7 @@ func (p *PayTRProvider) processDirectPayment(ctx context.Context, request provid
 // processIFramePayment handles iFrame payment (with 3D secure support)
 func (p *PayTRProvider) processIFramePayment(ctx context.Context, request provider.PaymentRequest) (*provider.PaymentResponse, error) {
 	// Convert amount to PayTR format (multiply by 100 for kuruş)
-	amountInKurus := int64(request.Amount * 100)
+	amountInKurus := provider.MinorUnits(request.Amount)
 
 	// Generate merchant order ID if not provided
 	merchantOid := request.ID

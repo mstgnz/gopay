@@ -44,19 +44,11 @@ func PasswordFingerprint(passwordHash string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// legacyTokenMargin covers a rolling deploy: an old replica may still sign pfp-less tokens for
-// a few minutes after the first new replica starts its grace period.
-const legacyTokenMargin = 15 * time.Minute
-
-// verifyFingerprint reports whether the token still matches the tenant's current password.
-// Tokens signed before the pfp claim existed carry none; they are accepted only until
-// legacyUntil, by which time every one of them has expired, so no consumer is forced to log
-// in. After that a leaked JWT_SECRET alone cannot mint a token: pfp needs the password hash.
-func verifyFingerprint(claims *JWTClaims, currentHash string, now, legacyUntil time.Time) error {
+// verifyFingerprint reports whether the token still matches the tenant's current password. A
+// token without pfp is refused: every token signed since 2026-10-06 carries one, and a leaked
+// JWT_SECRET alone cannot mint one, because pfp needs the password hash.
+func verifyFingerprint(claims *JWTClaims, currentHash string) error {
 	if claims.PasswordFingerprint == "" {
-		if now.Before(legacyUntil) {
-			return nil
-		}
 		return ErrTokenRevoked
 	}
 	if subtle.ConstantTimeCompare([]byte(claims.PasswordFingerprint), []byte(PasswordFingerprint(currentHash))) != 1 {
@@ -81,9 +73,6 @@ func refreshAllowed(claims *JWTClaims, now time.Time) error {
 type JWTService struct {
 	secretKey []byte
 	expiry    time.Duration
-	// legacyTokensUntil ends the acceptance of pfp-less tokens: one token lifetime plus a
-	// rollout margin after this process started.
-	legacyTokensUntil time.Time
 }
 
 // NewJWTService creates a new JWT service
@@ -94,9 +83,8 @@ func NewJWTService() *JWTService {
 // NewJWTServiceWithSecret builds the service without touching global config.
 func NewJWTServiceWithSecret(secret string, expiry time.Duration) *JWTService {
 	return &JWTService{
-		secretKey:         []byte(secret),
-		expiry:            expiry,
-		legacyTokensUntil: time.Now().Add(expiry + legacyTokenMargin),
+		secretKey: []byte(secret),
+		expiry:    expiry,
 	}
 }
 

@@ -26,27 +26,22 @@ func TestPasswordFingerprint_StableAndHashDependent(t *testing.T) {
 
 func TestVerifyFingerprint(t *testing.T) {
 	current := PasswordFingerprint(testHash)
-	now := time.Now()
-	inGrace, afterGrace := now.Add(time.Minute), now.Add(-time.Minute)
 
 	tests := []struct {
-		name        string
-		claim       string
-		hash        string
-		legacyUntil time.Time
-		wantErr     error
+		name    string
+		claim   string
+		hash    string
+		wantErr error
 	}{
-		{"matching password", current, testHash, inGrace, nil},
-		{"matching password after the grace period", current, testHash, afterGrace, nil},
-		{"password changed after issue", current, testHash + "changed", inGrace, ErrTokenRevoked},
-		{"forged fingerprint", "0000000000000000", testHash, inGrace, ErrTokenRevoked},
-		{"pfp-less token inside the grace period", "", testHash, inGrace, nil},
-		// A leaked JWT_SECRET alone mints only pfp-less tokens; past the grace they are refused.
-		{"pfp-less token after the grace period", "", testHash, afterGrace, ErrTokenRevoked},
+		{"matching password", current, testHash, nil},
+		{"password changed after issue", current, testHash + "changed", ErrTokenRevoked},
+		{"forged fingerprint", "0000000000000000", testHash, ErrTokenRevoked},
+		// A leaked JWT_SECRET alone mints only pfp-less tokens, at any time after any restart.
+		{"pfp-less token", "", testHash, ErrTokenRevoked},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := verifyFingerprint(&JWTClaims{PasswordFingerprint: tt.claim}, tt.hash, now, tt.legacyUntil)
+			err := verifyFingerprint(&JWTClaims{PasswordFingerprint: tt.claim}, tt.hash)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tt.wantErr)
 			}
@@ -91,15 +86,6 @@ func TestGenerateAndValidateToken_CarriesSessionClaims(t *testing.T) {
 	}
 	if claims.TenantID != "2" || claims.PasswordFingerprint != "abcdef0123456789" || claims.AuthTime != authTime.Unix() {
 		t.Fatalf("claims not carried: %+v", claims)
-	}
-}
-
-// Every token an old replica can still sign during a rollout must expire before the grace ends.
-func TestNewJWTService_LegacyGraceOutlivesOldTokens(t *testing.T) {
-	before := time.Now()
-	svc := NewJWTServiceWithSecret("test-secret", 12*time.Hour)
-	if latestOldTokenExpiry := before.Add(12 * time.Hour); svc.legacyTokensUntil.Before(latestOldTokenExpiry.Add(legacyTokenMargin)) {
-		t.Fatalf("grace ends %v, before the last old token can expire plus the rollout margin", svc.legacyTokensUntil)
 	}
 }
 

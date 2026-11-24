@@ -210,7 +210,7 @@ func (p *StripeProvider) RefundPayment(ctx context.Context, request provider.Ref
 
 	if request.RefundAmount > 0 {
 		// Convert to cents
-		params.Amount = stripe.Int64(int64(request.RefundAmount * 100))
+		params.Amount = stripe.Int64(provider.MinorUnits(request.RefundAmount))
 	}
 
 	if request.Reason != "" {
@@ -319,7 +319,7 @@ func (p *StripeProvider) processPayment(ctx context.Context, request provider.Pa
 
 	// Step 2: Create PaymentIntent
 	piParams := &stripe.PaymentIntentCreateParams{
-		Amount:             stripe.Int64(int64(request.Amount * 100)), // Convert to cents
+		Amount:             stripe.Int64(provider.MinorUnits(request.Amount)),
 		Currency:           stripe.String(strings.ToLower(request.Currency)),
 		PaymentMethod:      stripe.String(pm.ID),
 		ConfirmationMethod: stripe.String("manual"),

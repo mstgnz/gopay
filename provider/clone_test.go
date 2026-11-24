@@ -101,6 +101,74 @@ func TestGetProviderHandsOutACopyPerCall(t *testing.T) {
 	}
 }
 
+// loadStubOnMiss makes cache misses for tenant load a fresh stub instead of reading tenant_configs,
+// starting with that key absent from the cache.
+func loadStubOnMiss(t *testing.T, tenant int) {
+	t.Helper()
+	GetProviderCache().Delete(tenant, cloneTestProvider, cloneTestEnv)
+	previous := loadProvider
+	loadProvider = func(int, string, string) (PaymentProvider, error) { return &stubProvider{}, nil }
+	t.Cleanup(func() {
+		loadProvider = previous
+		GetProviderCache().Delete(tenant, cloneTestProvider, cloneTestEnv)
+	})
+}
+
+// The request that misses the cache gets a copy too; the instance it stored is what every later hit
+// clones, so a write onto it would reach every request for the cache TTL.
+func TestGetProviderCopiesOnTheMissPath(t *testing.T) {
+	const tenant = 990002
+	loadStubOnMiss(t, tenant)
+
+	first, err := GetProvider(tenant, cloneTestProvider, cloneTestEnv)
+	if err != nil {
+		t.Fatalf("GetProvider (miss): %v", err)
+	}
+	cached := GetProviderCache().Get(tenant, cloneTestProvider, cloneTestEnv)
+	if cached == nil {
+		t.Fatal("the miss did not cache the provider")
+	}
+	if first == cached {
+		t.Fatal("the miss returned the cached instance")
+	}
+
+	first.(*stubProvider).logID = 42
+	first.(*stubProvider).clientIP = "10.0.0.1"
+
+	second, err := GetProvider(tenant, cloneTestProvider, cloneTestEnv)
+	if err != nil {
+		t.Fatalf("GetProvider (hit): %v", err)
+	}
+	if got := second.(*stubProvider); got.logID != 0 || got.clientIP != "" {
+		t.Errorf("a hit after the miss inherited its state: logID=%d clientIP=%q", got.logID, got.clientIP)
+	}
+}
+
+// Run with -race: the miss caller and the hit callers cloning the same instance must not share it.
+func TestGetProviderIsolatesCallersAroundAMiss(t *testing.T) {
+	const tenant = 990003
+	loadStubOnMiss(t, tenant)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= 50; i++ {
+		wg.Add(1)
+		go func(n int64) {
+			defer wg.Done()
+			p, err := GetProvider(tenant, cloneTestProvider, cloneTestEnv)
+			if err != nil {
+				t.Errorf("GetProvider failed: %v", err)
+				return
+			}
+			p.(*stubProvider).logID = n
+		}(int64(i))
+	}
+	wg.Wait()
+
+	if cached := GetProviderCache().Get(tenant, cloneTestProvider, cloneTestEnv); cached.(*stubProvider).logID != 0 {
+		t.Errorf("cached instance was mutated: logID=%d", cached.(*stubProvider).logID)
+	}
+}
+
 // Run with -race: before GetProvider cloned, this was a write/write race on one shared struct.
 func TestGetProviderIsolatesConcurrentCallers(t *testing.T) {
 	cached := cacheStub(t)

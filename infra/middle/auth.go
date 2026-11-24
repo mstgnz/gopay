@@ -85,6 +85,17 @@ func JWTAuthMiddleware(jwtService *auth.JWTService, checker TokenChecker) func(h
 	}
 }
 
+// TenantAuth authenticates the request, then rate limits it by its tenant. The limiter must come
+// second: before authentication no request has a tenant, and every caller is counted per IP at the
+// unauthenticated rate.
+func TenantAuth(jwtService *auth.JWTService, checker TokenChecker, trl *TenantRateLimiter) func(http.Handler) http.Handler {
+	authenticate := JWTAuthMiddleware(jwtService, checker)
+	limit := TenantRateLimitMiddleware(trl)
+	return func(next http.Handler) http.Handler {
+		return authenticate(limit(next))
+	}
+}
+
 // authorizeCurrentToken writes the error response and returns false when the token is revoked
 // or revocation cannot be checked. A lookup failure is a 503, not a 401: answering 401 would
 // tell clients their credentials are wrong when the database is what failed.

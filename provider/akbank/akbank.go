@@ -216,7 +216,7 @@ func (p *AkbankProvider) RefundPayment(ctx context.Context, request provider.Ref
 		"orderId": originalOrderId,
 	}
 	akbankReq["transaction"] = map[string]any{
-		"amount":       int(request.RefundAmount * 100), // Convert to kuruş
+		"amount":       provider.MinorUnits(request.RefundAmount),
 		"currencyCode": currencyCodeTRY,
 	}
 
@@ -327,7 +327,7 @@ func (p *AkbankProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	akbankReq["transaction"] = map[string]any{
-		"amount":       int(request.Amount * 100), // Convert to kuruş
+		"amount":       provider.MinorUnits(request.Amount),
 		"currencyCode": currencyCodeTRY,
 		"motoInd":      0,
 		"installCount": installCount,

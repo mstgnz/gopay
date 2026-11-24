@@ -172,12 +172,11 @@
 //
 // # Tenant-Based Rate Limiting
 //
-// All handlers are protected by sophisticated rate limiting:
+// Authenticated routes are rate limited per tenant after the JWT check (middle.TenantAuth); 3D
+// callbacks and webhooks, which carry no tenant, per IP. Login, health and docs are not limited.
 //
-//   - Individual rate limits per tenant (extracted from JWT token)
 //   - Action-specific limits (payment, refund, status, auth, config)
 //   - Premium tenant support with higher limits
-//   - IP-based rate limiting for unauthenticated requests
 //   - Automatic cleanup and burst allowance
 //
 // Rate limiting configuration:

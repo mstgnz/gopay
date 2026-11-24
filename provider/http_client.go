@@ -52,10 +52,13 @@ func NewProviderHTTPClient(config *HTTPClientConfig) *ProviderHTTPClient {
 		config.Timeout = 30 * time.Second
 	}
 
+	// IdleConnTimeout is http.DefaultTransport's. Without it idle keep-alive connections never
+	// close, and every provider cache refresh builds a new transport that would leave its own behind.
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: config.InsecureSkipVerify,
 		},
+		IdleConnTimeout: 90 * time.Second,
 	}
 
 	client := &http.Client{

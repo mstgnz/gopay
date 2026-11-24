@@ -315,7 +315,7 @@ func (p *ZiraatProvider) RefundPayment(ctx context.Context, request provider.Ref
 		"orderId": originalOrderId,
 	}
 	ziraatReq["transaction"] = map[string]any{
-		"amount":       int(request.RefundAmount * 100), // Convert to kuruş
+		"amount":       provider.MinorUnits(request.RefundAmount),
 		"currencyCode": currencyCodeTRY,
 	}
 
@@ -428,7 +428,7 @@ func (p *ZiraatProvider) processPayment(ctx context.Context, request provider.Pa
 	}
 
 	ziraatReq["transaction"] = map[string]any{
-		"amount":       int(request.Amount * 100), // Convert to kuruş
+		"amount":       provider.MinorUnits(request.Amount),
 		"currencyCode": currencyCodeTRY,
 		"motoInd":      0,
 		"installCount": installCount,

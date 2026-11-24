@@ -318,10 +318,11 @@ if($_GET['success'] === 'true') {
 
 ### Rate Limiting
 
-- **Tenant-Based**: Individual limits per tenant
+- **Tenant-Based**: Individual limits per tenant, applied after JWT authentication
 - **Action-Specific**: Different limits for payment, refund, status checks
 - **Burst Allowance**: Additional requests above base limits
-- **IP Protection**: Rate limiting for unauthenticated requests
+- **IP Protection**: 3D callbacks and provider webhooks, which carry no tenant, are limited per IP
+- **Per Replica**: Limits are kept in memory, so each API replica counts its own requests
 
 ### Data Protection
 
