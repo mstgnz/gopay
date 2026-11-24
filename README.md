@@ -125,6 +125,7 @@ GoPay is a centralized payment gateway that standardizes multiple payment provid
 | **Paycell** | Production  | Turkey | Payment, 3D, Refund, Cancel |
 | **Nkolay**  | Production  | Turkey | Payment, 3D, Refund, Cancel |
 | **Akbank**  | Production  | Turkey | Payment, 3D, Refund, Cancel |
+| **Yapı Kredi** | Development | Turkey | Payment, 3D, Refund, Cancel, Status |
 | **İyzico**  | Development | Turkey | Payment, 3D, Refund, Cancel |
 | **OzanPay** | Development | Turkey | Payment, 3D, Refund, Cancel |
 | **Papara**  | Development | Turkey | Payment, 3D, Refund, Cancel |
@@ -414,7 +415,6 @@ GET /health                  # Health check
 
 - **🌐 API Documentation**: [Interactive API Docs](http://localhost:9999/docs)
 - **📖 Provider Guides**: Individual provider documentation in `provider/*/README.md`
-- **🔧 Examples**: Complete examples in `examples/` directory
 - **🎯 Postman Collections**: Available in each provider directory
 
 ## 🐳 Deployment
@@ -449,17 +449,19 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=gopay
 DB_USER=postgres
-DB_PASSWORD=password
+DB_PASS=password
 
 # Application
 APP_PORT=9999
 APP_URL=http://localhost:9999
-SECRET_KEY=your-secret-key
+JWT_SECRET=          # required; under 32 characters logs a warning. openssl rand -base64 48
 
-# Rate Limiting
+# Rate Limiting (requests per minute)
 TENANT_GLOBAL_RATE_LIMIT=100
 TENANT_PAYMENT_RATE_LIMIT=50
 TENANT_REFUND_RATE_LIMIT=20
+TENANT_STATUS_RATE_LIMIT=200
+UNAUTHENTICATED_RATE_LIMIT=10   # per IP
 ```
 
 ## 🤝 Contributing
@@ -488,6 +490,6 @@ This project is licensed under the [Boost Software License 1.0](./LICENSE).
 
 ---
 
-**🚀 Ready to integrate payments?** Start with the [API documentation](http://localhost:9999/docs) or check out the [examples](examples/)!
+**🚀 Ready to integrate payments?** Start with the [API documentation](http://localhost:9999/docs) or the provider guides in `provider/*/README.md`.
 
 ![](./public/dashboard.png)

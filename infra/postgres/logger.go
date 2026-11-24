@@ -469,8 +469,9 @@ func sanitizeRecursive(data any) any {
 
 // cardInputNames are form fields that carry a PAN or CVV. Providers such as Nkolay answer a 3D
 // request with an auto-submitting HTML form that echoes the card, and that HTML is logged as a
-// plain string where the key-based masking above never looks.
-const cardInputNames = `pan|cv2|cvv|cvc|cvv2|cvc2|cardcvv2|cardcvc2|cardnumber|card_number|cardno|creditcardno`
+// plain string where the key-based masking above never looks. posnetData2 is Yapı Kredi's
+// bank-encrypted card block in its 3D form.
+const cardInputNames = `pan|cv2|cvv|cvc|cvv2|cvc2|cardcvv2|cardcvc2|cardnumber|card_number|cardno|creditcardno|posnetdata2`
 
 // Quotes may arrive JSON-escaped (\") when the HTML sits inside a raw provider response body.
 var (

@@ -176,6 +176,7 @@
 //   - Nkolay: Enterprise payment processing
 //   - PayTR: Popular Turkish payment gateway
 //   - PayU: International payment processing
+//   - Yapı Kredi: Posnet virtual POS (XML service and 3D Secure)
 //
 // Each provider is implemented in its own subpackage and can be imported
 // individually as needed.

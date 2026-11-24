@@ -486,6 +486,16 @@ type LoggedOutcome struct {
 // GetThreeDStartOutcome returns the logged answer of the newest 3D start row for paymentID. LogResponse
 // sets payment_id from the answer, so a start that ended in a Go error (payment_id blanked) is not found.
 func GetThreeDStartOutcome(ctx context.Context, providerName, paymentID string) (LoggedOutcome, error) {
+	return loggedOutcome(ctx, providerName, Start3DEndpoint, "3D start", paymentID)
+}
+
+// GetThreeDCompleteOutcome returns the logged answer of the newest 3D callback row for paymentID.
+// Like the start, a callback that ended in a Go error has payment_id blanked and is not found.
+func GetThreeDCompleteOutcome(ctx context.Context, providerName, paymentID string) (LoggedOutcome, error) {
+	return loggedOutcome(ctx, providerName, Complete3DEndpoint, "3D callback", paymentID)
+}
+
+func loggedOutcome(ctx context.Context, providerName, endpoint, label, paymentID string) (LoggedOutcome, error) {
 	query := fmt.Sprintf(`
 		SELECT COALESCE(status, ''), COALESCE(error_code, ''), COALESCE(response ->> 'message', '')
 		FROM %s
@@ -495,12 +505,12 @@ func GetThreeDStartOutcome(ctx context.Context, providerName, paymentID string) 
 	`, providerName)
 
 	var out LoggedOutcome
-	err := config.App().DB.QueryRowContext(ctx, query, Start3DEndpoint, paymentID).Scan(&out.Status, &out.ErrorCode, &out.Message)
+	err := config.App().DB.QueryRowContext(ctx, query, endpoint, paymentID).Scan(&out.Status, &out.ErrorCode, &out.Message)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return LoggedOutcome{}, fmt.Errorf("3D start %w", ErrLogValueNotFound)
+			return LoggedOutcome{}, fmt.Errorf("%s %w", label, ErrLogValueNotFound)
 		}
-		return LoggedOutcome{}, fmt.Errorf("failed to find 3D start log: %w", err)
+		return LoggedOutcome{}, fmt.Errorf("failed to find %s log: %w", label, err)
 	}
 	return out, nil
 }

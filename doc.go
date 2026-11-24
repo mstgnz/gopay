@@ -30,6 +30,7 @@
 //   - Nkolay: Enterprise payment processing
 //   - PayTR: Popular Turkish payment gateway
 //   - PayU: International payment processing
+//   - Yapı Kredi: Posnet virtual POS (XML service and 3D Secure)
 //
 // # Authentication System
 //
@@ -286,10 +287,8 @@
 //
 // # Examples
 //
-// Comprehensive examples are available in the examples/ directory:
-//   - examples/iyzico_example.go - İyzico integration example
-//   - examples/multi_tenant/ - Multi-tenant setup examples
-//   - examples/*_curl_examples.sh - cURL examples for each provider
+// Request examples for every endpoint are in README.md; provider-specific requests and
+// sandbox credentials are in provider/{provider}/README.md.
 //
 // # Production Deployment
 //

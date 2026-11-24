@@ -19,6 +19,7 @@ import (
 	_ "github.com/mstgnz/gopay/provider/paytr"
 	_ "github.com/mstgnz/gopay/provider/payu"
 	_ "github.com/mstgnz/gopay/provider/stripe"
+	_ "github.com/mstgnz/gopay/provider/yapikredi"
 	_ "github.com/mstgnz/gopay/provider/ziraat"
 )
 

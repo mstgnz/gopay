@@ -397,6 +397,42 @@ ALTER TABLE "public"."payu" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."t
 CREATE INDEX payu_tenant_id ON public.payu USING btree (tenant_id);
 
 -- Sequence and defined type
+CREATE SEQUENCE IF NOT EXISTS yapikredi_id_seq;
+
+-- Table Definition: Yapı Kredi Posnet log rows, same shape as the other provider tables.
+CREATE TABLE "public"."yapikredi" (
+    "id" int8 NOT NULL DEFAULT nextval('yapikredi_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
+    PRIMARY KEY ("id")
+);
+ALTER SEQUENCE yapikredi_id_seq OWNED BY public.yapikredi.id;
+ALTER TABLE "public"."yapikredi" ADD CONSTRAINT yapikredi_tenant_id_fkey FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE RESTRICT;
+
+-- Indices
+-- Serves the logs handler (WHERE tenant_id = $1) and the foreign key.
+CREATE INDEX yapikredi_tenant_id ON public.yapikredi USING btree (tenant_id);
+-- Serves the payment_id lookups in provider/logger.go (WHERE payment_id = $1 ... ORDER BY id DESC LIMIT 1).
+CREATE INDEX yapikredi_payment_id ON public.yapikredi USING btree (payment_id, id);
+
+INSERT INTO "public"."providers" ("name", "active") VALUES ('yapikredi', true);
+
+-- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS saved_cards_id_seq;
 
 -- Table Definition

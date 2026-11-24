@@ -143,6 +143,49 @@ func TestGetThreeDStartOutcome(t *testing.T) {
 	}
 }
 
+// Uses the yapikredi table, so a gopay.sql without it fails here in CI.
+func TestGetThreeDCompleteOutcome(t *testing.T) {
+	requireTestDB(t)
+	ctx := context.Background()
+	paymentID := fmt.Sprintf("GP%018d", time.Now().UnixNano()%1e18)
+
+	insert := func(endpoint, status, errorCode, responseJSON string) {
+		t.Helper()
+		var id int64
+		err := config.App().DB.QueryRow(
+			`INSERT INTO yapikredi (tenant_id, payment_id, endpoint, status, error_code, response) VALUES (1, $1, $2, $3, $4, $5::jsonb) RETURNING id`,
+			paymentID, endpoint, status, errorCode, responseJSON,
+		).Scan(&id)
+		if err != nil {
+			t.Fatalf("insert log row: %v", err)
+		}
+		t.Cleanup(func() {
+			if _, err := config.App().DB.Exec(`DELETE FROM yapikredi WHERE id = $1`, id); err != nil {
+				t.Errorf("delete log row %d: %v", id, err)
+			}
+		})
+	}
+
+	insert(Start3DEndpoint, "pending", "", `{"message":"start"}`)
+	if _, err := GetThreeDCompleteOutcome(ctx, "yapikredi", paymentID); !errors.Is(err, ErrLogValueNotFound) {
+		t.Errorf("start row read as the callback: err = %v", err)
+	}
+
+	insert(Complete3DEndpoint, "failed", "3D_AUTH_FAILED", `{"message":"Not authenticated"}`)
+	got, err := GetThreeDCompleteOutcome(ctx, "yapikredi", paymentID)
+	if err != nil {
+		t.Fatalf("GetThreeDCompleteOutcome: %v", err)
+	}
+	if want := (LoggedOutcome{Status: "failed", ErrorCode: "3D_AUTH_FAILED", Message: "Not authenticated"}); got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+
+	// The start reader still sees only its own row.
+	if start, err := GetThreeDStartOutcome(ctx, "yapikredi", paymentID); err != nil || start.Message != "start" {
+		t.Errorf("start outcome = %+v, %v", start, err)
+	}
+}
+
 func TestGetProviderNestedRequestValueFromLog_NotFoundSentinel(t *testing.T) {
 	requireTestDB(t)
 	paymentID := fmt.Sprintf("lognested-%d", time.Now().UnixNano())

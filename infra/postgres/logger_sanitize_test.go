@@ -279,6 +279,20 @@ func TestSanitizeForLogRedactsCardInputsInHTML(t *testing.T) {
 	}
 }
 
+// Yapı Kredi's 3D form carries the bank-encrypted card in posnetData2; posnetData is the order data.
+func TestSanitizeForLogRedactsPosnetData2(t *testing.T) {
+	form := `<input type="hidden" name="posnetData" value="ORDERBLOCK">` +
+		`<input type="hidden" name="posnetData2" value="CARDBLOCK">`
+
+	got := redactCardInputs(form)
+	if strings.Contains(got, "CARDBLOCK") {
+		t.Errorf("posnetData2 survived: %s", got)
+	}
+	if !strings.Contains(got, "ORDERBLOCK") {
+		t.Errorf("posnetData was removed: %s", got)
+	}
+}
+
 func TestRedactCardInputsLeavesOrdinaryStringsAlone(t *testing.T) {
 	for _, s := range []string{
 		"",

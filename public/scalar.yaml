@@ -30,6 +30,7 @@ info:
     - ✅ **PayU** (Global) - Production ready
     - ✅ **Payten** (Turkey) - Production ready
     - ✅ **Ziraat** (Turkey) - Production ready
+    - 🧪 **Yapı Kredi** (Turkey) - Posnet, in bank testing
 
     ## Authentication System
     GoPay uses JWT (JSON Web Token) based authentication, signed with the `JWT_SECRET` environment variable.
@@ -1093,6 +1094,7 @@ paths:
         - payu
         - payten
         - ziraat
+        - yapikredi
       tags: [Configuration]
       security:
         - BearerAuth: []
@@ -1110,7 +1112,7 @@ paths:
                   example: 2
                 provider:
                   type: string
-                  enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+                  enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
                   description: Payment provider name (select from list)
                   example: paycell
                 environment:
@@ -1186,7 +1188,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
       responses:
@@ -1223,7 +1225,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: tenant_id
@@ -1289,7 +1291,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: environment
@@ -1857,7 +1859,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: paymentID
@@ -1907,7 +1909,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: paymentID
@@ -1964,7 +1966,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: environment
@@ -2033,7 +2035,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: nkolay
         - name: environment
@@ -2196,7 +2198,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name (must exist in providers table)
           example: iyzico
         - name: tenantId
@@ -2288,7 +2290,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name (must exist in providers table)
           example: iyzico
         - name: tenantId
@@ -2392,7 +2394,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: environment
@@ -2538,7 +2540,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
             default: all
           description: Payment provider filter
           example: "all"
@@ -2674,7 +2676,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
             default: all
           description: Payment provider filter
           example: "all"
@@ -2799,7 +2801,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
             default: all
           description: Payment provider filter
           example: "all"
@@ -2891,7 +2893,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [all, iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
             default: all
           description: Payment provider filter
           example: "all"
@@ -3094,7 +3096,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: "iyzico"
         - name: payment_id
@@ -3239,7 +3241,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: paymentId
@@ -3341,7 +3343,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: paymentID
@@ -3409,7 +3411,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: hours
@@ -3480,7 +3482,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: iyzico
         - name: hours
@@ -4028,6 +4030,7 @@ paths:
         - `payu` - PayU (Global)
         - `payten` - Payten (Turkey)
         - `ziraat` - Ziraat (Turkey)
+        - `yapikredi` - Yapı Kredi Posnet (Turkey)
 
         **JWT Token Authentication:**
         - Bearer token automatically provides tenant context
@@ -4041,7 +4044,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat]
+            enum: [iyzico, ozanpay, stripe, paycell, papara, nkolay, paytr, payu, payten, ziraat, yapikredi]
           description: Payment provider name
           example: paycell
         - name: environment
