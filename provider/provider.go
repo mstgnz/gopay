@@ -297,8 +297,9 @@ func StoreCallbackState(ctx context.Context, state CallbackState) (string, error
 	return fmt.Sprintf("%d", stateID), nil
 }
 
-// RetrieveCallbackState retrieves callback state from database using ID
-func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState, error) {
+// RetrieveCallbackState accepts the callback state stateID for providerName, the provider whose
+// callback route was hit. A state issued for another provider is refused and stays unused.
+func RetrieveCallbackState(ctx context.Context, providerName, stateID string) (*CallbackState, error) {
 	db := config.App().DB
 	if db == nil {
 		return nil, errors.New("database connection not available")
@@ -314,16 +315,17 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 	var sessionID sql.NullString
 
 	// One statement accepts the callback, so two callbacks for one state cannot both pass, and the
-	// expiry is compared on the database clock.
+	// expiry is compared on the database clock. The provider filter keeps another provider's
+	// completion, which may trust weaker evidence, from settling this payment.
 	query := `
 		UPDATE callbacks SET used = true
-		WHERE id = $1 AND used IS NOT TRUE AND expires_at > now()
+		WHERE id = $1 AND provider = $2 AND used IS NOT TRUE AND expires_at > now()
 		RETURNING state_data, session_id
 	`
 
-	err = db.QueryRowContext(ctx, query, id).Scan(&stateData, &sessionID)
+	err = db.QueryRowContext(ctx, query, id, providerName).Scan(&stateData, &sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, callbackStateRefusal(ctx, id)
+		return nil, callbackStateRefusal(ctx, id, providerName)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve callback state: %w", err)
@@ -341,16 +343,18 @@ func RetrieveCallbackState(ctx context.Context, stateID string) (*CallbackState,
 }
 
 // callbackStateRefusal words why RetrieveCallbackState accepted nothing; its UPDATE already decided.
-func callbackStateRefusal(ctx context.Context, id int) error {
-	var used, expired bool
+func callbackStateRefusal(ctx context.Context, id int, providerName string) error {
+	var otherProvider, used, expired bool
 	err := config.App().DB.QueryRowContext(ctx,
-		"SELECT used IS TRUE, expires_at <= now() FROM callbacks WHERE id = $1", id,
-	).Scan(&used, &expired)
+		"SELECT provider <> $2, used IS TRUE, expires_at <= now() FROM callbacks WHERE id = $1", id, providerName,
+	).Scan(&otherProvider, &used, &expired)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return errors.New("callback state not found")
 	case err != nil:
 		return fmt.Errorf("failed to retrieve callback state: %w", err)
+	case otherProvider:
+		return errors.New("callback state belongs to another provider")
 	case used:
 		return errors.New("callback state already used")
 	case expired:
@@ -417,8 +421,12 @@ func CallbackStateOf(ctx context.Context, providerName, paymentID string) (Callb
 	}
 }
 
-// CreateShortCallbackURL creates a callback URL with short database-stored state ID
+// CreateShortCallbackURL creates a callback URL with short database-stored state ID. The route's
+// provider and the stored one must be the same: RetrieveCallbackState accepts only that pair.
 func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, state CallbackState) (string, error) {
+	if state.Provider != provider {
+		return "", fmt.Errorf("callback state provider %q does not match the callback route %q", state.Provider, provider)
+	}
 	stateID, err := StoreCallbackState(ctx, state)
 	if err != nil {
 		return "", fmt.Errorf("failed to store callback state: %w", err)
@@ -432,13 +440,13 @@ func CreateShortCallbackURL(ctx context.Context, gopayBaseURL, provider string, 
 // and fell back to a key that is public whenever ENCRYPT_SECRET was unset.
 var ErrInvalidCallbackState = errors.New("invalid callback state")
 
-// HandleCallbackState resolves the callback id issued by CreateShortCallbackURL.
-func HandleCallbackState(ctx context.Context, state string) (*CallbackState, error) {
+// HandleCallbackState resolves the callback id issued by CreateShortCallbackURL for providerName.
+func HandleCallbackState(ctx context.Context, providerName, state string) (*CallbackState, error) {
 	if _, err := strconv.Atoi(state); err != nil {
 		return nil, ErrInvalidCallbackState
 	}
 
-	callbackState, err := RetrieveCallbackState(ctx, state)
+	callbackState, err := RetrieveCallbackState(ctx, providerName, state)
 	if err != nil {
 		return nil, fmt.Errorf("callback state not found or expired (ID: %s): %w", state, err)
 	}

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -17,8 +18,17 @@ func TestHandleCallbackState_RejectsNonNumericState(t *testing.T) {
 		"12abc",
 		"1 OR 1=1",
 	} {
-		if _, err := HandleCallbackState(context.Background(), state); !errors.Is(err, ErrInvalidCallbackState) {
+		if _, err := HandleCallbackState(context.Background(), "paycell", state); !errors.Is(err, ErrInvalidCallbackState) {
 			t.Errorf("state %q: err = %v, want ErrInvalidCallbackState", state, err)
 		}
+	}
+}
+
+// The route a callback URL names and the provider stored with the state must agree; otherwise the
+// payer's callback would be refused. Checked before anything is stored.
+func TestCreateShortCallbackURL_RefusesProviderMismatch(t *testing.T) {
+	_, err := CreateShortCallbackURL(context.Background(), "https://gopay.example", "paycell", CallbackState{TenantID: 1, Provider: "ziraat"})
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("err = %v, want a provider mismatch", err)
 	}
 }

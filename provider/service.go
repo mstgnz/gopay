@@ -128,7 +128,7 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 
 // Complete3DPayment completes a 3D secure payment after user authentication
 func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, state string, data map[string]string) (*PaymentResponse, error) {
-	callbackState, err := HandleCallbackState(ctx, state)
+	callbackState, err := HandleCallbackState(ctx, providerName, state)
 	if err != nil {
 		return nil, err
 	}

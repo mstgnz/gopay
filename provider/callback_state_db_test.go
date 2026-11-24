@@ -75,7 +75,7 @@ func TestRetrieveCallbackState_AcceptsOnce(t *testing.T) {
 	stateID := storeTestCallbackState(t, paymentID)
 	ctx := context.Background()
 
-	state, err := RetrieveCallbackState(ctx, stateID)
+	state, err := RetrieveCallbackState(ctx, "paycell", stateID)
 	if err != nil {
 		t.Fatalf("first RetrieveCallbackState: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestRetrieveCallbackState_AcceptsOnce(t *testing.T) {
 		t.Errorf("paymentID = %q, want %q", state.PaymentID, paymentID)
 	}
 
-	if _, err := RetrieveCallbackState(ctx, stateID); err == nil || !strings.Contains(err.Error(), "already used") {
+	if _, err := RetrieveCallbackState(ctx, "paycell", stateID); err == nil || !strings.Contains(err.Error(), "already used") {
 		t.Errorf("second RetrieveCallbackState: err = %v, want already used", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestRetrieveCallbackState_RefusesExpired(t *testing.T) {
 	id := insertCallbackRow(t, "paycell", fmt.Sprintf("cbexpired-%d", time.Now().UnixNano()), false, "-1 second")
 	ctx := context.Background()
 
-	if _, err := RetrieveCallbackState(ctx, strconv.FormatInt(id, 10)); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := RetrieveCallbackState(ctx, "paycell", strconv.FormatInt(id, 10)); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("err = %v, want expired", err)
 	}
 	var used bool
@@ -106,8 +106,41 @@ func TestRetrieveCallbackState_RefusesExpired(t *testing.T) {
 		t.Error("a refused callback marked the state used")
 	}
 
-	if _, err := RetrieveCallbackState(ctx, "2147483647"); err == nil || !strings.Contains(err.Error(), "not found") {
+	if _, err := RetrieveCallbackState(ctx, "paycell", "2147483647"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("unknown id: err = %v, want not found", err)
+	}
+}
+
+// A state completed through another provider's callback route must be refused without spending it,
+// so the payer's real callback still completes it.
+func TestRetrieveCallbackState_RefusesAnotherProvider(t *testing.T) {
+	requireTestDB(t)
+	stateID := storeTestCallbackState(t, fmt.Sprintf("cbprovider-%d", time.Now().UnixNano()))
+	ctx := context.Background()
+
+	if _, err := RetrieveCallbackState(ctx, "ziraat", stateID); err == nil || !strings.Contains(err.Error(), "another provider") {
+		t.Fatalf("other provider: err = %v, want another provider", err)
+	}
+	if _, err := RetrieveCallbackState(ctx, "paycell", stateID); err != nil {
+		t.Errorf("own provider after a refused attempt: %v", err)
+	}
+
+	// The provider check comes first, so a wrong route learns nothing about used or expired rows.
+	spent := insertCallbackRow(t, "paycell", fmt.Sprintf("cbprovider-spent-%d", time.Now().UnixNano()), true, "-1 minute")
+	if _, err := RetrieveCallbackState(ctx, "ziraat", strconv.FormatInt(spent, 10)); err == nil || !strings.Contains(err.Error(), "another provider") {
+		t.Errorf("spent row on another route: err = %v, want another provider", err)
+	}
+}
+
+// The service passes the route's provider, not the state, as the provider: two adjacent string
+// parameters that would still compile if swapped.
+func TestComplete3DPayment_RefusesStateOfAnotherProvider(t *testing.T) {
+	requireTestDB(t)
+	stateID := storeTestCallbackState(t, fmt.Sprintf("cbservice-%d", time.Now().UnixNano()))
+
+	_, err := NewPaymentService(nil).Complete3DPayment(context.Background(), "ziraat", stateID, map[string]string{})
+	if err == nil || !strings.Contains(err.Error(), "another provider") {
+		t.Errorf("err = %v, want the state refused as another provider's", err)
 	}
 }
 
@@ -121,7 +154,7 @@ func TestRetrieveCallbackState_ConcurrentCallbacksAcceptOne(t *testing.T) {
 	accepted := 0
 	for range callers {
 		wg.Go(func() {
-			if _, err := RetrieveCallbackState(context.Background(), stateID); err == nil {
+			if _, err := RetrieveCallbackState(context.Background(), "paycell", stateID); err == nil {
 				mu.Lock()
 				accepted++
 				mu.Unlock()
