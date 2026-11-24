@@ -1,6 +1,8 @@
 package response
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"net/http"
 
@@ -62,7 +64,7 @@ const internalErrorText = "internal error"
 // read it (provider decline reasons, sovtajyeri's "not found").
 func clientErrorText(err error) string {
 	var dbErr *pq.Error
-	if errors.As(err, &dbErr) {
+	if errors.As(err, &dbErr) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, sql.ErrConnDone) || errors.Is(err, sql.ErrTxDone) {
 		logger.Error("database error kept out of a response", err, logger.LogContext{})
 		return internalErrorText
 	}

@@ -212,7 +212,7 @@
 //   - Payment requests: 50/minute per tenant (default)
 //   - Refund requests: 20/minute per tenant (default)
 //   - Status requests: 200/minute per tenant (default)
-//   - Unauthenticated requests: 10/minute per IP
+//   - 3D callbacks and webhooks: 60/minute per IP
 //   - Burst allowance: Additional 10 requests above limits
 //   - Automatic cleanup: Old entries cleaned every 5 minutes
 //
@@ -222,7 +222,7 @@
 //	TENANT_PAYMENT_RATE_LIMIT=50      # Payment requests per minute
 //	TENANT_REFUND_RATE_LIMIT=20       # Refund requests per minute
 //	TENANT_STATUS_RATE_LIMIT=200      # Status requests per minute
-//	UNAUTHENTICATED_RATE_LIMIT=10     # Unauthenticated requests per minute
+//	UNAUTHENTICATED_RATE_LIMIT=60     # 3D callbacks and webhooks per IP per minute
 //
 // # Callbacks and Webhooks
 //

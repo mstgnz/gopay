@@ -101,11 +101,13 @@ func loadTenantRateLimitConfig() *TenantRateLimitConfig {
 	}
 
 	// Load from environment with defaults
-	cfg.DefaultGlobalRate = config.GetIntEnv("TENANT_GLOBAL_RATE_LIMIT", 100)    // 100/min per tenant
-	cfg.DefaultPaymentRate = config.GetIntEnv("TENANT_PAYMENT_RATE_LIMIT", 50)   // 50/min payments per tenant
-	cfg.DefaultRefundRate = config.GetIntEnv("TENANT_REFUND_RATE_LIMIT", 20)     // 20/min refunds per tenant
-	cfg.DefaultStatusRate = config.GetIntEnv("TENANT_STATUS_RATE_LIMIT", 200)    // 200/min status checks per tenant
-	cfg.UnauthenticatedRate = config.GetIntEnv("UNAUTHENTICATED_RATE_LIMIT", 10) // 10/min per IP for unauthenticated
+	cfg.DefaultGlobalRate = config.GetIntEnv("TENANT_GLOBAL_RATE_LIMIT", 100)  // 100/min per tenant
+	cfg.DefaultPaymentRate = config.GetIntEnv("TENANT_PAYMENT_RATE_LIMIT", 50) // 50/min payments per tenant
+	cfg.DefaultRefundRate = config.GetIntEnv("TENANT_REFUND_RATE_LIMIT", 20)   // 20/min refunds per tenant
+	cfg.DefaultStatusRate = config.GetIntEnv("TENANT_STATUS_RATE_LIMIT", 200)  // 200/min status checks per tenant
+	// Only 3D callbacks and webhooks are limited per IP. Payers behind one carrier NAT share an
+	// address, and a 429 on a 3D return loses that payment's completion.
+	cfg.UnauthenticatedRate = config.GetIntEnv("UNAUTHENTICATED_RATE_LIMIT", 60)
 
 	return cfg
 }

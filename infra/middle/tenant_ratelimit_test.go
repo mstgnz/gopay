@@ -27,6 +27,14 @@ func TestNewTenantRateLimiter(t *testing.T) {
 	}
 }
 
+// The per-IP limit covers 3D callbacks; payers behind a carrier NAT share one address.
+func TestCallbackLimitDefaultsTo60PerMinute(t *testing.T) {
+	t.Setenv("UNAUTHENTICATED_RATE_LIMIT", "")
+	if got := NewTenantRateLimiter().config.UnauthenticatedRate; got != 60 {
+		t.Errorf("default per-IP limit %d, want 60", got)
+	}
+}
+
 func TestTenantRateLimiter_Allow(t *testing.T) {
 	rl := &TenantRateLimiter{
 		tenants: make(map[string]*tenantBucket),

@@ -185,7 +185,7 @@
 //   - Payment requests: 50/minute per tenant (default)
 //   - Refund requests: 20/minute per tenant (default)
 //   - Status requests: 200/minute per tenant (default)
-//   - Unauthenticated requests: 10/minute per IP
+//   - 3D callbacks and webhooks: 60/minute per IP
 //   - Premium tenants: 2x rate multiplier
 //
 // # Callback and Webhook Handling

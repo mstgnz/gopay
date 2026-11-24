@@ -24,10 +24,63 @@ type fakeStore struct {
 	byID      map[string]int64 // provider payment id -> row
 	byLog     map[int64]int64  // start log id -> row
 	findErr   error
+
+	ops      []*fakeOperation
+	opErr    error // OpenOperation fails with it
+	closeErr error
+}
+
+type fakeOperation struct {
+	row int64
+	PaymentOperation
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{events: map[int64][]PaymentEvent{}, byID: map[string]int64{}, byLog: map[int64]int64{}}
+}
+
+// OpenOperation keeps the partial unique index's rule: one pending or unknown operation per row.
+func (f *fakeStore) OpenOperation(_ context.Context, row int64, kind string, amount *float64, _ int64) (int64, error) {
+	if f.opErr != nil {
+		return 0, f.opErr
+	}
+	for _, op := range f.ops {
+		if op.row == row && (op.Outcome == OutcomePending || op.Outcome == OutcomeUnknown) {
+			return 0, ErrOperationInFlight
+		}
+	}
+	f.ops = append(f.ops, &fakeOperation{row: row, PaymentOperation: PaymentOperation{
+		ID: int64(len(f.ops) + 1), Kind: kind, Amount: amount, Outcome: OutcomePending,
+	}})
+	return int64(len(f.ops)), nil
+}
+
+func (f *fakeStore) CloseOperation(_ context.Context, id int64, outcome OperationOutcome) error {
+	if f.closeErr != nil {
+		return f.closeErr
+	}
+	f.ops[id-1].Outcome = outcome
+	return nil
+}
+
+func (f *fakeStore) UnsettledOperation(_ context.Context, row int64) (*PaymentOperation, error) {
+	for _, op := range f.ops {
+		if op.row == row && (op.Outcome == OutcomePending || op.Outcome == OutcomeUnknown) {
+			copied := op.PaymentOperation
+			return &copied, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeStore) SucceededRefundTotal(_ context.Context, row int64) (float64, error) {
+	total := 0.0
+	for _, op := range f.ops {
+		if op.row == row && op.Kind == OperationRefund && op.Outcome == OutcomeSucceeded && op.Amount != nil {
+			total += *op.Amount
+		}
+	}
+	return total, nil
 }
 
 func (f *fakeStore) InsertPayment(_ context.Context, rec NewPaymentRecord) (int64, error) {

@@ -154,12 +154,25 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 		Reason:    req.Reason,
 	})
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to cancel payment", err)
+		response.Error(w, operationErrorStatus(err), "Failed to cancel payment", err)
 		return
 	}
 
 	// Return response
 	response.Return(w, http.StatusOK, resp.Success, resp.Message, resp)
+}
+
+// operationErrorStatus is the HTTP status of a failed cancel or refund. A refusal by the duplicate
+// guard is a conflict the caller resolves by waiting; a guard that could not record is unavailable.
+func operationErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, provider.ErrOperationInFlight), errors.Is(err, provider.ErrOperationUnresolved):
+		return http.StatusConflict
+	case errors.Is(err, provider.ErrOperationNotRecorded):
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 // RefundPayment handles payment refund requests
@@ -192,7 +205,7 @@ func (h *PaymentHandler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	// Process refund
 	resp, err := h.paymentService.RefundPayment(ctx, environment, providerName, req)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to refund payment", err)
+		response.Error(w, operationErrorStatus(err), "Failed to refund payment", err)
 		return
 	}
 

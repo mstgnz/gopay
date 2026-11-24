@@ -1,6 +1,8 @@
 package response
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +30,11 @@ func TestErrorKeepsDatabaseErrorsOutOfTheResponse(t *testing.T) {
 		&pq.Error{Code: "42P01", Message: `relation "callbacks" does not exist`})
 	if got := errorField(t, dbErr); got != internalErrorText {
 		t.Errorf("error = %q, want %q", got, internalErrorText)
+	}
+	for _, connErr := range []error{driver.ErrBadConn, sql.ErrConnDone, sql.ErrTxDone} {
+		if got := errorField(t, fmt.Errorf("failed to store callback state: %w", connErr)); got != internalErrorText {
+			t.Errorf("%v: error = %q, want %q", connErr, got, internalErrorText)
+		}
 	}
 }
 

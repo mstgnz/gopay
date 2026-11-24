@@ -512,3 +512,24 @@ CREATE TABLE "public"."payment_events" (
 );
 -- Serves the FK and reading a payment's history in order.
 CREATE INDEX payment_events_payment ON public.payment_events USING btree (payment_id, id);
+
+-- A cancel or refund, written before the provider is called and closed with its outcome. "unknown"
+-- means the provider call failed after it may have reached the bank; it blocks the next operation on
+-- the payment until the provider's own record settles it.
+CREATE TABLE "public"."payment_operations" (
+    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "payment_id" bigint NOT NULL REFERENCES "public"."payments"("id") ON DELETE RESTRICT,
+    "kind" text NOT NULL CHECK (kind IN ('cancel', 'refund')),
+    -- NULL for a cancel and for a full refund.
+    "amount" numeric(15,2) CHECK (amount > 0),
+    CHECK (kind = 'refund' OR amount IS NULL),
+    "outcome" text NOT NULL CHECK (outcome IN ('pending', 'succeeded', 'refused', 'unknown')),
+    -- id of the operation's row in the provider's log table.
+    "log_id" bigint,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+-- One open operation per payment: a second concurrent cancel or refund fails on this index.
+CREATE UNIQUE INDEX payment_operations_open ON public.payment_operations USING btree (payment_id) WHERE outcome IN ('pending', 'unknown');
+-- Serves the FK and the succeeded-refund total.
+CREATE INDEX payment_operations_payment ON public.payment_operations USING btree (payment_id, id);

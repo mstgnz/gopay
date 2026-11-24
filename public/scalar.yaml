@@ -1947,8 +1947,12 @@ paths:
           description: Invalid parameters or payment cannot be cancelled
         '401':
           description: Unauthorized - Invalid JWT token
+        '409':
+          description: Another cancel or refund of this payment is running, or an earlier one has no known outcome yet. Nothing was sent; retry later.
         '500':
           description: Internal server error
+        '503':
+          description: The cancel could not be recorded first, so it was not sent. Retry later.
 
   # Refund Operations
   /v1/payments/{provider}/refund:
@@ -2001,8 +2005,12 @@ paths:
           description: Unauthorized - Invalid JWT token
         '404':
           description: Payment not found
+        '409':
+          description: Another cancel or refund of this payment is running, or an earlier one has no known outcome yet. Nothing was sent; retry later. A retry of a refund that already reached the bank answers 200 without sending it again.
         '500':
           description: Internal server error
+        '503':
+          description: The refund could not be recorded first, so it was not sent. Retry later.
 
   # Installment Operations
   /v1/payments/{provider}/installments:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/mstgnz/gopay/provider"
@@ -56,6 +57,22 @@ func TestCancelAndRefundLogToTheirOwnRow(t *testing.T) {
 	}
 	if got := rec.logID("refundRequest"); got != 56 {
 		t.Errorf("refundRequest written to row %d, want 56", got)
+	}
+}
+
+// The refund guard records provider.MinorUnits(amount); Paycell must be sent the same kuruş, or a
+// half-kuruş amount (10.125) would never match the ledger.
+func TestRefundSendsTheMinorUnitsTheGuardRecords(t *testing.T) {
+	stub := newPaycellStub()
+	p := bindingProvider(t, stub.server(t).URL, newLogRecorder())
+	for _, amount := range []float64{10.125, 0.025, 19.99} {
+		if _, err := p.RefundPayment(context.Background(), provider.RefundRequest{PaymentID: "pay-1", RefundAmount: amount, LogID: 1}); err != nil {
+			t.Fatal(err)
+		}
+		want := strconv.FormatInt(provider.MinorUnits(amount), 10)
+		if got := stub.lastBody(endpointRefundAll)["amount"]; got != want {
+			t.Errorf("refund of %v sent %v, want %s", amount, got, want)
+		}
 	}
 }
 

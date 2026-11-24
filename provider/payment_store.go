@@ -77,6 +77,11 @@ type PaymentStore interface {
 	// FindPayment returns the newest row for the key: a consumer id is not unique per tenant.
 	FindPayment(ctx context.Context, key PaymentKey) (int64, error)
 	FindPaymentByStartLog(ctx context.Context, tenantID int, providerName string, startLogID int64) (int64, error)
+
+	OpenOperation(ctx context.Context, paymentRowID int64, kind string, amount *float64, logID int64) (int64, error)
+	CloseOperation(ctx context.Context, opID int64, outcome OperationOutcome) error
+	UnsettledOperation(ctx context.Context, paymentRowID int64) (*PaymentOperation, error)
+	SucceededRefundTotal(ctx context.Context, paymentRowID int64) (float64, error)
 }
 
 // SQLPaymentStore is the PostgreSQL PaymentStore.

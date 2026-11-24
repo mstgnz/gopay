@@ -305,8 +305,25 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 	}
 
 	request.LogID = logID
+	key := PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}
+	opID, replay, guardErr := s.beginOperation(ctx, provider, key, OperationCancel, nil, logID)
+	if guardErr != nil {
+		s.logOperationRefusal(ctx, logID, "CANCEL_REFUSED", guardErr, startTime)
+		return nil, guardErr
+	}
+	if replay {
+		now := time.Now()
+		resp := &PaymentResponse{
+			Success: true, Status: StatusCancelled, PaymentID: request.PaymentID,
+			Message: "Payment was already cancelled", SystemTime: &now,
+		}
+		s.logReplay(ctx, logID, resp, startTime)
+		return resp, nil
+	}
+
 	response, err := provider.CancelPayment(ctx, request)
-	if rowID := s.recorder.find(ctx, PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}); rowID > 0 {
+	s.finishOperation(ctx, providerName, opID, err == nil && response != nil && response.Success)
+	if rowID := s.recorder.find(ctx, key); rowID > 0 {
 		success, code := false, ""
 		if response != nil {
 			success, code = response.Success, response.ErrorCode
@@ -369,16 +386,33 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 	}
 
 	request.LogID = logID
+	key := PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}
+	// 0 asks some providers for a full refund; the amount is then unknown, not zero.
+	var amount *float64
+	if request.RefundAmount > 0 {
+		amount = &request.RefundAmount
+	}
+	opID, replay, guardErr := s.beginOperation(ctx, provider, key, OperationRefund, amount, logID)
+	if guardErr != nil {
+		s.logOperationRefusal(ctx, logID, "REFUND_REFUSED", guardErr, startTime)
+		return nil, guardErr
+	}
+	if replay {
+		now := time.Now()
+		resp := &RefundResponse{
+			Success: true, PaymentID: request.PaymentID, RefundAmount: request.RefundAmount,
+			Status: "refunded", Message: "Refund was already completed", SystemTime: &now,
+		}
+		s.logReplay(ctx, logID, resp, startTime)
+		return resp, nil
+	}
+
 	response, err := provider.RefundPayment(ctx, request)
-	if rowID := s.recorder.find(ctx, PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}); rowID > 0 {
+	s.finishOperation(ctx, providerName, opID, err == nil && response != nil && response.Success)
+	if rowID := s.recorder.find(ctx, key); rowID > 0 {
 		success, code := false, ""
 		if response != nil {
 			success, code = response.Success, response.ErrorCode
-		}
-		// 0 asks some providers for a full refund; the amount is then unknown, not zero.
-		var amount *float64
-		if request.RefundAmount > 0 {
-			amount = &request.RefundAmount
 		}
 		s.recorder.record(ctx, providerName, rowID, operationEvent(EventRefund, StatusRefunded, success, code, amount, logID, err))
 	}

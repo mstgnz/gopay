@@ -493,60 +493,11 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 		return nil, fmt.Errorf("failed to get msisdn: %s %w", request.PaymentID, err)
 	}
 
-	// Set clientIP for inquire operation - use a default if not available
-	if p.clientIP == "" {
-		p.clientIP = "127.0.0.1" // Default fallback
-	}
-
-	// Prepare request according to PayCell documentation
-	transactionID := p.generateTransactionID()
-	transactionDateTime := p.generateTransactionDateTime()
-
-	// Create request structure as shown in documentation
-	paycellReq := map[string]any{
-		"paymentMethodType":       "CREDIT_CARD",
-		"merchantCode":            p.merchantID,
-		"msisdn":                  msisdn,
-		"originalReferenceNumber": originalReferenceNumber,
-		"referenceNumber":         p.generateReferenceNumber(),
-		"currency":                "TRY",
-		"paymentType":             "SALE",
-		"orderId":                 originalReferenceNumber,
-		"requestHeader": PaycellRequestHeader{
-			TransactionID:       transactionID,
-			TransactionDateTime: transactionDateTime,
-			ClientIPAddress:     p.clientIP,
-			ApplicationName:     p.username,
-			ApplicationPwd:      p.password,
-		},
-	}
-
-	// Add provider request to client request log
-	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
-		p.logRequest("providerInquireRequest", reqMap, p.logID)
-	}
-
-	// Use new HTTP client
-	httpReq := &provider.HTTPRequest{
-		Method:   "POST",
-		Endpoint: endpointInquireAll,
-		Body:     paycellReq,
-	}
-
-	resp, err := p.httpClient.SendJSON(ctx, httpReq)
+	resp, err := p.inquireAll(ctx, originalReferenceNumber, msisdn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send inquire request: %w", err)
+		return nil, err
 	}
-
-	var inquireResp PaycellInquireResponse
-	if err := p.httpClient.ParseJSONResponse(resp, &inquireResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, resp.RawBody)
-	}
-
-	// Add provider request to client request log
-	if reqMap, err := provider.StructToMap(inquireResp); err == nil {
-		p.logRequest("providerInquireResponse", reqMap, p.logID)
-	}
+	inquireResp := *resp
 
 	// Convert to standard payment response
 	now := time.Now()
@@ -614,6 +565,114 @@ func (p *PaycellProvider) GetPaymentStatus(ctx context.Context, request provider
 	response.Success = response.Status == provider.StatusSuccessful
 
 	return response, nil
+}
+
+// inquireAll asks Paycell for the provision referenceNumber and everything done to it since, logged
+// on p.logID.
+func (p *PaycellProvider) inquireAll(ctx context.Context, originalReferenceNumber, msisdn string) (*PaycellInquireResponse, error) {
+	// Set clientIP for inquire operation - use a default if not available
+	if p.clientIP == "" {
+		p.clientIP = "127.0.0.1" // Default fallback
+	}
+
+	// Prepare request according to PayCell documentation
+	transactionID := p.generateTransactionID()
+	transactionDateTime := p.generateTransactionDateTime()
+
+	// Create request structure as shown in documentation
+	paycellReq := map[string]any{
+		"paymentMethodType":       "CREDIT_CARD",
+		"merchantCode":            p.merchantID,
+		"msisdn":                  msisdn,
+		"originalReferenceNumber": originalReferenceNumber,
+		"referenceNumber":         p.generateReferenceNumber(),
+		"currency":                "TRY",
+		"paymentType":             "SALE",
+		"orderId":                 originalReferenceNumber,
+		"requestHeader": PaycellRequestHeader{
+			TransactionID:       transactionID,
+			TransactionDateTime: transactionDateTime,
+			ClientIPAddress:     p.clientIP,
+			ApplicationName:     p.username,
+			ApplicationPwd:      p.password,
+		},
+	}
+
+	// Add provider request to client request log
+	if reqMap, err := provider.StructToMap(paycellReq); err == nil {
+		p.logRequest("providerInquireRequest", reqMap, p.logID)
+	}
+
+	// Use new HTTP client
+	httpReq := &provider.HTTPRequest{
+		Method:   "POST",
+		Endpoint: endpointInquireAll,
+		Body:     paycellReq,
+	}
+
+	resp, err := p.httpClient.SendJSON(ctx, httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send inquire request: %w", err)
+	}
+
+	var inquireResp PaycellInquireResponse
+	if err := p.httpClient.ParseJSONResponse(resp, &inquireResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal inquire response: %w. Response body: %s", err, resp.RawBody)
+	}
+
+	// Add provider request to client request log
+	if reqMap, err := provider.StructToMap(inquireResp); err == nil {
+		p.logRequest("providerInquireResponse", reqMap, p.logID)
+	}
+
+	return &inquireResp, nil
+}
+
+// RefundLedger reads what Paycell itself recorded as returned for a payment: the successful refunds
+// in its provision list, and whether it was reversed. Anything Paycell has not settled (3023, a
+// header error) is an error, because the guard must not decide on it.
+func (p *PaycellProvider) RefundLedger(ctx context.Context, paymentID string, logID int64) (provider.RefundLedger, error) {
+	p.logID = logID
+	ref, err := p.logs().nested(paymentID, "providerProvisionRequest", "referenceNumber")
+	if err != nil {
+		return provider.RefundLedger{}, fmt.Errorf("failed to get reference number: %s %w", paymentID, err)
+	}
+	msisdn, err := p.logs().value(paymentID, "msisdn")
+	if err != nil {
+		return provider.RefundLedger{}, fmt.Errorf("failed to get msisdn: %s %w", paymentID, err)
+	}
+
+	resp, err := p.inquireAll(ctx, ref, msisdn)
+	if err != nil {
+		return provider.RefundLedger{}, err
+	}
+	if code := resp.ResponseHeader.ResponseCode; code != responseCodeSuccess {
+		return provider.RefundLedger{}, fmt.Errorf("paycell inquire answered %s", code)
+	}
+
+	var ledger provider.RefundLedger
+	for _, item := range resp.ProvisionList {
+		if item.ProvisionType != "REFUND" && item.ProvisionType != "REVERSE" {
+			continue
+		}
+		switch item.ResponseCode {
+		case responseCodeSuccess:
+		case responseCodeProcessing:
+			return provider.RefundLedger{}, fmt.Errorf("paycell %s still processing", item.ProvisionType)
+		default:
+			continue // declined: nothing was returned
+		}
+		if item.ProvisionType == "REVERSE" {
+			ledger.Reversed = true
+			continue
+		}
+		kurus, err := strconv.ParseInt(item.Amount, 10, 64)
+		if err != nil {
+			return provider.RefundLedger{}, fmt.Errorf("paycell refund amount %q: %w", item.Amount, err)
+		}
+		ledger.RefundedMinor += kurus
+	}
+	return ledger, nil
 }
 
 // statusWithoutProvision answers for a payment whose log holds no provision. Complete3DPayment
@@ -866,8 +925,8 @@ func (p *PaycellProvider) RefundPayment(ctx context.Context, request provider.Re
 	transactionID := p.generateTransactionID()
 	transactionDateTime := p.generateTransactionDateTime()
 
-	// Convert amount to kuruş (multiply by 100)
-	amountInKurus := strconv.FormatFloat(request.RefundAmount*100, 'f', 0, 64)
+	// The same conversion the refund guard records, so its ledger comparison matches what was sent.
+	amountInKurus := strconv.FormatInt(provider.MinorUnits(request.RefundAmount), 10)
 
 	// Create request structure as shown in documentation
 	paycellReq := map[string]any{
