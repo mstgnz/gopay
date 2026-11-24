@@ -12,7 +12,7 @@ import (
 	"github.com/mstgnz/gopay/infra/middle"
 )
 
-// paycell is an active provider in gopay.sql; tenants 1 and 2 come from .github/ci-seed.sql.
+// paycell is an active provider in seed.sql; tenants 1 and 2 come from .github/ci-seed.sql.
 func insertTestPayment(t *testing.T, store *SQLPaymentStore, tenantID int, logID int64) int64 {
 	t.Helper()
 	id, err := store.InsertPayment(context.Background(), NewPaymentRecord{

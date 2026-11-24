@@ -145,6 +145,10 @@ cd gopay
 cp .env.example .env
 # Edit .env with your database settings and set JWT_SECRET (openssl rand -base64 48)
 
+# Create the schema and the provider rows in an empty PostgreSQL database
+psql -d gopay -v ON_ERROR_STOP=1 -f gopay.sql
+psql -d gopay -v ON_ERROR_STOP=1 -f seed.sql
+
 # Run with Docker
 docker-compose up -d
 

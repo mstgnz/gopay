@@ -1,17 +1,9 @@
--- -------------------------------------------------------------
--- TablePlus 6.6.4(624)
---
--- https://tableplus.com/
---
--- Database: gopay
--- Generation Time: 2025-07-07 10:09:24.4920
--- -------------------------------------------------------------
+-- GoPay database schema: tables, constraints, indexes and comments, no data.
+-- Matches the production schema as of 2026-11-25. Load it into an empty database, then seed.sql
+-- for the provider rows the application needs.
 
-
--- Sequence and defined type
+-- Tenants: the API's users. password is a bcrypt hash.
 CREATE SEQUENCE IF NOT EXISTS tenants_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."tenants" (
     "id" int4 NOT NULL DEFAULT nextval('tenants_id_seq'::regclass),
     "username" varchar NOT NULL,
@@ -21,14 +13,130 @@ CREATE TABLE "public"."tenants" (
     "code" varchar,
     PRIMARY KEY ("id")
 );
+COMMENT ON COLUMN "public"."tenants"."code" IS 'password reset or SMS code';
 
--- Column Comment
-COMMENT ON COLUMN "public"."tenants"."code" IS 'şifre unuttum veya sms kod';
+-- Payment providers known to the application; a provider's name is also its log table's name.
+CREATE SEQUENCE IF NOT EXISTS providers_id_seq;
+CREATE TABLE "public"."providers" (
+    "id" int2 NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
+    "name" varchar NOT NULL,
+    "active" bool NOT NULL DEFAULT false,
+    PRIMARY KEY ("id")
+);
 
--- Sequence and defined type
+-- Provider credentials and settings per tenant and environment, one row per key.
+CREATE SEQUENCE IF NOT EXISTS tenant_configs_id_seq;
+CREATE TABLE "public"."tenant_configs" (
+    "id" int4 NOT NULL DEFAULT nextval('tenant_configs_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "provider_id" int2 NOT NULL,
+    "environment" varchar NOT NULL CHECK ((environment)::text = ANY (ARRAY[('sandbox'::character varying)::text, ('production'::character varying)::text])),
+    "key" varchar NOT NULL,
+    "value" varchar NOT NULL,
+    "created_at" timestamp DEFAULT now(),
+    PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
+CREATE INDEX tc_tenant_id ON public.tenant_configs USING btree (tenant_id);
+CREATE INDEX tc_provider_id ON public.tenant_configs USING btree (provider_id);
+CREATE INDEX configs_tenant_id ON public.tenant_configs USING btree (tenant_id);
+CREATE INDEX configs_provider_id ON public.tenant_configs USING btree (provider_id);
+
+-- Cards saved at a provider (Paycell), by the provider's card id; no card data is stored.
+CREATE SEQUENCE IF NOT EXISTS saved_cards_id_seq;
+CREATE TABLE "public"."saved_cards" (
+    "id" int4 NOT NULL DEFAULT nextval('saved_cards_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "provider_id" int2 NOT NULL,
+    "environment" varchar NOT NULL CHECK ((environment)::text = ANY (ARRAY[('sandbox'::character varying)::text, ('production'::character varying)::text])),
+    "msisdn" varchar(20) NOT NULL,
+    "provider_card_id" varchar(100) NOT NULL,
+    "masked_card_no" varchar(20),
+    "card_brand" varchar(30),
+    "card_type" varchar(30),
+    "alias" varchar(100),
+    "is_active" bool NOT NULL DEFAULT true,
+    "created_at" timestamp DEFAULT now(),
+    "updated_at" timestamp,
+    PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
+CREATE UNIQUE INDEX saved_cards_active_uniq ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn, provider_card_id) WHERE is_active;
+CREATE INDEX saved_cards_lookup ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn);
+CREATE INDEX saved_cards_tenant_id ON public.saved_cards USING btree (tenant_id);
+
+-- 3D callback state: one row per 3D start, accepted once by its own provider's callback route.
+CREATE SEQUENCE IF NOT EXISTS callbacks_id_seq;
+CREATE TABLE "public"."callbacks" (
+    "id" int4 NOT NULL DEFAULT nextval('callbacks_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "provider" varchar(50) NOT NULL,
+    "payment_id" varchar(100) NOT NULL,
+    "original_callback" varchar(1000),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "conversation_id" varchar(100),
+    "log_id" int8,
+    "environment" varchar(20),
+    "client_ip" varchar(45),
+    "state_data" jsonb NOT NULL,
+    "created_at" timestamp DEFAULT now(),
+    "expires_at" timestamp NOT NULL,
+    "used" bool DEFAULT false,
+    "installment" int2,
+    "session_id" varchar,
+    -- SHA-256 (hex) of the random token in the callback URL; the URL carries only the token.
+    "token_hash" text,
+    PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."callbacks" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX callbacks_tenant_id ON public.callbacks USING btree (tenant_id);
+-- Serves CallbackStateOf: WHERE provider = $1 AND payment_id = $2.
+CREATE INDEX callbacks_provider_payment_id ON public.callbacks USING btree (provider, payment_id);
+-- Serves RetrieveCallbackState / UpdateCallbackState by token; one token selects one row.
+CREATE UNIQUE INDEX callbacks_token_hash ON public.callbacks USING btree (token_hash) WHERE (token_hash IS NOT NULL);
+
+-- Application log (errors, warnings, panics).
+CREATE SEQUENCE IF NOT EXISTS system_logs_id_seq;
+CREATE TABLE "public"."system_logs" (
+    "id" int8 NOT NULL DEFAULT nextval('system_logs_id_seq'::regclass),
+    "level" varchar,
+    "log" jsonb,
+    "created_at" timestamp DEFAULT now(),
+    PRIMARY KEY ("id")
+);
+
+-- Provider log tables: one per provider, named after it, all of the same shape. Each row is one
+-- API call with the provider requests and responses made for it appended to request.
+
+CREATE SEQUENCE IF NOT EXISTS akbank_id_seq;
+CREATE TABLE "public"."akbank" (
+    "id" int4 NOT NULL DEFAULT nextval('akbank_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
+    PRIMARY KEY ("id")
+);
+ALTER SEQUENCE akbank_id_seq OWNED BY public.akbank.id;
+ALTER TABLE "public"."akbank" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+
 CREATE SEQUENCE IF NOT EXISTS iyzico_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."iyzico" (
     "id" int8 NOT NULL DEFAULT nextval('iyzico_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -50,86 +158,10 @@ CREATE TABLE "public"."iyzico" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."iyzico" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX iyzico_tenant_id ON public.iyzico USING btree (tenant_id);
 
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS providers_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."providers" (
-    "id" int2 NOT NULL DEFAULT nextval('providers_id_seq'::regclass),
-    "name" varchar NOT NULL,
-    "active" boolean NOT NULL DEFAULT false,
-    PRIMARY KEY ("id")
-);
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS stripe_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."stripe" (
-    "id" int8 NOT NULL DEFAULT nextval('stripe_id_seq'::regclass),
-    "tenant_id" int4 NOT NULL,
-    "request" jsonb,
-    "response" jsonb,
-    "request_at" timestamp DEFAULT now(),
-    "response_at" timestamp,
-    "method" varchar(50),
-    "endpoint" varchar(255),
-    "request_id" varchar(100),
-    "payment_id" varchar(100),
-    "transaction_id" varchar(100),
-    "amount" numeric(15,2),
-    "currency" varchar(3),
-    "status" varchar(50),
-    "error_code" varchar(50),
-    "processing_ms" int8,
-    "user_agent" varchar(500),
-    "client_ip" varchar(45),
-    PRIMARY KEY ("id")
-);
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS shopier_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."shopier" (
-    "id" int4 NOT NULL DEFAULT nextval('shopier_id_seq'::regclass),
-    "tenant_id" int4 NOT NULL,
-    "request" jsonb,
-    "response" jsonb,
-    "request_at" timestamp DEFAULT now(),
-    "response_at" timestamp,
-    "method" varchar(50),
-    "endpoint" varchar(255),
-    "request_id" varchar(100),
-    "payment_id" varchar(100),
-    "transaction_id" varchar(100),
-    "amount" numeric(15,2),
-    "currency" varchar(3),
-    "status" varchar(50),
-    "error_code" varchar(50),
-    "processing_ms" int8,
-    "user_agent" varchar(500),
-    "client_ip" varchar(45),
-    PRIMARY KEY ("id")
-);
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS system_logs_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."system_logs" (
-    "id" int8 NOT NULL DEFAULT nextval('system_logs_id_seq'::regclass),
-    "level" varchar,
-    "log" jsonb,
-    "created_at" timestamp DEFAULT now(),
-    PRIMARY KEY ("id")
-);
-
--- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS nkolay_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."nkolay" (
     "id" int4 NOT NULL DEFAULT nextval('nkolay_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -151,11 +183,10 @@ CREATE TABLE "public"."nkolay" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."nkolay" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX nkolay_tenant_id ON public.nkolay USING btree (tenant_id);
 
--- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS ozanpay_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."ozanpay" (
     "id" int8 NOT NULL DEFAULT nextval('ozanpay_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -177,26 +208,10 @@ CREATE TABLE "public"."ozanpay" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."ozanpay" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX ozanpay_tenant_id ON public.ozanpay USING btree (tenant_id);
 
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS tenant_configs_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."tenant_configs" (
-    "id" int4 NOT NULL DEFAULT nextval('tenant_configs_id_seq'::regclass),
-    "tenant_id" int4 NOT NULL,
-    "provider_id" int2 NOT NULL,
-    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['sandbox'::character varying, 'production'::character varying])::text[])),
-    "key" varchar NOT NULL,
-    "value" varchar NOT NULL,
-    "created_at" timestamp DEFAULT now(),
-    PRIMARY KEY ("id")
-);
-
--- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS papara_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."papara" (
     "id" int4 NOT NULL DEFAULT nextval('papara_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -218,11 +233,10 @@ CREATE TABLE "public"."papara" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."papara" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX papara_tenant_id ON public.papara USING btree (tenant_id);
 
--- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS paycell_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."paycell" (
     "id" int8 NOT NULL DEFAULT nextval('paycell_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -244,11 +258,38 @@ CREATE TABLE "public"."paycell" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."paycell" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+-- Serves the payment_id lookups in provider/logger.go (WHERE payment_id = $1 ORDER BY id DESC LIMIT 1).
+CREATE INDEX paycell_payment_id ON public.paycell USING btree (payment_id, id);
+-- Serves GetThreeDCallbackRequest, which matches request->>'paymentId' because LogError blanks payment_id.
+CREATE INDEX paycell_request_payment_id ON public.paycell USING btree (((request ->> 'paymentId'::text)), id);
 
--- Sequence and defined type
+CREATE SEQUENCE IF NOT EXISTS payten_id_seq;
+CREATE TABLE "public"."payten" (
+    "id" int4 NOT NULL DEFAULT nextval('payten_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
+    PRIMARY KEY ("id")
+);
+ALTER SEQUENCE payten_id_seq OWNED BY public.payten.id;
+ALTER TABLE "public"."payten" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+
 CREATE SEQUENCE IF NOT EXISTS paytr_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."paytr" (
     "id" int4 NOT NULL DEFAULT nextval('paytr_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -270,11 +311,10 @@ CREATE TABLE "public"."paytr" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."paytr" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX paytr_tenant_id ON public.paytr USING btree (tenant_id);
 
--- Sequence and defined type
 CREATE SEQUENCE IF NOT EXISTS payu_id_seq;
-
--- Table Definition
 CREATE TABLE "public"."payu" (
     "id" int4 NOT NULL DEFAULT nextval('payu_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -296,115 +336,60 @@ CREATE TABLE "public"."payu" (
     "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS callbacks_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."callbacks" (
-    "id" int4 NOT NULL DEFAULT nextval('callbacks_id_seq'::regclass),
-    "tenant_id" int4 NOT NULL,
-    "provider" varchar(50) NOT NULL,
-    "payment_id" varchar(100) NOT NULL,
-    "original_callback" varchar(1000),
-    "amount" numeric(15,2),
-    "currency" varchar(3),
-    "conversation_id" varchar(100),
-    "log_id" int8,
-    "environment" varchar(20),
-    "client_ip" varchar(45),
-    "installment" int2,
-    "session_id" varchar(100),
-    "state_data" jsonb NOT NULL,
-    "created_at" timestamp DEFAULT now(),
-    "expires_at" timestamp NOT NULL,
-    "used" boolean DEFAULT false,
-    -- SHA-256 (hex) of the random token in the callback URL. NULL only for rows from before tokens,
-    -- which only the old numeric id can address.
-    "token_hash" text,
-    PRIMARY KEY ("id")
-);
-
--- Create index for cleanup queries
-CREATE INDEX callbacks_tenant_id ON public.callbacks USING btree (tenant_id);
--- Serves CallbackStateOf: WHERE provider = $1 AND payment_id = $2.
-CREATE INDEX callbacks_provider_payment_id ON public.callbacks USING btree (provider, payment_id);
--- Serves RetrieveCallbackState / UpdateCallbackState by token; one token selects one row.
-CREATE UNIQUE INDEX callbacks_token_hash ON public.callbacks USING btree (token_hash) WHERE token_hash IS NOT NULL;
-ALTER TABLE "public"."callbacks" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-INSERT INTO "public"."providers" ("name", "active") VALUES
-('iyzico', true),
-('ozanpay', true),
-('strpie', true),
-('paycell', true),
-('papara', true),
-('paytr', true),
-('payu', true),
-('nkolay', true),
-('shopier', false);
-
-ALTER TABLE "public"."iyzico" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX iyzico_tenant_id ON public.iyzico USING btree (tenant_id);
-ALTER TABLE "public"."stripe" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX stripe_tenant_id ON public.stripe USING btree (tenant_id);
-ALTER TABLE "public"."shopier" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX shopier_tenant_id ON public.shopier USING btree (tenant_id);
-ALTER TABLE "public"."nkolay" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX nkolay_tenant_id ON public.nkolay USING btree (tenant_id);
-ALTER TABLE "public"."ozanpay" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX ozanpay_tenant_id ON public.ozanpay USING btree (tenant_id);
-ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
-ALTER TABLE "public"."tenant_configs" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX tc_tenant_id ON public.tenant_configs USING btree (tenant_id);
-CREATE INDEX tc_provider_id ON public.tenant_configs USING btree (provider_id);
-CREATE INDEX configs_tenant_id ON public.tenant_configs USING btree (tenant_id);
-CREATE INDEX configs_provider_id ON public.tenant_configs USING btree (provider_id);
-ALTER TABLE "public"."papara" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX papara_tenant_id ON public.papara USING btree (tenant_id);
-ALTER TABLE "public"."paycell" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
--- Indices
--- Serves the payment_id lookups in provider/logger.go (WHERE payment_id = $1 ORDER BY id DESC LIMIT 1).
-CREATE INDEX paycell_payment_id ON public.paycell USING btree (payment_id, id);
--- Serves GetThreeDCallbackRequest, which matches request->>'paymentId' because LogError blanks payment_id.
-CREATE INDEX paycell_request_payment_id ON public.paycell USING btree ((request ->> 'paymentId'), id);
-ALTER TABLE "public"."paytr" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
-CREATE INDEX paytr_tenant_id ON public.paytr USING btree (tenant_id);
 ALTER TABLE "public"."payu" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-
-
--- Indices
 CREATE INDEX payu_tenant_id ON public.payu USING btree (tenant_id);
 
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS yapikredi_id_seq;
+CREATE SEQUENCE IF NOT EXISTS shopier_id_seq;
+CREATE TABLE "public"."shopier" (
+    "id" int4 NOT NULL DEFAULT nextval('shopier_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
+    PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."shopier" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX shopier_tenant_id ON public.shopier USING btree (tenant_id);
 
--- Table Definition: Yapı Kredi Posnet log rows, same shape as the other provider tables.
+CREATE SEQUENCE IF NOT EXISTS stripe_id_seq;
+CREATE TABLE "public"."stripe" (
+    "id" int8 NOT NULL DEFAULT nextval('stripe_id_seq'::regclass),
+    "tenant_id" int4 NOT NULL,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
+    PRIMARY KEY ("id")
+);
+ALTER TABLE "public"."stripe" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
+CREATE INDEX stripe_tenant_id ON public.stripe USING btree (tenant_id);
+
+CREATE SEQUENCE IF NOT EXISTS yapikredi_id_seq;
 CREATE TABLE "public"."yapikredi" (
     "id" int8 NOT NULL DEFAULT nextval('yapikredi_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
@@ -427,52 +412,45 @@ CREATE TABLE "public"."yapikredi" (
     PRIMARY KEY ("id")
 );
 ALTER SEQUENCE yapikredi_id_seq OWNED BY public.yapikredi.id;
-ALTER TABLE "public"."yapikredi" ADD CONSTRAINT yapikredi_tenant_id_fkey FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE RESTRICT;
-
--- Indices
+ALTER TABLE "public"."yapikredi" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE RESTRICT;
 -- Serves the logs handler (WHERE tenant_id = $1) and the foreign key.
 CREATE INDEX yapikredi_tenant_id ON public.yapikredi USING btree (tenant_id);
 -- Serves the payment_id lookups in provider/logger.go (WHERE payment_id = $1 ... ORDER BY id DESC LIMIT 1).
 CREATE INDEX yapikredi_payment_id ON public.yapikredi USING btree (payment_id, id);
 
-INSERT INTO "public"."providers" ("name", "active") VALUES ('yapikredi', true);
-
--- Sequence and defined type
-CREATE SEQUENCE IF NOT EXISTS saved_cards_id_seq;
-
--- Table Definition
-CREATE TABLE "public"."saved_cards" (
-    "id" int4 NOT NULL DEFAULT nextval('saved_cards_id_seq'::regclass),
+CREATE SEQUENCE IF NOT EXISTS ziraat_id_seq;
+CREATE TABLE "public"."ziraat" (
+    "id" int4 NOT NULL DEFAULT nextval('ziraat_id_seq'::regclass),
     "tenant_id" int4 NOT NULL,
-    "provider_id" int2 NOT NULL,
-    "environment" varchar NOT NULL CHECK ((environment)::text = ANY ((ARRAY['sandbox'::character varying, 'production'::character varying])::text[])),
-    "msisdn" varchar(20) NOT NULL,
-    "provider_card_id" varchar(100) NOT NULL,
-    "masked_card_no" varchar(20),
-    "card_brand" varchar(30),
-    "card_type" varchar(30),
-    "alias" varchar(100),
-    "is_active" boolean NOT NULL DEFAULT true,
-    "created_at" timestamp DEFAULT now(),
-    "updated_at" timestamp,
+    "request" jsonb,
+    "response" jsonb,
+    "request_at" timestamp DEFAULT now(),
+    "response_at" timestamp,
+    "method" varchar(50),
+    "endpoint" varchar(255),
+    "request_id" varchar(100),
+    "payment_id" varchar(100),
+    "transaction_id" varchar(100),
+    "amount" numeric(15,2),
+    "currency" varchar(3),
+    "status" varchar(50),
+    "error_code" varchar(50),
+    "processing_ms" int8,
+    "user_agent" varchar(500),
+    "client_ip" varchar(45),
     PRIMARY KEY ("id")
 );
-
--- Indices
-CREATE UNIQUE INDEX saved_cards_active_uniq ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn, provider_card_id) WHERE is_active;
-CREATE INDEX saved_cards_lookup ON public.saved_cards USING btree (tenant_id, provider_id, environment, msisdn);
-CREATE INDEX saved_cards_tenant_id ON public.saved_cards USING btree (tenant_id);
-ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
-ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
+ALTER SEQUENCE ziraat_id_seq OWNED BY public.ziraat.id;
+ALTER TABLE "public"."ziraat" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 
 -- One row per payment attempt (card, 3D, saved card), written by the services. The provider log
 -- tables stay an audit trail; payment references move here provider by provider.
 CREATE TABLE "public"."payments" (
-    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    "tenant_id" int4 NOT NULL REFERENCES "public"."tenants"("id") ON DELETE RESTRICT,
-    "provider_id" int2 NOT NULL REFERENCES "public"."providers"("id") ON DELETE RESTRICT,
-    "environment" text NOT NULL CHECK (environment IN ('sandbox', 'production')),
-    "channel" text NOT NULL CHECK (channel IN ('card', 'card_3d', 'saved_card', 'saved_card_3d')),
+    "id" int8 GENERATED ALWAYS AS IDENTITY,
+    "tenant_id" int4 NOT NULL,
+    "provider_id" int2 NOT NULL,
+    "environment" text NOT NULL CHECK (environment = ANY (ARRAY['sandbox'::text, 'production'::text])),
+    "channel" text NOT NULL CHECK (channel = ANY (ARRAY['card'::text, 'card_3d'::text, 'saved_card'::text, 'saved_card_3d'::text])),
     -- The consumer's own id for the payment: PaymentRequest.id, or conversationId for saved cards.
     "consumer_reference" text,
     -- The paymentId the consumer holds; set from the provider's answer. Not unique: some providers
@@ -482,34 +460,39 @@ CREATE TABLE "public"."payments" (
     "amount" numeric(15,2) NOT NULL,
     "currency" text NOT NULL,
     "installment" int2 NOT NULL,
-    "status" text NOT NULL CHECK (status IN ('initiated', 'pending', 'processing', 'successful', 'failed', 'cancelled', 'refunded', 'error')),
+    "status" text NOT NULL CHECK (status = ANY (ARRAY['initiated'::text, 'pending'::text, 'processing'::text, 'successful'::text, 'failed'::text, 'cancelled'::text, 'refunded'::text, 'error'::text])),
     "error_code" text,
-    -- Provider-specific references (order ids, tokens); their keys differ by provider. Filled from release 2.
+    -- Provider-specific references (order ids, tokens); their keys differ by provider.
     "provider_refs" jsonb NOT NULL DEFAULT '{}'::jsonb,
     -- id of the start row in the provider's log table (tables differ per provider, so no FK).
-    "start_log_id" bigint,
+    "start_log_id" int8,
     "created_at" timestamptz NOT NULL DEFAULT now(),
-    "updated_at" timestamptz NOT NULL DEFAULT now()
+    "updated_at" timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."payments" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE RESTRICT;
+ALTER TABLE "public"."payments" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id") ON DELETE RESTRICT;
 -- Serves FindPayment: tenant + provider + environment + consumer-held id, newest first.
 CREATE INDEX payments_lookup ON public.payments USING btree (tenant_id, provider_id, environment, provider_payment_id, id);
 -- Serves FindPaymentByStartLog (3D callbacks); a log id starts one payment only.
-CREATE UNIQUE INDEX payments_start_log ON public.payments USING btree (provider_id, start_log_id) WHERE start_log_id IS NOT NULL;
+CREATE UNIQUE INDEX payments_start_log ON public.payments USING btree (provider_id, start_log_id) WHERE (start_log_id IS NOT NULL);
 -- Serves the provider_id FK (payments_lookup leads with tenant_id).
 CREATE INDEX payments_provider ON public.payments USING btree (provider_id);
 
 -- Append-only history of a payment: start, callback, status changes, cancels, refunds.
 CREATE TABLE "public"."payment_events" (
-    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    "payment_id" bigint NOT NULL REFERENCES "public"."payments"("id") ON DELETE CASCADE,
-    "kind" text NOT NULL CHECK (kind IN ('start', 'callback', 'status', 'cancel', 'refund')),
-    "status" text CHECK (status IN ('initiated', 'pending', 'processing', 'successful', 'failed', 'cancelled', 'refunded', 'error')),
+    "id" int8 GENERATED ALWAYS AS IDENTITY,
+    "payment_id" int8 NOT NULL,
+    "kind" text NOT NULL CHECK (kind = ANY (ARRAY['start'::text, 'callback'::text, 'status'::text, 'cancel'::text, 'refund'::text])),
+    "status" text CHECK (status = ANY (ARRAY['initiated'::text, 'pending'::text, 'processing'::text, 'successful'::text, 'failed'::text, 'cancelled'::text, 'refunded'::text, 'error'::text])),
     "error_code" text,
     "amount" numeric(15,2),
     -- id of the matching row in the provider's log table.
-    "log_id" bigint,
-    "created_at" timestamptz NOT NULL DEFAULT now()
+    "log_id" int8,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("id")
 );
+ALTER TABLE "public"."payment_events" ADD FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE CASCADE;
 -- Serves the FK and reading a payment's history in order.
 CREATE INDEX payment_events_payment ON public.payment_events USING btree (payment_id, id);
 
@@ -517,19 +500,21 @@ CREATE INDEX payment_events_payment ON public.payment_events USING btree (paymen
 -- means the provider call failed after it may have reached the bank; it blocks the next operation on
 -- the payment until the provider's own record settles it.
 CREATE TABLE "public"."payment_operations" (
-    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    "payment_id" bigint NOT NULL REFERENCES "public"."payments"("id") ON DELETE RESTRICT,
-    "kind" text NOT NULL CHECK (kind IN ('cancel', 'refund')),
+    "id" int8 GENERATED ALWAYS AS IDENTITY,
+    "payment_id" int8 NOT NULL,
+    "kind" text NOT NULL CHECK (kind = ANY (ARRAY['cancel'::text, 'refund'::text])),
     -- NULL for a cancel and for a full refund.
-    "amount" numeric(15,2) CHECK (amount > 0),
-    CHECK (kind = 'refund' OR amount IS NULL),
-    "outcome" text NOT NULL CHECK (outcome IN ('pending', 'succeeded', 'refused', 'unknown')),
+    "amount" numeric(15,2) CHECK (amount > (0)::numeric),
+    "outcome" text NOT NULL CHECK (outcome = ANY (ARRAY['pending'::text, 'succeeded'::text, 'refused'::text, 'unknown'::text])),
     -- id of the operation's row in the provider's log table.
-    "log_id" bigint,
+    "log_id" int8,
     "created_at" timestamptz NOT NULL DEFAULT now(),
-    "updated_at" timestamptz NOT NULL DEFAULT now()
+    "updated_at" timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("id"),
+    CHECK ((kind = 'refund'::text) OR (amount IS NULL))
 );
+ALTER TABLE "public"."payment_operations" ADD FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE RESTRICT;
 -- One open operation per payment: a second concurrent cancel or refund fails on this index.
-CREATE UNIQUE INDEX payment_operations_open ON public.payment_operations USING btree (payment_id) WHERE outcome IN ('pending', 'unknown');
+CREATE UNIQUE INDEX payment_operations_open ON public.payment_operations USING btree (payment_id) WHERE (outcome = ANY (ARRAY['pending'::text, 'unknown'::text]));
 -- Serves the FK and the succeeded-refund total.
 CREATE INDEX payment_operations_payment ON public.payment_operations USING btree (payment_id, id);
