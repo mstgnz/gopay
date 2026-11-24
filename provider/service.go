@@ -28,13 +28,16 @@ func getTenantIDFromContext(ctx context.Context) (int, error) {
 
 // PaymentService manages payment operations through various providers
 type PaymentService struct {
-	logger PaymentLogger
+	logger   PaymentLogger
+	recorder paymentRecorder
 }
 
-// NewPaymentService creates a new payment service
-func NewPaymentService(logger PaymentLogger) *PaymentService {
+// NewPaymentService creates a new payment service. store keeps the payments rows; a payment whose
+// row cannot be written is refused before the provider is called.
+func NewPaymentService(logger PaymentLogger, store PaymentStore) *PaymentService {
 	return &PaymentService{
-		logger: logger,
+		logger:   logger,
+		recorder: paymentRecorder{store: store},
 	}
 }
 
@@ -80,6 +83,27 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 	// required to add provider request to client request
 	request.LogID = logID
 
+	channel := ChannelCard
+	if request.Use3D {
+		channel = ChannelCard3D
+	}
+	rowID, err := s.recorder.open(ctx, NewPaymentRecord{
+		TenantID: tenantID, Provider: providerName, Environment: environment, Channel: channel,
+		ConsumerReference: request.ID, Amount: request.Amount, Currency: request.Currency,
+		Installment: request.InstallmentCount, StartLogID: logID,
+	})
+	if err != nil {
+		if logID > 0 {
+			if logErr := s.logger.LogError(ctx, logID, "PAYMENT_RECORD_ERROR", err.Error(), time.Since(startTime).Milliseconds()); logErr != nil {
+				logger.Warn("Failed to log payment record error", logger.LogContext{
+					Provider: providerName,
+					Fields:   map[string]any{"log_id": logID, "error": logErr.Error()},
+				})
+			}
+		}
+		return nil, err
+	}
+
 	// Process payment
 	var response *PaymentResponse
 	if request.Use3D {
@@ -87,6 +111,7 @@ func (s *PaymentService) CreatePayment(ctx context.Context, environment, provide
 	} else {
 		response, err = provider.CreatePayment(ctx, request)
 	}
+	s.recorder.record(ctx, providerName, rowID, startEvent(response, err, logID))
 
 	// Preserve session ID in response
 	if response != nil {
@@ -142,6 +167,8 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 	data["clientIp"] = callbackState.ClientIP
 	data["paymentId"] = callbackState.PaymentID
 	data["amount"] = fmt.Sprintf("%.2f", callbackState.Amount)
+	// The state carries the start's log id; the completion's own log id replaces it below.
+	startLogID := callbackState.LogID
 
 	startTime := time.Now()
 	logID, err := s.logger.LogRequest(ctx, callbackState.TenantID, providerName, "POST", Complete3DEndpoint, data, "", "")
@@ -157,6 +184,7 @@ func (s *PaymentService) Complete3DPayment(ctx context.Context, providerName, st
 	callbackState.LogID = logID
 
 	response, err := provider.Complete3DPayment(ctx, callbackState, data)
+	s.recordCallback(ctx, providerName, callbackState, startLogID, logID, response, err)
 
 	// Restore session ID from callback state
 	if response != nil {
@@ -219,6 +247,7 @@ func (s *PaymentService) GetPaymentStatus(ctx context.Context, environment, prov
 
 	request.LogID = logID
 	response, err := provider.GetPaymentStatus(ctx, request)
+	s.recordStatus(ctx, tenantID, providerName, environment, request.PaymentID, logID, response, err)
 
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -277,6 +306,13 @@ func (s *PaymentService) CancelPayment(ctx context.Context, environment, provide
 
 	request.LogID = logID
 	response, err := provider.CancelPayment(ctx, request)
+	if rowID := s.recorder.find(ctx, PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}); rowID > 0 {
+		success, code := false, ""
+		if response != nil {
+			success, code = response.Success, response.ErrorCode
+		}
+		s.recorder.record(ctx, providerName, rowID, operationEvent(EventCancel, StatusCancelled, success, code, nil, logID, err))
+	}
 
 	processingMs := time.Since(startTime).Milliseconds()
 
@@ -334,6 +370,18 @@ func (s *PaymentService) RefundPayment(ctx context.Context, environment, provide
 
 	request.LogID = logID
 	response, err := provider.RefundPayment(ctx, request)
+	if rowID := s.recorder.find(ctx, PaymentKey{TenantID: tenantID, Provider: providerName, Environment: environment, ProviderPaymentID: request.PaymentID}); rowID > 0 {
+		success, code := false, ""
+		if response != nil {
+			success, code = response.Success, response.ErrorCode
+		}
+		// 0 asks some providers for a full refund; the amount is then unknown, not zero.
+		var amount *float64
+		if request.RefundAmount > 0 {
+			amount = &request.RefundAmount
+		}
+		s.recorder.record(ctx, providerName, rowID, operationEvent(EventRefund, StatusRefunded, success, code, amount, logID, err))
+	}
 
 	processingMs := time.Since(startTime).Milliseconds()
 

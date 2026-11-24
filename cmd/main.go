@@ -88,7 +88,7 @@ func main() {
 
 	// Initialize global services for callback handlers
 	paymentLogger := provider.NewDBPaymentLogger(config.App().DB)
-	paymentService := provider.NewPaymentService(paymentLogger)
+	paymentService := provider.NewPaymentService(paymentLogger, provider.NewPaymentStore(config.App().DB.DB))
 	providerConfig := config.NewProviderConfig()
 
 	// Initialize payment handler

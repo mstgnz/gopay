@@ -138,7 +138,7 @@ func TestComplete3DPayment_RefusesStateOfAnotherProvider(t *testing.T) {
 	requireTestDB(t)
 	stateID := storeTestCallbackState(t, fmt.Sprintf("cbservice-%d", time.Now().UnixNano()))
 
-	_, err := NewPaymentService(nil).Complete3DPayment(context.Background(), "ziraat", stateID, map[string]string{})
+	_, err := NewPaymentService(nil, nil).Complete3DPayment(context.Background(), "ziraat", stateID, map[string]string{})
 	if err == nil || !strings.Contains(err.Error(), "another provider") {
 		t.Errorf("err = %v, want the state refused as another provider's", err)
 	}

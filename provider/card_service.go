@@ -17,11 +17,12 @@ type CardService struct {
 	logger         PaymentLogger
 	repo           *SavedCardRepository
 	providerConfig *config.ProviderConfig
+	recorder       paymentRecorder
 }
 
-// NewCardService creates a new card service.
-func NewCardService(logger PaymentLogger, repo *SavedCardRepository, providerConfig *config.ProviderConfig) *CardService {
-	return &CardService{logger: logger, repo: repo, providerConfig: providerConfig}
+// NewCardService creates a new card service. store keeps the payments rows of saved-card payments.
+func NewCardService(logger PaymentLogger, repo *SavedCardRepository, providerConfig *config.ProviderConfig, store PaymentStore) *CardService {
+	return &CardService{logger: logger, repo: repo, providerConfig: providerConfig, recorder: paymentRecorder{store: store}}
 }
 
 // normalizeMSISDN strips the Turkish country code to the 10-digit form stored and matched everywhere.
@@ -221,12 +222,22 @@ func (s *CardService) PaySavedCard(ctx context.Context, environment, providerNam
 	request.MSISDN = card.MSISDN
 	request.ProviderCardID = card.ProviderCardID
 
-	endpoint := "/cards/pay"
+	endpoint, channel := "/cards/pay", ChannelSavedCard
 	if use3D {
-		endpoint = "/cards/pay/3d"
+		endpoint, channel = "/cards/pay/3d", ChannelSavedCard3D
 	}
 	logID, start := s.startLog(ctx, tenantID, providerName, endpoint, request, request.ClientIP, request.ClientUserAgent)
 	request.LogID = logID
+
+	rowID, err := s.recorder.open(ctx, NewPaymentRecord{
+		TenantID: tenantID, Provider: providerName, Environment: environment, Channel: channel,
+		ConsumerReference: request.ConversationID, Amount: request.Amount, Currency: request.Currency,
+		Installment: request.InstallmentCount, StartLogID: logID,
+	})
+	if err != nil {
+		s.finishLog(ctx, logID, start, nil, err)
+		return nil, err
+	}
 
 	var resp *PaymentResponse
 	if use3D {
@@ -234,6 +245,7 @@ func (s *CardService) PaySavedCard(ctx context.Context, environment, providerNam
 	} else {
 		resp, err = cs.PayWithSavedCard(ctx, request)
 	}
+	s.recorder.record(ctx, providerName, rowID, startEvent(resp, err, logID))
 	if resp != nil {
 		resp.SessionID = request.SessionID
 	}

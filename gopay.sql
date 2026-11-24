@@ -459,3 +459,51 @@ CREATE INDEX saved_cards_lookup ON public.saved_cards USING btree (tenant_id, pr
 CREATE INDEX saved_cards_tenant_id ON public.saved_cards USING btree (tenant_id);
 ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id");
 ALTER TABLE "public"."saved_cards" ADD FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id");
+
+-- One row per payment attempt (card, 3D, saved card), written by the services. The provider log
+-- tables stay an audit trail; payment references move here provider by provider.
+CREATE TABLE "public"."payments" (
+    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "tenant_id" int4 NOT NULL REFERENCES "public"."tenants"("id") ON DELETE RESTRICT,
+    "provider_id" int2 NOT NULL REFERENCES "public"."providers"("id") ON DELETE RESTRICT,
+    "environment" text NOT NULL CHECK (environment IN ('sandbox', 'production')),
+    "channel" text NOT NULL CHECK (channel IN ('card', 'card_3d', 'saved_card', 'saved_card_3d')),
+    -- The consumer's own id for the payment: PaymentRequest.id, or conversationId for saved cards.
+    "consumer_reference" text,
+    -- The paymentId the consumer holds; set from the provider's answer. Not unique: some providers
+    -- reuse the consumer's id, so lookups take the newest row.
+    "provider_payment_id" text,
+    -- As the consumer sent it; GoPay refuses nothing here that it did not refuse before.
+    "amount" numeric(15,2) NOT NULL,
+    "currency" text NOT NULL,
+    "installment" int2 NOT NULL,
+    "status" text NOT NULL CHECK (status IN ('initiated', 'pending', 'processing', 'successful', 'failed', 'cancelled', 'refunded', 'error')),
+    "error_code" text,
+    -- Provider-specific references (order ids, tokens); their keys differ by provider. Filled from release 2.
+    "provider_refs" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- id of the start row in the provider's log table (tables differ per provider, so no FK).
+    "start_log_id" bigint,
+    "created_at" timestamptz NOT NULL DEFAULT now(),
+    "updated_at" timestamptz NOT NULL DEFAULT now()
+);
+-- Serves FindPayment: tenant + provider + environment + consumer-held id, newest first.
+CREATE INDEX payments_lookup ON public.payments USING btree (tenant_id, provider_id, environment, provider_payment_id, id);
+-- Serves FindPaymentByStartLog (3D callbacks); a log id starts one payment only.
+CREATE UNIQUE INDEX payments_start_log ON public.payments USING btree (provider_id, start_log_id) WHERE start_log_id IS NOT NULL;
+-- Serves the provider_id FK (payments_lookup leads with tenant_id).
+CREATE INDEX payments_provider ON public.payments USING btree (provider_id);
+
+-- Append-only history of a payment: start, callback, status changes, cancels, refunds.
+CREATE TABLE "public"."payment_events" (
+    "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    "payment_id" bigint NOT NULL REFERENCES "public"."payments"("id") ON DELETE CASCADE,
+    "kind" text NOT NULL CHECK (kind IN ('start', 'callback', 'status', 'cancel', 'refund')),
+    "status" text CHECK (status IN ('initiated', 'pending', 'processing', 'successful', 'failed', 'cancelled', 'refunded', 'error')),
+    "error_code" text,
+    "amount" numeric(15,2),
+    -- id of the matching row in the provider's log table.
+    "log_id" bigint,
+    "created_at" timestamptz NOT NULL DEFAULT now()
+);
+-- Serves the FK and reading a payment's history in order.
+CREATE INDEX payment_events_payment ON public.payment_events USING btree (payment_id, id);

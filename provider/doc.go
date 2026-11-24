@@ -18,8 +18,8 @@
 //
 // Creating a payment service and processing payments:
 //
-//	// Create a new payment service
-//	service := provider.NewPaymentService()
+//	// Create a new payment service: a payment log and the payments-row store
+//	service := provider.NewPaymentService(provider.NewDBPaymentLogger(db), provider.NewPaymentStore(db.DB))
 //
 //	// Configure a provider
 //	config := map[string]string{

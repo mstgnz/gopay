@@ -33,7 +33,7 @@ func Routes(r chi.Router, postgresLogger *postgres.Logger, paymentService *provi
 
 	// Card storage (saved cards) handler
 	cardRepo := provider.NewSavedCardRepository(config.App().DB.DB)
-	cardService := provider.NewCardService(provider.NewDBPaymentLogger(config.App().DB), cardRepo, providerConfig)
+	cardService := provider.NewCardService(provider.NewDBPaymentLogger(config.App().DB), cardRepo, providerConfig, provider.NewPaymentStore(config.App().DB.DB))
 	cardHandler := handler.NewCardHandler(cardService, validator)
 
 	// Hosted checkout and marketplace: optional capabilities, like card storage.
